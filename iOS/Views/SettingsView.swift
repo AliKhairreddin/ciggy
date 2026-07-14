@@ -1,4 +1,5 @@
 import SwiftUI
+import CiggyShared
 
 struct SettingsView: View {
 	@EnvironmentObject private var settings: UserSettingsStore

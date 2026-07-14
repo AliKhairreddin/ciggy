@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CiggyShared
 
 @MainActor
 final class ReportsViewModel: ObservableObject {

@@ -1,4 +1,5 @@
 import SwiftUI
+import CiggyShared
 
 struct WatchDashboardView: View {
 	@EnvironmentObject private var repository: EventRepository

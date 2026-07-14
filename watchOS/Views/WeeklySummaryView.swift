@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import CiggyShared
 
 struct WeeklySummaryView: View {
 	@EnvironmentObject private var repository: EventRepository
