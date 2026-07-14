@@ -15,16 +15,29 @@ public struct UserSettings: Codable, Equatable, Sendable {
 		notificationsEnabled: Bool = true
 	) {
 		self.quitDate = quitDate
-		self.dailyLimit = dailyLimit
-		self.sensitivity = sensitivity
+		self.dailyLimit = Self.clampedDailyLimit(dailyLimit)
+		self.sensitivity = Self.clampedSensitivity(sensitivity)
 		self.notificationsEnabled = notificationsEnabled
+	}
+
+	public static func clampedDailyLimit(_ value: Int) -> Int {
+		max(1, min(100, value))
+	}
+
+	public static func clampedSensitivity(_ value: Double) -> Double {
+		max(0, min(1, value))
 	}
 }
 
 /// Observable store that persists settings in UserDefaults
-public final class UserSettingsStore: ObservableObject, Sendable {
+@MainActor
+public final class UserSettingsStore: ObservableObject {
 	@Published public var settings: UserSettings {
-		didSet { save() }
+		didSet {
+			settings.dailyLimit = UserSettings.clampedDailyLimit(settings.dailyLimit)
+			settings.sensitivity = UserSettings.clampedSensitivity(settings.sensitivity)
+			save()
+		}
 	}
 
 	private let storageKey = "UserSettingsStore.settings.v1"

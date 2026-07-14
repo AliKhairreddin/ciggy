@@ -3,7 +3,8 @@ import HealthKit
 import Combine
 
 /// Handles HealthKit authorization and live heart rate streaming.
-public final class HealthKitManager: ObservableObject, Sendable {
+@MainActor
+public final class HealthKitManager: ObservableObject {
 	public static let shared = HealthKitManager()
 
 	private let healthStore = HKHealthStore()
@@ -14,6 +15,7 @@ public final class HealthKitManager: ObservableObject, Sendable {
 	public let heartRatePublisher = PassthroughSubject<Double, Never>()
 
 	private var query: HKAnchoredObjectQuery?
+	private var mockHeartRateTimer: Timer?
 
 	private init() {}
 
@@ -32,6 +34,7 @@ public final class HealthKitManager: ObservableObject, Sendable {
 
 	/// Starts streaming heart rate on supported devices. On simulators or if not authorized, emits mock data.
 	public func startHeartRateStreaming() {
+		stopMockHeartRate()
 		guard HKHealthStore.isHealthDataAvailable(),
 				let hrType = HKObjectType.quantityType(forIdentifier: .heartRate),
 				isAuthorized else {
@@ -52,6 +55,7 @@ public final class HealthKitManager: ObservableObject, Sendable {
 	public func stopHeartRateStreaming() {
 		if let query { healthStore.stop(query) }
 		query = nil
+		stopMockHeartRate()
 	}
 
 	private func handle(samples: [HKSample]?) {
@@ -67,14 +71,20 @@ public final class HealthKitManager: ObservableObject, Sendable {
 	}
 
 	private func startMockHeartRate() {
+		guard mockHeartRateTimer == nil else { return }
 		// Emit gentle random walk around 75 BPM
-		Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+		mockHeartRateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
 			guard let self else { return }
 			let delta = Double.random(in: -3...4)
 			let new = max(50, min(130, (self.currentHeartRate == 0 ? 75 : self.currentHeartRate) + delta))
 			self.currentHeartRate = new
 			self.heartRatePublisher.send(new)
 		}
+	}
+
+	private func stopMockHeartRate() {
+		mockHeartRateTimer?.invalidate()
+		mockHeartRateTimer = nil
 	}
 }
 

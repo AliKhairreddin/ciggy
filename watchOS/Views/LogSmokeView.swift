@@ -1,4 +1,5 @@
 import SwiftUI
+import CiggyShared
 
 struct LogSmokeView: View {
 	@Environment(\.dismiss) private var dismiss

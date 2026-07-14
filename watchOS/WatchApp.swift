@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import CiggyShared
 
 #if os(watchOS)
 @main

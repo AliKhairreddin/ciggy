@@ -3,33 +3,26 @@ import Combine
 
 /// In-memory + UserDefaults persisted repository for smoking events.
 /// In later phases, this can sync with Firebase and CloudKit.
-public final class EventRepository: ObservableObject, Sendable {
+@MainActor
+public final class EventRepository: ObservableObject {
 	@Published public private(set) var events: [SmokingEvent] = []
 
 	private let storageKey = "EventRepository.events.v1"
-	private let queue = DispatchQueue(label: "EventRepository.queue", qos: .userInitiated)
 
 	public init() {
 		load()
 	}
 
 	public func addEvent(_ event: SmokingEvent) {
-		queue.async {
-			var copy = self.events
-			copy.append(event)
-			copy.sort { $0.timestamp < $1.timestamp }
-			DispatchQueue.main.async {
-				self.events = copy
-				self.save()
-			}
-		}
+		guard events.contains(where: { $0.id == event.id }) == false else { return }
+		events.append(event)
+		events.sort { $0.timestamp < $1.timestamp }
+		save()
 	}
 
 	public func removeAll() {
-		DispatchQueue.main.async {
-			self.events.removeAll()
-			self.save()
-		}
+		events.removeAll()
+		save()
 	}
 
 	public func events(on day: Date) -> [SmokingEvent] {
@@ -42,15 +35,27 @@ public final class EventRepository: ObservableObject, Sendable {
 		events(on: day).count
 	}
 
-	/// Returns the number of consecutive smoke-free days ending today
+	/// Returns consecutive smoke-free days ending on the supplied day.
+	///
+	/// The search is bounded by the oldest stored event so an empty repository does not
+	/// produce an unbounded loop. With no history, the user has a one-day current streak.
 	public func streakSmokeFreeDays(considering day: Date = Date()) -> Int {
+		let calendar = Calendar.current
+		let targetDay = day.startOfDayInCurrentCalendar
+		let earliestDay = events.map { $0.timestamp.startOfDayInCurrentCalendar }.min() ?? targetDay
 		var streak = 0
-		var cursor = day.startOfDayInCurrentCalendar
-		while events(on: cursor).isEmpty {
-			streak += 1
-			guard let prev = Calendar.current.date(byAdding: .day, value: -1, to: cursor) else { break }
-			cursor = prev
+		var cursor = targetDay
+
+		while cursor >= earliestDay {
+			if events(on: cursor).isEmpty {
+				streak += 1
+				guard let prev = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+				cursor = prev
+			} else {
+				break
+			}
 		}
+
 		return streak
 	}
 
@@ -64,12 +69,12 @@ public final class EventRepository: ObservableObject, Sendable {
 	}
 
 	private func load() {
-		if let data = UserDefaults.standard.data(forKey: storageKey),
-		   let decoded = try? JSONDecoder().decode([SmokingEvent].self, from: data) {
-			self.events = decoded
-		} else {
-			self.events = SmokingEvent.mock(count: 10)
+		guard let data = UserDefaults.standard.data(forKey: storageKey),
+			let decoded = try? JSONDecoder().decode([SmokingEvent].self, from: data) else {
+			events = []
+			return
 		}
+		events = decoded.sorted { $0.timestamp < $1.timestamp }
 	}
 
 	private func save() {

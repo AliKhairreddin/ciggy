@@ -6,9 +6,16 @@ public final class DetectionAlgorithm: ObservableObject, Sendable {
 	public struct Configuration: Sendable, Equatable {
 		public var heartRateSpikeBPM: Double // e.g., +10 BPM within window
 		public var fusionWindowSeconds: TimeInterval // seconds to correlate HR with gesture
-		public init(heartRateSpikeBPM: Double = 10, fusionWindowSeconds: TimeInterval = 20) {
+		public var detectionCooldownSeconds: TimeInterval // suppress duplicate automatic events
+
+		public init(
+			heartRateSpikeBPM: Double = 10,
+			fusionWindowSeconds: TimeInterval = 20,
+			detectionCooldownSeconds: TimeInterval = 8 * 60
+		) {
 			self.heartRateSpikeBPM = heartRateSpikeBPM
 			self.fusionWindowSeconds = fusionWindowSeconds
+			self.detectionCooldownSeconds = detectionCooldownSeconds
 		}
 	}
 
@@ -19,6 +26,7 @@ public final class DetectionAlgorithm: ObservableObject, Sendable {
 	private let motion: MotionManager
 	private let health: HealthKitManager
 	private var config: Configuration
+	private var lastDetectionAt: Date?
 
 	public init(motion: MotionManager = .shared, health: HealthKitManager = .shared, config: Configuration = .init()) {
 		self.motion = motion
@@ -29,9 +37,10 @@ public final class DetectionAlgorithm: ObservableObject, Sendable {
 
 	public func updateSensitivity(multiplier: Double) {
 		// Map 0...1 to different sensitivity levels by adjusting spike threshold
+		let clamped = max(0, min(1, multiplier))
 		let minSpike = 6.0
 		let maxSpike = 16.0
-		config.heartRateSpikeBPM = max(minSpike, min(maxSpike, maxSpike - (maxSpike - minSpike) * multiplier))
+		config.heartRateSpikeBPM = maxSpike - (maxSpike - minSpike) * clamped
 	}
 
 	private func bind() {
@@ -59,10 +68,11 @@ public final class DetectionAlgorithm: ObservableObject, Sendable {
 		let before = window.filter { $0.0 <= time }.map { $0.1 }
 		let after = window.filter { $0.0 > time }.map { $0.1 }
 		guard let baseline = before.last ?? window.first?.1, let maxAfter = after.max() ?? window.last?.1 else { return }
-		if maxAfter - baseline >= config.heartRateSpikeBPM {
-			let event = SmokingEvent(timestamp: Date(), source: .automatic, heartRate: maxAfter, notes: nil)
-			eventPublisher.send(event)
-		}
+		guard maxAfter - baseline >= config.heartRateSpikeBPM else { return }
+		if let lastDetectionAt, time.timeIntervalSince(lastDetectionAt) < config.detectionCooldownSeconds { return }
+		lastDetectionAt = time
+		let event = SmokingEvent(timestamp: time, source: .automatic, heartRate: maxAfter, notes: nil)
+		eventPublisher.send(event)
 	}
 }
 

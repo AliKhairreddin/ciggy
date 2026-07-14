@@ -1,4 +1,5 @@
 import Foundation
+import CiggyShared
 
 @MainActor
 final class GoalsViewModel: ObservableObject {
