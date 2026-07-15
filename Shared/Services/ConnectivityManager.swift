@@ -10,6 +10,14 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	public let incomingEvent = PassthroughSubject<SmokingEvent, Never>()
 	public let incomingSettings = CurrentValueSubject<UserSettings?, Never>(nil)
+	@Published public private(set) var isActivated = false
+	@Published public private(set) var isReachable = false
+	@Published public private(set) var isCounterpartAppInstalled = false
+	@Published public private(set) var lastSyncError: String?
+
+	/// Reachability means both companion apps are currently running and can use
+	/// an immediate message. Durable transfers still work when this is false.
+	public var isLiveSyncAvailable: Bool { isActivated && isReachable }
 
 	private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
 	private var latestSettingsPayload: [String: Any]?
@@ -20,6 +28,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		super.init()
 		session?.delegate = self
 		session?.activate()
+		refreshSessionState()
 	}
 
 	public func send(event: SmokingEvent) {
@@ -44,8 +53,9 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private func flushLatestSettings() {
 		guard let session,
 		      session.activationState == .activated,
-		      let latestSettingsPayload,
-		      settingsSyncNeedsRetry else { return }
+		      let latestSettingsPayload else { return }
+		sendLiveIfReachable(latestSettingsPayload)
+		guard settingsSyncNeedsRetry else { return }
 		do {
 			try session.updateApplicationContext(latestSettingsPayload)
 			settingsSyncNeedsRetry = false
@@ -59,10 +69,46 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		flushLatestSettings()
 	}
 
+	private func sendLiveIfReachable(_ payload: [String: Any]) {
+		guard let session,
+		      session.activationState == .activated,
+		      session.isReachable else { return }
+		session.sendMessage(payload, replyHandler: nil) { [weak self] error in
+			Task { @MainActor [weak self] in
+				self?.lastSyncError = error.localizedDescription
+				self?.refreshSessionState()
+			}
+		}
+	}
+
 	private func flushPendingEvents() {
 		guard let session, session.activationState == .activated else { return }
+		if session.isReachable {
+			pendingEventPayloads.forEach { sendLiveIfReachable($0) }
+		}
+		#if targetEnvironment(simulator)
+		// Simulator does not deliver transferUserInfo. Keep events in memory until
+		// the companion becomes reachable, then complete via sendMessage.
+		guard session.isReachable else { return }
+		#else
+		// Physical devices get durable background delivery in addition to the
+		// immediate foreground message. EventRepository de-duplicates by UUID.
 		pendingEventPayloads.forEach { session.transferUserInfo($0) }
+		#endif
 		pendingEventPayloads.removeAll()
+	}
+
+	private func refreshSessionState() {
+		isActivated = session?.activationState == .activated
+		isReachable = session?.isReachable == true
+		#if os(iOS)
+		isCounterpartAppInstalled = session?.isPaired == true && session?.isWatchAppInstalled == true
+		#elseif os(watchOS)
+		isCounterpartAppInstalled = session?.isCompanionAppInstalled == true
+		#endif
+		if isLiveSyncAvailable {
+			lastSyncError = nil
+		}
 	}
 }
 
@@ -72,8 +118,18 @@ extension ConnectivityManager: WCSessionDelegate {
 		activationDidCompleteWith activationState: WCSessionActivationState,
 		error: Error?
 	) {
-		guard activationState == .activated else { return }
 		Task { @MainActor [weak self] in
+			self?.refreshSessionState()
+			guard activationState == .activated else { return }
+			self?.flushLatestSettings()
+			self?.flushPendingEvents()
+		}
+	}
+
+	nonisolated public func sessionReachabilityDidChange(_ session: WCSession) {
+		Task { @MainActor [weak self] in
+			self?.refreshSessionState()
+			guard self?.isReachable == true else { return }
 			self?.flushLatestSettings()
 			self?.flushPendingEvents()
 		}
@@ -87,7 +143,10 @@ extension ConnectivityManager: WCSessionDelegate {
 	}
 
 	nonisolated public func sessionWatchStateDidChange(_ session: WCSession) {
-		Task { @MainActor [weak self] in self?.retryLatestSettings() }
+		Task { @MainActor [weak self] in
+			self?.refreshSessionState()
+			self?.retryLatestSettings()
+		}
 	}
 	#endif
 
@@ -131,6 +190,11 @@ public final class ConnectivityManager: ObservableObject {
 	public static let shared = ConnectivityManager()
 	public let incomingEvent = PassthroughSubject<SmokingEvent, Never>()
 	public let incomingSettings = CurrentValueSubject<UserSettings?, Never>(nil)
+	@Published public private(set) var isActivated = false
+	@Published public private(set) var isReachable = false
+	@Published public private(set) var isCounterpartAppInstalled = false
+	@Published public private(set) var lastSyncError: String?
+	public var isLiveSyncAvailable: Bool { false }
 
 	private init() {}
 

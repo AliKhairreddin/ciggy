@@ -61,8 +61,8 @@ public final class HealthKitManager: ObservableObject {
 			return
 		}
 
-		// Seed a short baseline window. Readings retain HealthKit timestamps, so the
-		// fusion engine can distinguish baseline data from post-gesture evidence.
+		// Seed a short context window. Readings retain HealthKit timestamps so they
+		// can be attached to a motion-created candidate when available.
 		let predicate = HKQuery.predicateForSamples(
 			withStart: Date().addingTimeInterval(-120),
 			end: nil,

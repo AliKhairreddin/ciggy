@@ -1,0 +1,1047 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		02B80AB4300719880066F68A /* ciggy Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 02B80AB3300719880066F68A /* ciggy Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		02DAFDCE30072286004A708B /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 02DAFDCD30072286004A708B /* CiggyShared */; };
+		A1C000010000000000000003 /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 02DAFDCD30072286004A708B /* CiggyShared */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		02B80A9E300719880066F68A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 02B80A88300719870066F68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02B80A8F300719870066F68A;
+			remoteInfo = ciggy;
+		};
+		02B80AA8300719880066F68A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 02B80A88300719870066F68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02B80A8F300719870066F68A;
+			remoteInfo = ciggy;
+		};
+		02B80AB5300719880066F68A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 02B80A88300719870066F68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02B80AB2300719880066F68A;
+			remoteInfo = "ciggy Watch App";
+		};
+		02B80AC3300719890066F68A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 02B80A88300719870066F68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02B80AB2300719880066F68A;
+			remoteInfo = "ciggy Watch App";
+		};
+		02B80ACD300719890066F68A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 02B80A88300719870066F68A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 02B80AB2300719880066F68A;
+			remoteInfo = "ciggy Watch App";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		02B80AD9300719890066F68A /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				02B80AB4300719880066F68A /* ciggy Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		02B80A90300719870066F68A /* ciggy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ciggy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		02B80A9D300719880066F68A /* ciggyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ciggyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		02B80AA7300719880066F68A /* ciggyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ciggyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		02B80AB3300719880066F68A /* ciggy Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ciggy Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		02B80AC2300719890066F68A /* ciggy Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ciggy Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		02B80ACC300719890066F68A /* ciggy Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ciggy Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		02B80A92300719870066F68A /* ciggy */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ciggy;
+			sourceTree = "<group>";
+		};
+		02B80AA0300719880066F68A /* ciggyTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ciggyTests;
+			sourceTree = "<group>";
+		};
+		02B80AAA300719880066F68A /* ciggyUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ciggyUITests;
+			sourceTree = "<group>";
+		};
+		02B80AB7300719880066F68A /* ciggy Watch App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "ciggy Watch App";
+			sourceTree = "<group>";
+		};
+		02B80AC5300719890066F68A /* ciggy Watch AppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "ciggy Watch AppTests";
+			sourceTree = "<group>";
+		};
+		02B80ACF300719890066F68A /* ciggy Watch AppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "ciggy Watch AppUITests";
+			sourceTree = "<group>";
+		};
+		A1C000010000000000000001 /* iOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ../iOS;
+			sourceTree = "<group>";
+		};
+		A1C000010000000000000002 /* watchOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ../watchOS;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		02B80A8D300719870066F68A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				02DAFDCE30072286004A708B /* CiggyShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80A9A300719880066F68A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AA4300719880066F68A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AB0300719880066F68A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1C000010000000000000003 /* CiggyShared in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80ABF300719890066F68A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AC9300719890066F68A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		02B80A87300719870066F68A = {
+			isa = PBXGroup;
+			children = (
+				02B80A92300719870066F68A /* ciggy */,
+				A1C000010000000000000001 /* iOS */,
+				02B80AA0300719880066F68A /* ciggyTests */,
+				02B80AAA300719880066F68A /* ciggyUITests */,
+				02B80AB7300719880066F68A /* ciggy Watch App */,
+				A1C000010000000000000002 /* watchOS */,
+				02B80AC5300719890066F68A /* ciggy Watch AppTests */,
+				02B80ACF300719890066F68A /* ciggy Watch AppUITests */,
+				02B80A91300719870066F68A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		02B80A91300719870066F68A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				02B80A90300719870066F68A /* ciggy.app */,
+				02B80A9D300719880066F68A /* ciggyTests.xctest */,
+				02B80AA7300719880066F68A /* ciggyUITests.xctest */,
+				02B80AB3300719880066F68A /* ciggy Watch App.app */,
+				02B80AC2300719890066F68A /* ciggy Watch AppTests.xctest */,
+				02B80ACC300719890066F68A /* ciggy Watch AppUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		02B80A8F300719870066F68A /* ciggy */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02B80ADA300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy" */;
+			buildPhases = (
+				02B80A8C300719870066F68A /* Sources */,
+				02B80A8D300719870066F68A /* Frameworks */,
+				02B80A8E300719870066F68A /* Resources */,
+				02B80AD9300719890066F68A /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				02B80AB6300719880066F68A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				02B80A92300719870066F68A /* ciggy */,
+				A1C000010000000000000001 /* iOS */,
+			);
+			name = ciggy;
+			packageProductDependencies = (
+				02DAFDCD30072286004A708B /* CiggyShared */,
+			);
+			productName = ciggy;
+			productReference = 02B80A90300719870066F68A /* ciggy.app */;
+			productType = "com.apple.product-type.application";
+		};
+		02B80A9C300719880066F68A /* ciggyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02B80ADD300719890066F68A /* Build configuration list for PBXNativeTarget "ciggyTests" */;
+			buildPhases = (
+				02B80A99300719880066F68A /* Sources */,
+				02B80A9A300719880066F68A /* Frameworks */,
+				02B80A9B300719880066F68A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				02B80A9F300719880066F68A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				02B80AA0300719880066F68A /* ciggyTests */,
+			);
+			name = ciggyTests;
+			packageProductDependencies = (
+			);
+			productName = ciggyTests;
+			productReference = 02B80A9D300719880066F68A /* ciggyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		02B80AA6300719880066F68A /* ciggyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02B80AE0300719890066F68A /* Build configuration list for PBXNativeTarget "ciggyUITests" */;
+			buildPhases = (
+				02B80AA3300719880066F68A /* Sources */,
+				02B80AA4300719880066F68A /* Frameworks */,
+				02B80AA5300719880066F68A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				02B80AA9300719880066F68A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				02B80AAA300719880066F68A /* ciggyUITests */,
+			);
+			name = ciggyUITests;
+			packageProductDependencies = (
+			);
+			productName = ciggyUITests;
+			productReference = 02B80AA7300719880066F68A /* ciggyUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		02B80AB2300719880066F68A /* ciggy Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02B80AD6300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch App" */;
+			buildPhases = (
+				02B80AAF300719880066F68A /* Sources */,
+				02B80AB0300719880066F68A /* Frameworks */,
+				02B80AB1300719880066F68A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				02B80AB7300719880066F68A /* ciggy Watch App */,
+				A1C000010000000000000002 /* watchOS */,
+			);
+			name = "ciggy Watch App";
+			packageProductDependencies = (
+				02DAFDCD30072286004A708B /* CiggyShared */,
+			);
+			productName = "ciggy Watch App";
+			productReference = 02B80AB3300719880066F68A /* ciggy Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		02B80AC1300719890066F68A /* ciggy Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02B80AE3300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch AppTests" */;
+			buildPhases = (
+				02B80ABE300719890066F68A /* Sources */,
+				02B80ABF300719890066F68A /* Frameworks */,
+				02B80AC0300719890066F68A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				02B80AC4300719890066F68A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				02B80AC5300719890066F68A /* ciggy Watch AppTests */,
+			);
+			name = "ciggy Watch AppTests";
+			packageProductDependencies = (
+			);
+			productName = "ciggy Watch AppTests";
+			productReference = 02B80AC2300719890066F68A /* ciggy Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		02B80ACB300719890066F68A /* ciggy Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02B80AE6300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch AppUITests" */;
+			buildPhases = (
+				02B80AC8300719890066F68A /* Sources */,
+				02B80AC9300719890066F68A /* Frameworks */,
+				02B80ACA300719890066F68A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				02B80ACE300719890066F68A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				02B80ACF300719890066F68A /* ciggy Watch AppUITests */,
+			);
+			name = "ciggy Watch AppUITests";
+			packageProductDependencies = (
+			);
+			productName = "ciggy Watch AppUITests";
+			productReference = 02B80ACC300719890066F68A /* ciggy Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		02B80A88300719870066F68A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					02B80A8F300719870066F68A = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					02B80A9C300719880066F68A = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 02B80A8F300719870066F68A;
+					};
+					02B80AA6300719880066F68A = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 02B80A8F300719870066F68A;
+					};
+					02B80AB2300719880066F68A = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					02B80AC1300719890066F68A = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 02B80AB2300719880066F68A;
+					};
+					02B80ACB300719890066F68A = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 02B80AB2300719880066F68A;
+					};
+				};
+			};
+			buildConfigurationList = 02B80A8B300719870066F68A /* Build configuration list for PBXProject "ciggy" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 02B80A87300719870066F68A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				02DAFDCC30072286004A708B /* XCLocalSwiftPackageReference "../../ciggy" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 02B80A91300719870066F68A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				02B80A8F300719870066F68A /* ciggy */,
+				02B80A9C300719880066F68A /* ciggyTests */,
+				02B80AA6300719880066F68A /* ciggyUITests */,
+				02B80AB2300719880066F68A /* ciggy Watch App */,
+				02B80AC1300719890066F68A /* ciggy Watch AppTests */,
+				02B80ACB300719890066F68A /* ciggy Watch AppUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		02B80A8E300719870066F68A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80A9B300719880066F68A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AA5300719880066F68A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AB1300719880066F68A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AC0300719890066F68A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80ACA300719890066F68A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		02B80A8C300719870066F68A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80A99300719880066F68A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AA3300719880066F68A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AAF300719880066F68A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80ABE300719890066F68A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		02B80AC8300719890066F68A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		02B80A9F300719880066F68A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02B80A8F300719870066F68A /* ciggy */;
+			targetProxy = 02B80A9E300719880066F68A /* PBXContainerItemProxy */;
+		};
+		02B80AA9300719880066F68A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02B80A8F300719870066F68A /* ciggy */;
+			targetProxy = 02B80AA8300719880066F68A /* PBXContainerItemProxy */;
+		};
+		02B80AB6300719880066F68A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02B80AB2300719880066F68A /* ciggy Watch App */;
+			targetProxy = 02B80AB5300719880066F68A /* PBXContainerItemProxy */;
+		};
+		02B80AC4300719890066F68A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02B80AB2300719880066F68A /* ciggy Watch App */;
+			targetProxy = 02B80AC3300719890066F68A /* PBXContainerItemProxy */;
+		};
+		02B80ACE300719890066F68A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 02B80AB2300719880066F68A /* ciggy Watch App */;
+			targetProxy = 02B80ACD300719890066F68A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		02B80AD4300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		02B80AD5300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		02B80AD7300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "ciggy Watch App/ciggy_Watch_App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ciggy;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Ciggy reads heart-rate samples as optional context for motion-detected smoking events.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Ciggy uses wrist motion to identify possible smoking gestures.";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "That-Canadian-Software-Services.ciggy";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		02B80AD8300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "ciggy Watch App/ciggy_Watch_App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ciggy;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Ciggy reads heart-rate samples as optional context for motion-detected smoking events.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Ciggy uses wrist motion to identify possible smoking gestures.";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "That-Canadian-Software-Services.ciggy";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		02B80ADB300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ciggy;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		02B80ADC300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ciggy;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		02B80ADE300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggyTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ciggy.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ciggy";
+			};
+			name = Debug;
+		};
+		02B80ADF300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggyTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ciggy.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ciggy";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		02B80AE1300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggyUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ciggy;
+			};
+			name = Debug;
+		};
+		02B80AE2300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggyUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ciggy;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		02B80AE4300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ciggy Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ciggy Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		02B80AE5300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ciggy Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ciggy Watch App";
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		02B80AE7300719890066F68A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "ciggy Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		02B80AE8300719890066F68A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "ciggy Watch App";
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		02B80A8B300719870066F68A /* Build configuration list for PBXProject "ciggy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80AD4300719890066F68A /* Debug */,
+				02B80AD5300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02B80AD6300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80AD7300719890066F68A /* Debug */,
+				02B80AD8300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02B80ADA300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80ADB300719890066F68A /* Debug */,
+				02B80ADC300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02B80ADD300719890066F68A /* Build configuration list for PBXNativeTarget "ciggyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80ADE300719890066F68A /* Debug */,
+				02B80ADF300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02B80AE0300719890066F68A /* Build configuration list for PBXNativeTarget "ciggyUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80AE1300719890066F68A /* Debug */,
+				02B80AE2300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02B80AE3300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80AE4300719890066F68A /* Debug */,
+				02B80AE5300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		02B80AE6300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				02B80AE7300719890066F68A /* Debug */,
+				02B80AE8300719890066F68A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		02DAFDCC30072286004A708B /* XCLocalSwiftPackageReference "../../ciggy" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../ciggy;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		02DAFDCD30072286004A708B /* CiggyShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CiggyShared;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 02B80A88300719870066F68A /* Project object */;
+}

@@ -63,10 +63,10 @@ final class IOSAppCoordinator: ObservableObject {
 struct RootTabView: View {
 	var body: some View {
 		TabView {
-			DashboardView()
-				.tabItem { Label("Dashboard", systemImage: "house.fill") }
+			NavigationStack { DashboardView() }
+				.tabItem { Label("Today", systemImage: "circle.grid.2x2.fill") }
 
-			ReportsView()
+			NavigationStack { ReportsView() }
 				.tabItem { Label("Reports", systemImage: "chart.bar.fill") }
 
 			NavigationStack { GoalsView() }
@@ -75,6 +75,9 @@ struct RootTabView: View {
 			NavigationStack { SettingsView() }
 				.tabItem { Label("Settings", systemImage: "gearshape.fill") }
 		}
+		.tint(CiggyTheme.mint)
+		.toolbarBackground(CiggyTheme.deepInk, for: .tabBar)
+		.toolbarBackground(.visible, for: .tabBar)
 	}
 }
 #else

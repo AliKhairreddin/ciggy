@@ -13,8 +13,8 @@ public enum NotificationManager {
 
 	public static func scheduleDetectionCandidateNotification(candidateID: UUID) {
 		let content = UNMutableNotificationContent()
-		content.title = "Possible smoking event"
-		content.body = "Open Ciggy to confirm or dismiss it."
+		content.title = "Smoked 1?"
+		content.body = "Ciggy noticed a repeated hand-to-mouth pattern. Tap to confirm."
 		content.sound = .default
 		let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
 		let request = UNNotificationRequest(identifier: candidateID.uuidString, content: content, trigger: trigger)
@@ -36,4 +36,3 @@ public enum NotificationManager {
 		UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
 	}
 }
-

@@ -14,7 +14,7 @@ struct CiggyWatchApp: App {
 
 	var body: some Scene {
 		WindowGroup {
-			NavigationView { WatchDashboardView() }
+			NavigationStack { WatchDashboardView() }
 				.environmentObject(repository)
 				.environmentObject(settingsStore)
 				.environmentObject(feedbackStore)
@@ -23,6 +23,7 @@ struct CiggyWatchApp: App {
 				.onAppear {
 					watchCoordinator.start(settings: settingsStore, candidateStore: candidateStore)
 				}
+				.tint(CiggyTheme.mint)
 		}
 	}
 }

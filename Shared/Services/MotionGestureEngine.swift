@@ -18,9 +18,9 @@ public struct MotionGestureEngine: Sendable {
 		pitchThreshold: Double = .pi / 6,
 		rollThreshold: Double = .pi / 5,
 		repetitionWindow: TimeInterval = 6,
-		minimumPeaks: Int = 2,
-		minimumPeakSeparation: TimeInterval = 0.5,
-		gestureCooldown: TimeInterval = 8
+		minimumPeaks: Int = 1,
+		minimumPeakSeparation: TimeInterval = 4,
+		gestureCooldown: TimeInterval = 4
 	) {
 		self.pitchThreshold = max(0, pitchThreshold)
 		self.rollThreshold = max(0, rollThreshold)
@@ -30,7 +30,8 @@ public struct MotionGestureEngine: Sendable {
 		self.gestureCooldown = max(0, gestureCooldown)
 	}
 
-	/// Returns the gesture time only after distinct rising threshold edges.
+	/// Returns one hand-to-mouth gesture for a distinct rising threshold edge.
+	/// The pose must fall below the thresholds before another gesture can count.
 	public mutating func record(pitch: Double, roll: Double, at timestamp: Date) -> Date? {
 		let exceedsThreshold = abs(pitch) > pitchThreshold && abs(roll) > rollThreshold
 		guard exceedsThreshold else {

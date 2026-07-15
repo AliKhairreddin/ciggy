@@ -39,6 +39,19 @@ final class DetectionFeedbackStoreTests: XCTestCase {
 		XCTAssertEqual(repository.estimatedMoneySaved(), 0)
 	}
 
+	func testDuplicateConnectivityDeliveryAddsEventOnlyOnce() {
+		let suiteName = "EventRepositoryDeduplicationTests.\(UUID().uuidString)"
+		let defaults = UserDefaults(suiteName: suiteName)!
+		defer { defaults.removePersistentDomain(forName: suiteName) }
+		let repository = EventRepository(userDefaults: defaults, storageKey: "events")
+		let event = SmokingEvent(id: UUID(), source: .manual)
+
+		repository.addEvent(event)
+		repository.addEvent(event)
+
+		XCTAssertEqual(repository.events, [event])
+	}
+
 	func testPendingCandidateSurvivesRelaunchAndClearsOnDecision() {
 		let suiteName = "DetectionCandidateStoreTests.\(UUID().uuidString)"
 		let defaults = UserDefaults(suiteName: suiteName)!

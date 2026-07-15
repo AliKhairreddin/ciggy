@@ -5,25 +5,35 @@ public struct DetectionCandidate: Identifiable, Codable, Equatable, Sendable {
 	public let id: UUID
 	public let gestureAt: Date
 	public let detectedAt: Date
-	public let baselineHeartRate: Double
-	public let peakHeartRate: Double
+	/// Start of the repeated hand-to-mouth pattern that formed this candidate.
+	public let motionSessionStartedAt: Date?
+	/// Number of distinct raise/lower cycles observed in the motion session.
+	public let motionGestureCount: Int?
+	/// Optional context only. Motion can create a candidate without HealthKit data.
+	public let baselineHeartRate: Double?
+	public let peakHeartRate: Double?
 
 	public init(
 		id: UUID = UUID(),
 		gestureAt: Date,
 		detectedAt: Date,
-		baselineHeartRate: Double,
-		peakHeartRate: Double
+		motionSessionStartedAt: Date? = nil,
+		motionGestureCount: Int? = nil,
+		baselineHeartRate: Double? = nil,
+		peakHeartRate: Double? = nil
 	) {
 		self.id = id
 		self.gestureAt = gestureAt
 		self.detectedAt = detectedAt
+		self.motionSessionStartedAt = motionSessionStartedAt
+		self.motionGestureCount = motionGestureCount
 		self.baselineHeartRate = baselineHeartRate
 		self.peakHeartRate = peakHeartRate
 	}
 
-	public var heartRateIncrease: Double {
-		peakHeartRate - baselineHeartRate
+	public var heartRateIncrease: Double? {
+		guard let baselineHeartRate, let peakHeartRate else { return nil }
+		return peakHeartRate - baselineHeartRate
 	}
 
 	/// Converts a reviewed candidate into a stored event. Call only after confirmation.

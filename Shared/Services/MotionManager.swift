@@ -16,6 +16,7 @@ public final class MotionManager: ObservableObject {
 
 	@Published public private(set) var latestPitch: Double = 0 // radians
 	@Published public private(set) var latestRoll: Double = 0 // radians
+	@Published public private(set) var isMonitoring: Bool = false
 
 	/// Emits when a gesture likely resembling hand-to-mouth is detected
 	public let gestureDetected = PassthroughSubject<Date, Never>()
@@ -28,7 +29,10 @@ public final class MotionManager: ObservableObject {
 
 	/// Starts device motion updates and internal detection
 	public func start() {
-		guard motionManager.isDeviceMotionAvailable else { return }
+		guard motionManager.isDeviceMotionAvailable else {
+			isMonitoring = false
+			return
+		}
 		guard motionManager.isDeviceMotionActive == false else { return }
 		motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
 		motionManager.startDeviceMotionUpdates(to: queue) { [weak self] motion, _ in
@@ -43,11 +47,13 @@ public final class MotionManager: ObservableObject {
 				self.processSample(pitch: pitch, roll: roll, timestamp: timestamp)
 			}
 		}
+		isMonitoring = motionManager.isDeviceMotionActive
 	}
 
 	public func stop() {
 		motionManager.stopDeviceMotionUpdates()
 		gestureEngine.reset()
+		isMonitoring = false
 	}
 
 	private func processSample(pitch: Double, roll: Double, timestamp: Date) {
@@ -63,6 +69,7 @@ public final class MotionManager: ObservableObject {
 	public static let shared = MotionManager()
 	@Published public private(set) var latestPitch: Double = 0
 	@Published public private(set) var latestRoll: Double = 0
+	@Published public private(set) var isMonitoring: Bool = false
 	public let gestureDetected = PassthroughSubject<Date, Never>()
 
 	private init() {}

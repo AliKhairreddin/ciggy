@@ -8,27 +8,61 @@ struct DetectionConfirmationView: View {
 	let onDismiss: () -> Void
 
 	var body: some View {
-		ScrollView {
-			VStack(spacing: 10) {
-				Image(systemName: "questionmark.circle.fill")
-					.font(.title2)
-					.foregroundStyle(.orange)
-				Text("Possible smoking event?")
-					.font(.headline)
-					.multilineTextAlignment(.center)
-				Text("Your motion and heart rate matched a possible event. You decide whether it counts.")
-					.font(.footnote)
-					.foregroundStyle(.secondary)
-					.multilineTextAlignment(.center)
+		ZStack {
+			CiggyTheme.appBackground.ignoresSafeArea()
+			ScrollView {
+				VStack(spacing: 10) {
+					ZStack {
+						Circle()
+							.fill(CiggyTheme.ember.opacity(0.14))
+						Image(systemName: "hand.raised.fingers.spread.fill")
+							.font(.title2)
+							.foregroundStyle(CiggyTheme.ember)
+					}
+					.frame(width: 50, height: 50)
 
-				Button("Yes, log it", action: onConfirm)
-					.buttonStyle(.borderedProminent)
-				Button("No, dismiss", role: .cancel, action: onDismiss)
-					.buttonStyle(.bordered)
+					Text("Smoked 1?")
+						.font(.system(size: 23, weight: .black, design: .rounded))
+						.foregroundStyle(.white)
+
+					Text(evidenceText)
+						.font(.system(size: 11))
+						.foregroundStyle(CiggyTheme.secondaryText)
+						.multilineTextAlignment(.center)
+
+					Button(action: onConfirm) {
+						Label("Yes, log 1", systemImage: "checkmark")
+							.font(.headline)
+							.foregroundStyle(CiggyTheme.deepInk)
+							.frame(maxWidth: .infinity)
+							.padding(.vertical, 10)
+							.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+					}
+					.buttonStyle(.plain)
+
+					Button(action: onDismiss) {
+						Text("No, not this time")
+							.font(.system(size: 13, weight: .semibold))
+							.foregroundStyle(.white)
+							.frame(maxWidth: .infinity)
+							.padding(.vertical, 9)
+							.background(CiggyTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+					}
+					.buttonStyle(.plain)
+				}
+				.padding(.horizontal, 4)
+				.padding(.bottom, 6)
 			}
-			.padding()
 		}
 		.interactiveDismissDisabled()
+	}
+
+	private var evidenceText: String {
+		let count = candidate.motionGestureCount ?? 0
+		if count > 0 {
+			return "Ciggy noticed \(count) repeated hand-to-mouth movements. You make the call."
+		}
+		return "Ciggy noticed a repeated hand-to-mouth pattern. You make the call."
 	}
 }
 #endif

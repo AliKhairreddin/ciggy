@@ -4,83 +4,89 @@ import XCTest
 final class DetectionFusionEngineTests: XCTestCase {
 	private let start = Date(timeIntervalSince1970: 1_700_000_000)
 
-	func testGestureWaitsForPostGestureSamples() {
-		var engine = makeEngine()
-		_ = engine.recordHeartRate(70, at: start)
-		_ = engine.recordHeartRate(72, at: start.addingTimeInterval(1))
+	func testSingleGestureDoesNotCreateCandidate() {
+		var engine = makeEngine(minimumGestures: 4)
 
-		engine.recordGesture(at: start.addingTimeInterval(2))
-
-		XCTAssertTrue(engine.hasPendingGesture)
-		XCTAssertNil(engine.recordHeartRate(79, at: start.addingTimeInterval(3)))
-		XCTAssertTrue(engine.hasPendingGesture)
+		XCTAssertNil(engine.recordGesture(at: start))
+		XCTAssertTrue(engine.hasActiveMotionSession)
+		XCTAssertEqual(engine.observedGestureCount, 1)
 	}
 
-	func testCandidateEmitsAfterEnoughPostGestureEvidence() throws {
-		var engine = makeEngine()
-		_ = engine.recordHeartRate(70, at: start)
-		_ = engine.recordHeartRate(70, at: start.addingTimeInterval(1))
-		engine.recordGesture(at: start.addingTimeInterval(2))
+	func testRepeatedMotionCreatesCandidateWithoutHeartRate() throws {
+		var engine = makeEngine(minimumGestures: 4)
 
-		XCTAssertNil(engine.recordHeartRate(78, at: start.addingTimeInterval(3)))
-		let candidate = try XCTUnwrap(
-			engine.recordHeartRate(82, at: start.addingTimeInterval(4))
-		)
+		XCTAssertNil(engine.recordGesture(at: start))
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(20)))
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(40)))
+		let candidate = try XCTUnwrap(engine.recordGesture(at: start.addingTimeInterval(60)))
 
-		XCTAssertEqual(candidate.gestureAt, start.addingTimeInterval(2))
-		XCTAssertEqual(candidate.baselineHeartRate, 70, accuracy: 0.001)
-		XCTAssertEqual(candidate.peakHeartRate, 82, accuracy: 0.001)
-		XCTAssertFalse(engine.hasPendingGesture)
+		XCTAssertEqual(candidate.motionSessionStartedAt, start)
+		XCTAssertEqual(candidate.motionGestureCount, 4)
+		XCTAssertNil(candidate.baselineHeartRate)
+		XCTAssertNil(candidate.peakHeartRate)
+		XCTAssertFalse(engine.hasActiveMotionSession)
 	}
 
-	func testDelayedBaselineSampleIsReconciledByTimestamp() throws {
-		var engine = makeEngine()
-		engine.recordGesture(at: start.addingTimeInterval(2))
-		XCTAssertTrue(engine.hasPendingGesture)
+	func testHeartRateIsAttachedAsOptionalContext() throws {
+		var engine = makeEngine(minimumGestures: 3)
+		engine.recordHeartRate(70, at: start.addingTimeInterval(-20))
+		engine.recordHeartRate(72, at: start.addingTimeInterval(-10))
+		XCTAssertNil(engine.recordGesture(at: start))
+		engine.recordHeartRate(78, at: start.addingTimeInterval(10))
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(20)))
+		engine.recordHeartRate(84, at: start.addingTimeInterval(30))
+		let candidate = try XCTUnwrap(engine.recordGesture(at: start.addingTimeInterval(40)))
 
-		_ = engine.recordHeartRate(70, at: start.addingTimeInterval(1))
-		XCTAssertNil(engine.recordHeartRate(80, at: start.addingTimeInterval(3)))
-		let candidate = try XCTUnwrap(
-			engine.recordHeartRate(82, at: start.addingTimeInterval(4))
-		)
-
-		XCTAssertEqual(candidate.baselineHeartRate, 70, accuracy: 0.001)
-		XCTAssertEqual(candidate.peakHeartRate, 82, accuracy: 0.001)
+		XCTAssertEqual(try XCTUnwrap(candidate.baselineHeartRate), 71, accuracy: 0.001)
+		XCTAssertEqual(try XCTUnwrap(candidate.peakHeartRate), 84, accuracy: 0.001)
+		XCTAssertEqual(try XCTUnwrap(candidate.heartRateIncrease), 13, accuracy: 0.001)
 	}
 
-	func testExpiredGestureDoesNotEmitCandidate() {
-		var engine = makeEngine(fusionWindow: 10)
-		_ = engine.recordHeartRate(70, at: start)
-		engine.recordGesture(at: start.addingTimeInterval(1))
+	func testGesturesThatAreTooCloseAreIgnored() {
+		var engine = makeEngine(minimumGestures: 3, minimumSeparation: 6)
 
-		XCTAssertNil(engine.recordHeartRate(100, at: start.addingTimeInterval(12)))
-		XCTAssertFalse(engine.hasPendingGesture)
+		XCTAssertNil(engine.recordGesture(at: start))
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(2)))
+		XCTAssertEqual(engine.observedGestureCount, 1)
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(10)))
+		XCTAssertEqual(engine.observedGestureCount, 2)
 	}
 
-	func testCooldownSuppressesAnotherGesture() {
-		var engine = makeEngine(cooldown: 60)
-		_ = engine.recordHeartRate(70, at: start)
-		engine.recordGesture(at: start.addingTimeInterval(1))
-		XCTAssertNil(engine.recordHeartRate(81, at: start.addingTimeInterval(2)))
-		XCTAssertNotNil(engine.recordHeartRate(82, at: start.addingTimeInterval(3)))
+	func testLongGapStartsANewMotionSession() {
+		var engine = makeEngine(minimumGestures: 3, maximumSeparation: 60)
 
-		_ = engine.recordHeartRate(70, at: start.addingTimeInterval(10))
-		engine.recordGesture(at: start.addingTimeInterval(11))
-		XCTAssertFalse(engine.hasPendingGesture)
+		XCTAssertNil(engine.recordGesture(at: start))
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(20)))
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(100)))
+
+		XCTAssertEqual(engine.observedGestureCount, 1)
 	}
 
-	func testSensitivityMapsToExpectedSpikeThresholds() {
+	func testCooldownSuppressesASecondCandidate() {
+		var engine = makeEngine(minimumGestures: 2, cooldown: 120)
+		XCTAssertNil(engine.recordGesture(at: start))
+		XCTAssertNotNil(engine.recordGesture(at: start.addingTimeInterval(20)))
+
+		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(40)))
+		XCTAssertFalse(engine.hasActiveMotionSession)
+	}
+
+	func testSensitivityMapsToMotionCount() {
 		var engine = makeEngine()
 		engine.updateSensitivity(0)
-		XCTAssertEqual(engine.configuration.heartRateSpikeBPM, 16)
+		XCTAssertEqual(engine.configuration.minimumGestureCount, 7)
+		engine.updateSensitivity(0.5)
+		XCTAssertEqual(engine.configuration.minimumGestureCount, 5)
 		engine.updateSensitivity(1)
-		XCTAssertEqual(engine.configuration.heartRateSpikeBPM, 6)
+		XCTAssertEqual(engine.configuration.minimumGestureCount, 4)
 	}
 
 	func testConfirmationCreatesStableAutomaticEvent() {
 		let candidate = DetectionCandidate(
 			gestureAt: start,
 			detectedAt: start.addingTimeInterval(3),
+			motionSessionStartedAt: start.addingTimeInterval(-60),
+			motionGestureCount: 5,
 			baselineHeartRate: 70,
 			peakHeartRate: 84
 		)
@@ -94,15 +100,19 @@ final class DetectionFusionEngineTests: XCTestCase {
 	}
 
 	private func makeEngine(
-		fusionWindow: TimeInterval = 20,
+		minimumGestures: Int = 5,
+		minimumSeparation: TimeInterval = 6,
+		maximumSeparation: TimeInterval = 150,
 		cooldown: TimeInterval = 480
 	) -> DetectionFusionEngine {
 		DetectionFusionEngine(
 			configuration: .init(
-				heartRateSpikeBPM: 10,
-				fusionWindowSeconds: fusionWindow,
+				minimumGestureCount: minimumGestures,
+				sessionWindowSeconds: 480,
+				minimumGestureSeparationSeconds: minimumSeparation,
+				maximumGestureSeparationSeconds: maximumSeparation,
 				detectionCooldownSeconds: cooldown,
-				minimumPostGestureSamples: 2
+				heartRateContextSeconds: 60
 			)
 		)
 	}

@@ -1,12 +1,13 @@
 import Combine
 import Foundation
 
-/// Connects live motion and heart-rate streams to the deterministic fusion engine.
+/// Connects live motion and optional heart-rate context to the session engine.
 @MainActor
 public final class DetectionAlgorithm: ObservableObject {
 	public typealias Configuration = DetectionFusionEngine.Configuration
 
-	/// Emits an unconfirmed candidate. Callers must ask the user before storing an event.
+	/// Emits an unconfirmed motion-pattern candidate. Callers must ask the user
+	/// before storing an event.
 	public let candidatePublisher = PassthroughSubject<DetectionCandidate, Never>()
 
 	private var cancellables = Set<AnyCancellable>()
@@ -33,7 +34,7 @@ public final class DetectionAlgorithm: ObservableObject {
 		health.heartRatePublisher
 			.sink { [weak self] reading in
 				Task { @MainActor [weak self] in
-					self?.recordHeartRate(reading.beatsPerMinute, at: reading.timestamp)
+					self?.engine.recordHeartRate(reading.beatsPerMinute, at: reading.timestamp)
 				}
 			}
 			.store(in: &cancellables)
@@ -41,15 +42,11 @@ public final class DetectionAlgorithm: ObservableObject {
 		motion.gestureDetected
 			.sink { [weak self] timestamp in
 				Task { @MainActor [weak self] in
-					self?.engine.recordGesture(at: timestamp)
+					guard let self,
+					      let candidate = self.engine.recordGesture(at: timestamp) else { return }
+					self.candidatePublisher.send(candidate)
 				}
 			}
 			.store(in: &cancellables)
-	}
-
-	private func recordHeartRate(_ bpm: Double, at timestamp: Date) {
-		if let candidate = engine.recordHeartRate(bpm, at: timestamp) {
-			candidatePublisher.send(candidate)
-		}
 	}
 }

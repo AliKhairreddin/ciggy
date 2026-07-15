@@ -7,6 +7,7 @@ import CiggyShared
 final class WatchDashboardViewModel: ObservableObject {
 	@Published var currentHeartRate: Double = 0
 	@Published var isUsingSimulatedHeartRate = false
+	@Published var isMotionMonitoring = false
 	@Published var todayCount: Int = 0
 	@Published var timeSinceLast: String = "—"
 
@@ -24,6 +25,10 @@ final class WatchDashboardViewModel: ObservableObject {
 		HealthKitManager.shared.$isUsingSimulatedData
 			.receive(on: DispatchQueue.main)
 			.assign(to: &self.$isUsingSimulatedHeartRate)
+
+		MotionManager.shared.$isMonitoring
+			.receive(on: DispatchQueue.main)
+			.assign(to: &self.$isMotionMonitoring)
 
 		repository.$events
 			.receive(on: DispatchQueue.main)

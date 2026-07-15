@@ -4,6 +4,13 @@ import XCTest
 final class MotionGestureEngineTests: XCTestCase {
 	private let start = Date(timeIntervalSince1970: 1_700_000_000)
 
+	func testDefaultEngineEmitsOneGestureForOneRaise() {
+		var engine = MotionGestureEngine()
+
+		XCTAssertNotNil(engine.record(pitch: 1, roll: 1, at: start))
+		XCTAssertNil(engine.record(pitch: 1, roll: 1, at: start.addingTimeInterval(1)))
+	}
+
 	func testHeldPoseCountsAsOnePeak() {
 		var engine = MotionGestureEngine(minimumPeaks: 2, minimumPeakSeparation: 0)
 

@@ -1,26 +1,51 @@
 #if os(watchOS)
-import SwiftUI
 import CiggyShared
+import SwiftUI
 
 struct LogSmokeView: View {
 	@Environment(\.dismiss) private var dismiss
 	@EnvironmentObject private var repository: EventRepository
-	@State private var notes: String = ""
+	@State private var notes = ""
 
 	var body: some View {
-		Form {
-			Section(header: Text("Confirm")) {
-				Text("Log a smoking event?")
-			}
-			Section(header: Text("Notes (optional)")) {
-				TextField("Add a note", text: $notes)
-			}
-			Section {
-				Button("Save") { save() }
-				Button("Cancel") { dismiss() }.tint(.red)
+		ZStack {
+			CiggyTheme.appBackground.ignoresSafeArea()
+			ScrollView {
+				VStack(spacing: 12) {
+					CiggyBrandMark(size: 42)
+					Text("Log 1 cigarette")
+						.font(.system(size: 19, weight: .black, design: .rounded))
+						.foregroundStyle(.white)
+					Text("Add it now, without judgment.")
+						.font(.system(size: 10))
+						.foregroundStyle(CiggyTheme.secondaryText)
+
+					TextField("Optional note", text: $notes)
+						.textFieldStyle(.plain)
+						.padding(10)
+						.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+					Button(action: save) {
+						Label("Save 1", systemImage: "checkmark")
+							.font(.headline)
+							.foregroundStyle(CiggyTheme.deepInk)
+							.frame(maxWidth: .infinity)
+							.padding(.vertical, 11)
+							.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+					}
+					.buttonStyle(.plain)
+
+					Button("Cancel") { dismiss() }
+						.buttonStyle(.plain)
+						.font(.system(size: 12, weight: .semibold))
+						.foregroundStyle(CiggyTheme.secondaryText)
+				}
+				.padding(.horizontal, 4)
+				.padding(.bottom, 8)
 			}
 		}
-		.navigationTitle("Log Smoke")
+		.navigationTitle("Log")
+		.navigationBarTitleDisplayMode(.inline)
 	}
 
 	private func save() {
@@ -39,7 +64,7 @@ struct LogSmokeView: View {
 
 struct LogSmokeView_Previews: PreviewProvider {
 	static var previews: some View {
-		NavigationView { LogSmokeView().environmentObject(EventRepository()) }
+		NavigationStack { LogSmokeView().environmentObject(EventRepository()) }
 	}
 }
 #endif
