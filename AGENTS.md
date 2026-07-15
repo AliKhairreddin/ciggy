@@ -2,8 +2,10 @@
 
 ## Delivery
 
-- After completing repository changes, commit and push them unless the user explicitly asks not to.
-- Use a focused `codex/` branch when work starts from the default branch.
+- Work directly on `main`. Do not create or switch to another branch unless the user explicitly asks.
+- Before making changes, confirm `main` is checked out and fast-forward it from `origin/main` when safe.
+- After completing repository changes, commit and push directly to `origin/main` unless the user explicitly asks not to.
+- Keep `main` as the only local and remote branch; delete other branches after their work is safely present on and pushed to `main`.
 - Stage only product code, tests, documentation, and intentional project configuration. Never commit secrets, `.DS_Store`, build output, or user-specific Xcode state.
 
 ## Xcode project integrity
