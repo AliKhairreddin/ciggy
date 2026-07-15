@@ -9,6 +9,8 @@ public final class EventRepository: ObservableObject {
 
 	private let userDefaults: UserDefaults
 	private let storageKey: String
+	private let deletedStorageKey: String
+	private var deletedEventIDs: Set<UUID> = []
 
 	public init(
 		userDefaults: UserDefaults = .standard,
@@ -16,17 +18,32 @@ public final class EventRepository: ObservableObject {
 	) {
 		self.userDefaults = userDefaults
 		self.storageKey = storageKey
+		self.deletedStorageKey = "\(storageKey).deleted.v1"
 		load()
 	}
 
-	public func addEvent(_ event: SmokingEvent) {
-		guard events.contains(where: { $0.id == event.id }) == false else { return }
+	@discardableResult
+	public func addEvent(_ event: SmokingEvent) -> Bool {
+		guard deletedEventIDs.contains(event.id) == false else { return false }
+		guard events.contains(where: { $0.id == event.id }) == false else { return false }
 		events.append(event)
 		events.sort { $0.timestamp < $1.timestamp }
 		save()
+		return true
+	}
+
+	/// Persists a tombstone so a delayed duplicate transfer cannot restore a correction.
+	@discardableResult
+	public func removeEvent(id: UUID) -> Bool {
+		let hadEvent = events.contains { $0.id == id }
+		deletedEventIDs.insert(id)
+		events.removeAll { $0.id == id }
+		save()
+		return hadEvent
 	}
 
 	public func removeAll() {
+		deletedEventIDs.formUnion(events.map(\.id))
 		events.removeAll()
 		save()
 	}
@@ -76,17 +93,26 @@ public final class EventRepository: ObservableObject {
 	}
 
 	private func load() {
+		if let deletedData = userDefaults.data(forKey: deletedStorageKey),
+		   let decodedDeletedIDs = try? JSONDecoder().decode([UUID].self, from: deletedData) {
+			deletedEventIDs = Set(decodedDeletedIDs)
+		}
 		guard let data = userDefaults.data(forKey: storageKey),
 			let decoded = try? JSONDecoder().decode([SmokingEvent].self, from: data) else {
 			events = []
 			return
 		}
-		events = decoded.sorted { $0.timestamp < $1.timestamp }
+		events = decoded
+			.filter { deletedEventIDs.contains($0.id) == false }
+			.sorted { $0.timestamp < $1.timestamp }
 	}
 
 	private func save() {
 		if let data = try? JSONEncoder().encode(events) {
 			userDefaults.set(data, forKey: storageKey)
+		}
+		if let deletedData = try? JSONEncoder().encode(Array(deletedEventIDs)) {
+			userDefaults.set(deletedData, forKey: deletedStorageKey)
 		}
 	}
 }

@@ -5,20 +5,22 @@ import SwiftUI
 struct WatchDashboardView: View {
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
-	@EnvironmentObject private var feedbackStore: DetectionFeedbackStore
-	@EnvironmentObject private var candidateStore: DetectionCandidateStore
-	@EnvironmentObject private var coordinator: WatchAppCoordinator
+	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@StateObject private var viewModel = WatchDashboardViewModel()
 	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
+	@State private var reviewToAdjust: DetectionReview?
 
 	var body: some View {
 		ZStack {
 			CiggyTheme.appBackground.ignoresSafeArea()
 			ScrollView {
 				VStack(spacing: 10) {
-					brandHeader
+					profileHeader
 					todayRing
+					if let review = reviewStore.latestReview {
+						detectionReviewCard(review)
+					}
 					motionStatus
 					syncStatus
 					logButton
@@ -29,37 +31,25 @@ struct WatchDashboardView: View {
 			}
 		}
 		.onAppear { viewModel.bind(repository: repository) }
-		.sheet(isPresented: candidateIsPresented) {
-			if let candidate = candidateStore.pendingCandidate {
-				DetectionConfirmationView(
-					candidate: candidate,
-					pendingCount: candidateStore.pendingCount,
-					onConfirm: {
-						coordinator.confirm(
-							candidate,
-							repository: repository,
-							feedbackStore: feedbackStore,
-							candidateStore: candidateStore
-						)
-					},
-					onDismiss: {
-						coordinator.dismiss(
-							candidate,
-							feedbackStore: feedbackStore,
-							candidateStore: candidateStore
-						)
-					}
+		.sheet(item: $reviewToAdjust) { review in
+			WatchDetectionCountAdjustmentView(review: review) { correctedCount in
+				DetectionReviewWorkflow.adjust(
+					review,
+					to: correctedCount,
+					repository: repository,
+					store: reviewStore
 				)
 			}
 		}
 	}
 
-	private var brandHeader: some View {
+	private var profileHeader: some View {
 		HStack(spacing: 7) {
-			CiggyBrandMark(size: 28)
-			Text("ciggy")
-				.font(.system(size: 20, weight: .black, design: .rounded))
-				.foregroundStyle(.white)
+			NavigationLink(destination: WatchSettingsView()) {
+				CiggyProfileMark(size: 30)
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Open profile and settings")
 			Spacer()
 			Circle()
 				.fill(isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
@@ -99,17 +89,68 @@ struct WatchDashboardView: View {
 					.font(.system(size: 8, weight: .bold))
 					.tracking(0.6)
 					.foregroundStyle(CiggyTheme.secondaryText)
-				if candidateStore.pendingCount > 0 {
-					Text("+\(candidateStore.pendingCount) POSSIBLE")
-						.font(.system(size: 7, weight: .black))
-						.tracking(0.5)
-						.foregroundStyle(CiggyTheme.sunlight)
-				}
 			}
 		}
 		.frame(width: 126, height: 126)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(todayAccessibilityLabel)
+	}
+
+	private func detectionReviewCard(_ review: DetectionReview) -> some View {
+		VStack(alignment: .leading, spacing: 8) {
+			HStack(spacing: 8) {
+				Image(systemName: review.origin == .watchHistory ? "clock.arrow.circlepath" : "waveform.path.ecg")
+					.font(.system(size: 13, weight: .bold))
+					.foregroundStyle(CiggyTheme.deepInk)
+					.frame(width: 30, height: 30)
+					.background(CiggyTheme.brandGradient, in: Circle())
+				VStack(alignment: .leading, spacing: 1) {
+					Text("\(review.displayCount) detected")
+						.font(.system(size: 14, weight: .black, design: .rounded))
+						.foregroundStyle(.white)
+					Text(review.origin == .watchHistory ? "Last \(review.historyHours)h of Watch history" : "While monitoring motion")
+						.font(.system(size: 8))
+						.foregroundStyle(CiggyTheme.secondaryText)
+				}
+				Spacer(minLength: 0)
+			}
+
+			if review.decision == .pending {
+				Text("Already added. Feedback is optional.")
+					.font(.system(size: 8))
+					.foregroundStyle(CiggyTheme.secondaryText)
+				HStack(spacing: 6) {
+					Button("Accurate") {
+						DetectionReviewWorkflow.markAccurate(review, store: reviewStore)
+					}
+					.foregroundStyle(CiggyTheme.deepInk)
+					.frame(maxWidth: .infinity)
+					.padding(.vertical, 7)
+					.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+					Button("Adjust") { reviewToAdjust = review }
+						.foregroundStyle(.white)
+						.frame(maxWidth: .infinity)
+						.padding(.vertical, 7)
+						.background(CiggyTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+				}
+				.buttonStyle(.plain)
+				.font(.system(size: 10, weight: .bold))
+			} else {
+				Label(
+					review.decision == .accurate ? "Marked accurate" : "Adjusted to \(review.displayCount)",
+					systemImage: "checkmark.circle.fill"
+				)
+				.font(.system(size: 9, weight: .semibold))
+				.foregroundStyle(CiggyTheme.mint)
+			}
+		}
+		.padding(10)
+		.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+		.overlay(
+			RoundedRectangle(cornerRadius: 15, style: .continuous)
+				.stroke(CiggyTheme.mint.opacity(0.22), lineWidth: 1)
+		)
 	}
 
 	private var motionStatus: some View {
@@ -181,17 +222,12 @@ struct WatchDashboardView: View {
 	}
 
 	private var todayAccessibilityLabel: String {
-		let base = "\(viewModel.todayCount) confirmed cigarettes today, daily limit \(settings.settings.dailyLimit)"
-		guard candidateStore.pendingCount > 0 else { return base }
-		return "\(base), \(candidateStore.pendingCount) possible events awaiting review"
+		"\(viewModel.todayCount) cigarettes today, daily limit \(settings.settings.dailyLimit)"
 	}
 
 	private var sensorDetail: String {
 		if backgroundMotion.isProcessingHistory {
 			return "Checking recorded background movement"
-		}
-		if candidateStore.pendingCount > 0 {
-			return "\(candidateStore.pendingCount) possible awaiting review"
 		}
 		if viewModel.currentHeartRate > 0 {
 			let simulated = viewModel.isUsingSimulatedHeartRate ? " · demo" : ""
@@ -215,12 +251,6 @@ struct WatchDashboardView: View {
 		#endif
 	}
 
-	private var candidateIsPresented: Binding<Bool> {
-		Binding(
-			get: { candidateStore.pendingCandidate != nil },
-			set: { _ in }
-		)
-	}
 }
 
 struct WatchDashboardView_Previews: PreviewProvider {
@@ -229,9 +259,59 @@ struct WatchDashboardView_Previews: PreviewProvider {
 			WatchDashboardView()
 				.environmentObject(EventRepository())
 				.environmentObject(UserSettingsStore())
-				.environmentObject(DetectionFeedbackStore())
-				.environmentObject(DetectionCandidateStore())
-				.environmentObject(WatchAppCoordinator())
+				.environmentObject(DetectionReviewStore())
+		}
+	}
+}
+
+private struct WatchDetectionCountAdjustmentView: View {
+	@Environment(\.dismiss) private var dismiss
+	let review: DetectionReview
+	let onSave: (Int) -> Void
+	@State private var count: Int
+
+	init(review: DetectionReview, onSave: @escaping (Int) -> Void) {
+		self.review = review
+		self.onSave = onSave
+		_count = State(initialValue: review.displayCount)
+	}
+
+	var body: some View {
+		ZStack {
+			CiggyTheme.appBackground.ignoresSafeArea()
+			ScrollView {
+				VStack(spacing: 10) {
+					Text("Correct count")
+						.font(.system(size: 18, weight: .black, design: .rounded))
+						.foregroundStyle(.white)
+					Stepper(value: $count, in: 0...100) {
+						Text("\(count)")
+							.font(.system(size: 28, weight: .black, design: .rounded))
+							.foregroundStyle(CiggyTheme.mint)
+					}
+					.padding(9)
+					.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+					Text("Updates both devices")
+						.font(.system(size: 9))
+						.foregroundStyle(CiggyTheme.secondaryText)
+					Button("Save") {
+						onSave(count)
+						dismiss()
+					}
+					.font(.headline)
+					.foregroundStyle(CiggyTheme.deepInk)
+					.frame(maxWidth: .infinity)
+					.padding(.vertical, 9)
+					.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+					.buttonStyle(.plain)
+					Button("Cancel") { dismiss() }
+						.font(.system(size: 11, weight: .semibold))
+						.foregroundStyle(CiggyTheme.secondaryText)
+						.buttonStyle(.plain)
+				}
+				.padding(.horizontal, 4)
+				.padding(.bottom, 6)
+			}
 		}
 	}
 }

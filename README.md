@@ -10,7 +10,7 @@ Ciggy is an Apple Watch-first smoking tracker that combines manual logging with 
 
 Yes, with the right expectations. A low-friction smoking tracker can help users understand routines, reduce under-reporting, and connect behavior with goals. The strongest product angle is habit awareness: make logging effortless, show useful trends, and nudge users without shame.
 
-The automatic-detection idea is useful as a supporting feature, not as the only source of truth. Smoking gestures vary by person, watch wrist, device orientation, and context, so the app should always let users confirm, dismiss, or manually add events. Treating automation as "probable event detection" keeps the product trustworthy and avoids frustrating false positives.
+The automatic-detection idea is useful as a supporting feature, not as the only source of truth. Smoking gestures vary by person, watch wrist, device orientation, and context, so automatic events are presented as a passive summary with optional **Accurate** and **Adjust count** feedback. This preserves low-friction tracking without hiding uncertainty or interrupting the user after every cigarette.
 
 ## Hardware feasibility
 
@@ -32,16 +32,17 @@ The current codebase already has the main software building blocks:
 - A motion-first detection pipeline that groups repeated, separated hand-to-mouth movements into one probable smoking session.
 - Default prototype grouping of five matching movements within eight minutes, with sensitivity settings ranging from four to seven movements.
 - Optional heart-rate context attached when HealthKit happens to provide samples; heart rate never gates a detection.
-- A Watch confirmation prompt that keeps probable detections out of the event history until the user confirms them.
-- Local confirmation and dismissal feedback that can support future threshold tuning.
+- Automatic logging of probable detections into one quiet, reviewable summary instead of a blocking prompt for every event.
+- Synchronized **Accurate** and **Adjust count** feedback that can support future threshold tuning.
+- Idempotent addition and deletion delivery, including deletion tombstones that prevent delayed transfers from restoring corrected events.
 
 The current automatic detector is intentionally conservative and still requires real-world calibration. It is enough for prototyping, demos, and collecting early user feedback, but it should not be marketed as medically accurate or reliable without validation.
 
 The prototype never substitutes generated heart-rate data on a physical device. Simulator-only data is visibly labeled, heart-rate context uses HealthKit sample timestamps, and notification/sensitivity settings are synchronized between the phone and Watch.
 
-Automatic collection uses two complementary paths. While Ciggy is visible, it processes live device motion and any heart-rate samples that watchOS saves. On a physical Apple Watch, it also arms `CMSensorRecorder` for up to 12 hours of historical 50 Hz accelerometer capture that continues while Ciggy is suspended or terminated. When Ciggy next wakes or opens, it retrieves samples that are old enough to be available, downsamples them for efficient analysis, and queues probable smoking sessions for confirmation.
+Automatic collection uses two complementary paths. While Ciggy is visible, it processes live device motion and any heart-rate samples that watchOS saves. On a physical Apple Watch, it also arms `CMSensorRecorder` for up to 12 hours of historical 50 Hz accelerometer capture that continues while Ciggy is suspended or terminated. When Ciggy next wakes or opens, it retrieves samples that are old enough to be available, downsamples them for efficient analysis, automatically logs probable smoking sessions, and creates one history summary on both devices.
 
-The app requests a best-effort background refresh after 10 hours to renew the 12-hour recording window, and every foreground launch re-arms it. watchOS can delay background refresh tasks, so this design substantially extends monitoring but cannot promise gap-free, indefinite collection. Newly recorded samples can take up to three minutes to become retrievable, history is retained for up to three days, and `CMSensorRecorder` is unavailable in Simulator. Unconfirmed detections remain separate from the trusted cigarette total until the user confirms them. Real-device calibration is still required before treating assisted detection as dependable.
+The app requests a best-effort background refresh after 10 hours to renew the 12-hour recording window, and every foreground launch re-arms it. watchOS can delay background refresh tasks, so this design substantially extends monitoring but cannot promise gap-free, indefinite collection. Newly recorded samples can take up to three minutes to become retrievable, history is retained for up to three days, and `CMSensorRecorder` is unavailable in Simulator. Automatic detections are included immediately and stay visibly reviewable; users can correct the count without answering a prompt each time. Real-device calibration is still required before treating assisted detection as dependable.
 
 ## Recommended implementation path
 
@@ -51,10 +52,10 @@ The app requests a best-effort background refresh after 10 hours to renew the 12
    - Add clear privacy messaging for HealthKit and motion data.
 
 2. **Assisted detection**
-   - Use the regularity of repeated hand-to-mouth motion to create "possible smoking event" prompts.
+   - Use the regularity of repeated hand-to-mouth motion to create probable smoking events.
    - Keep heart rate as optional supporting context rather than a requirement.
-   - Ask users to confirm or reject detected events.
-   - Store feedback so thresholds can be tuned per user.
+   - Group automatic events into a passive history summary.
+   - Make feedback optional and actionable with **Accurate** or **Adjust count**.
 
 3. **Personal calibration**
    - Let users record a short calibration period.
@@ -76,7 +77,7 @@ The app requests a best-effort background refresh after 10 hours to renew the 12
 
 ## Bottom line
 
-This is possible in hardware and software terms, and it is a worthwhile idea if positioned as a supportive habit-tracking app rather than a perfect detector. The best next step is to ship a manual-first MVP, add assisted detection behind clear user controls, and improve the detector with opt-in confirmation feedback.
+This is possible in hardware and software terms, and it is a worthwhile idea if positioned as a supportive habit-tracking app rather than a perfect detector. The best next step is to calibrate the passive assisted-detection flow with real users and improve the detector from optional accuracy and count-correction feedback.
 
 ## Development
 
@@ -84,12 +85,12 @@ With an Xcode developer toolchain selected, run `swift test` to execute the dete
 
 ## iPhone and Watch simulator sync
 
-The iPhone and Watch apps have separate local stores. They synchronize confirmed and manual events through WatchConnectivity rather than directly sharing simulator storage.
+The iPhone and Watch apps have separate local stores. They synchronize automatic and manual events, event deletions, detection reviews, and feedback through WatchConnectivity rather than directly sharing simulator storage.
 
-Apple's Simulator does not deliver `transferUserInfo(_:)`, even though that API provides durable background delivery on paired physical devices. Ciggy therefore sends each event in two ways:
+Apple's Simulator does not deliver `transferUserInfo(_:)`, even though that API provides durable background delivery on paired physical devices. Ciggy therefore sends every event/review mutation in two ways:
 
 - `sendMessage` for immediate delivery while both companion apps are live. This is the path used by Simulator.
-- `transferUserInfo` for durable, at-least-once delivery on real paired devices. Duplicate event IDs are ignored by the repository.
+- `transferUserInfo` for durable, at-least-once delivery on real paired devices. Duplicate event IDs and review revisions are ignored, while deletion tombstones reject stale event deliveries.
 
 To test a Watch log in the iPhone companion app:
 
@@ -98,6 +99,7 @@ To test a Watch log in the iPhone companion app:
 3. Open the embedded Ciggy app on the Watch simulator belonging to the same pair. If it is not installed, select that paired Watch destination and run the `ciggy Watch App` scheme, then relaunch the iPhone scheme so Xcode registers the companion pair.
 4. Keep both apps open. Wait for **Live sync** on iPhone and **iPhone live** on Watch.
 5. Log a cigarette on Watch. It should appear immediately on the iPhone dashboard.
+6. In a Debug build, open Settings on either device and choose **Preview 6 detected in 8 hours** to exercise the historical summary without waiting for physical Watch sensor history. Marking it accurate or adjusting it on either device synchronizes the result to the other.
 
 If the UI says **Install Watch**/**Install iPhone app**, Xcode has not registered the two installed products as companions. If it says **Open Watch** or **Open iPhone to sync**, the counterpart is installed but not reachable. Recheck that the destinations are the same simulator pair, launch both apps again, and keep both running. Simulator-only queued delivery is not available; validate background delivery on physical paired devices.
 

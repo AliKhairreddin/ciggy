@@ -81,7 +81,7 @@ final class DetectionFusionEngineTests: XCTestCase {
 		XCTAssertEqual(engine.configuration.minimumGestureCount, 4)
 	}
 
-	func testConfirmationCreatesStableAutomaticEvent() {
+	func testCandidateCreatesStableAutomaticEvent() {
 		let candidate = DetectionCandidate(
 			gestureAt: start,
 			detectedAt: start.addingTimeInterval(3),
@@ -91,7 +91,7 @@ final class DetectionFusionEngineTests: XCTestCase {
 			peakHeartRate: 84
 		)
 
-		let event = candidate.confirmedEvent()
+		let event = candidate.detectedEvent()
 
 		XCTAssertEqual(event.id, candidate.id)
 		XCTAssertEqual(event.timestamp, candidate.gestureAt)

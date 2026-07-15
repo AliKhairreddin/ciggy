@@ -11,19 +11,23 @@ public enum NotificationManager {
 		}
 	}
 
-	public static func scheduleDetectionCandidateNotification(candidateID: UUID) {
+	public static func scheduleDetectionSummaryNotification(
+		reviewID: UUID,
+		count: Int,
+		historyHours: Int
+	) {
+		guard count > 0 else { return }
 		let content = UNMutableNotificationContent()
-		content.title = "Smoked 1?"
-		content.body = "Ciggy noticed a repeated hand-to-mouth pattern. Tap to confirm."
+		content.title = "\(count) \(count == 1 ? "cigarette" : "cigarettes") detected"
+		content.body = "Found in the last \(max(1, historyHours)) hours of Watch history. Already added—tap only if you want to review."
 		content.sound = .default
 		let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-		let request = UNNotificationRequest(identifier: candidateID.uuidString, content: content, trigger: trigger)
+		let request = UNNotificationRequest(
+			identifier: "detection-summary-\(reviewID.uuidString)",
+			content: content,
+			trigger: trigger
+		)
 		UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-	}
-
-	public static func removeDetectionCandidateNotification(candidateID: UUID) {
-		UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [candidateID.uuidString])
-		UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [candidateID.uuidString])
 	}
 
 	public static func scheduleEncouragement(after seconds: TimeInterval, message: String) {

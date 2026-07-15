@@ -6,8 +6,7 @@ import Foundation
 public final class DetectionAlgorithm: ObservableObject {
 	public typealias Configuration = DetectionFusionEngine.Configuration
 
-	/// Emits an unconfirmed motion-pattern candidate. Callers must ask the user
-	/// before storing an event.
+	/// Emits a motion-pattern candidate that callers can auto-log into a passive summary.
 	public let candidatePublisher = PassthroughSubject<DetectionCandidate, Never>()
 
 	private var cancellables = Set<AnyCancellable>()

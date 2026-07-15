@@ -3,7 +3,9 @@ import CiggyShared
 import SwiftUI
 
 struct WatchSettingsView: View {
+	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settingsStore: UserSettingsStore
+	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@ObservedObject private var motion = MotionManager.shared
 	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
@@ -17,7 +19,10 @@ struct WatchSettingsView: View {
 					header
 					detectionCard
 					goalCard
-					promptCard
+					summaryNotificationCard
+					#if DEBUG
+					previewCard
+					#endif
 					diagnosticsCard
 					Text("Changes save on this Watch and sync to the paired iPhone automatically.")
 						.font(.system(size: 9))
@@ -100,14 +105,14 @@ struct WatchSettingsView: View {
 		}
 	}
 
-	private var promptCard: some View {
+	private var summaryNotificationCard: some View {
 		watchCard {
 			Toggle(isOn: notificationsBinding) {
 				VStack(alignment: .leading, spacing: 2) {
-					Label("Confirmation prompts", systemImage: "bell.badge.fill")
+					Label("Detection summaries", systemImage: "bell.badge.fill")
 						.font(.system(size: 11, weight: .bold))
 						.foregroundStyle(.white)
-					Text("Ask when motion looks like smoking")
+					Text("Notify after history is checked")
 						.font(.system(size: 9))
 						.foregroundStyle(CiggyTheme.secondaryText)
 				}
@@ -115,6 +120,33 @@ struct WatchSettingsView: View {
 			.tint(CiggyTheme.mint)
 		}
 	}
+
+	#if DEBUG
+	private var previewCard: some View {
+		watchCard {
+			VStack(alignment: .leading, spacing: 8) {
+				Label("Try history summary", systemImage: "sparkles")
+					.font(.system(size: 11, weight: .bold))
+					.foregroundStyle(.white)
+				Text("Creates 6 debug detections over 8 hours and syncs them.")
+					.font(.system(size: 9))
+					.foregroundStyle(CiggyTheme.secondaryText)
+				Button("Preview 6 detected") {
+					DetectionReviewWorkflow.createHistoricalPreview(
+						repository: repository,
+						store: reviewStore
+					)
+				}
+				.font(.system(size: 11, weight: .bold))
+				.foregroundStyle(CiggyTheme.deepInk)
+				.frame(maxWidth: .infinity)
+				.padding(.vertical, 8)
+				.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+				.buttonStyle(.plain)
+			}
+		}
+	}
+	#endif
 
 	private var diagnosticsCard: some View {
 		watchCard {
@@ -218,9 +250,9 @@ struct WatchSettingsView: View {
 
 	private var sensitivityDescription: String {
 		switch settingsStore.settings.sensitivity {
-		case ..<0.34: return "Waits for more matching movements before asking."
-		case 0.67...: return "Asks sooner, with a greater chance of false prompts."
-		default: return "Balances earlier prompts with fewer false alarms."
+		case ..<0.34: return "Waits for more matching movements before detecting."
+		case 0.67...: return "Detects sooner, with a greater chance of false detections."
+		default: return "Balances earlier detections with fewer false alarms."
 		}
 	}
 
@@ -242,7 +274,9 @@ struct WatchSettingsView_Previews: PreviewProvider {
 	static var previews: some View {
 		NavigationStack {
 			WatchSettingsView()
+				.environmentObject(EventRepository())
 				.environmentObject(UserSettingsStore())
+				.environmentObject(DetectionReviewStore())
 		}
 	}
 }

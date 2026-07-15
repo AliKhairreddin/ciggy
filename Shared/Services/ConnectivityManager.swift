@@ -9,6 +9,8 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	public static let shared = ConnectivityManager()
 
 	public let incomingEvent = PassthroughSubject<SmokingEvent, Never>()
+	public let incomingDeletedEventID = PassthroughSubject<UUID, Never>()
+	public let incomingReview = PassthroughSubject<DetectionReview, Never>()
 	public let incomingSettings = CurrentValueSubject<UserSettings?, Never>(nil)
 	@Published public private(set) var isActivated = false
 	@Published public private(set) var isReachable = false
@@ -22,7 +24,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
 	private var latestSettingsPayload: [String: Any]?
 	private var settingsSyncNeedsRetry = false
-	private var pendingEventPayloads: [[String: Any]] = []
+	private var pendingDurablePayloads: [[String: Any]] = []
 
 	private override init() {
 		super.init()
@@ -33,8 +35,17 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	public func send(event: SmokingEvent) {
 		guard let payload = encodedPayload(type: "event", value: event) else { return }
-		pendingEventPayloads.append(payload)
-		flushPendingEvents()
+		queueDurable(payload)
+	}
+
+	public func sendDeletedEvent(id: UUID) {
+		guard let payload = encodedPayload(type: "eventDeletion", value: id) else { return }
+		queueDurable(payload)
+	}
+
+	public func send(review: DetectionReview) {
+		guard let payload = encodedPayload(type: "detectionReview", value: review) else { return }
+		queueDurable(payload)
 	}
 
 	public func send(settings: UserSettings) {
@@ -81,21 +92,26 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		}
 	}
 
-	private func flushPendingEvents() {
+	private func queueDurable(_ payload: [String: Any]) {
+		pendingDurablePayloads.append(payload)
+		flushPendingDurablePayloads()
+	}
+
+	private func flushPendingDurablePayloads() {
 		guard let session, session.activationState == .activated else { return }
 		if session.isReachable {
-			pendingEventPayloads.forEach { sendLiveIfReachable($0) }
+			pendingDurablePayloads.forEach { sendLiveIfReachable($0) }
 		}
 		#if targetEnvironment(simulator)
-		// Simulator does not deliver transferUserInfo. Keep events in memory until
+		// Simulator does not deliver transferUserInfo. Keep mutations in memory until
 		// the companion becomes reachable, then complete via sendMessage.
 		guard session.isReachable else { return }
 		#else
-		// Physical devices get durable background delivery in addition to the
-		// immediate foreground message. EventRepository de-duplicates by UUID.
-		pendingEventPayloads.forEach { session.transferUserInfo($0) }
+		// Physical devices get durable background delivery in addition to the immediate
+		// foreground message. Stores de-duplicate events and revisions by stable IDs.
+		pendingDurablePayloads.forEach { session.transferUserInfo($0) }
 		#endif
-		pendingEventPayloads.removeAll()
+		pendingDurablePayloads.removeAll()
 	}
 
 	private func refreshSessionState() {
@@ -129,7 +145,7 @@ extension ConnectivityManager: WCSessionDelegate {
 			self?.refreshSessionState()
 			guard activationState == .activated else { return }
 			self?.flushLatestSettings()
-			self?.flushPendingEvents()
+			self?.flushPendingDurablePayloads()
 		}
 	}
 
@@ -138,7 +154,7 @@ extension ConnectivityManager: WCSessionDelegate {
 			self?.refreshSessionState()
 			guard self?.isReachable == true else { return }
 			self?.flushLatestSettings()
-			self?.flushPendingEvents()
+			self?.flushPendingDurablePayloads()
 		}
 	}
 
@@ -182,6 +198,12 @@ extension ConnectivityManager: WCSessionDelegate {
 		case "event":
 			guard let event = try? decoder.decode(SmokingEvent.self, from: data) else { return }
 			Task { @MainActor [weak self] in self?.incomingEvent.send(event) }
+		case "eventDeletion":
+			guard let eventID = try? decoder.decode(UUID.self, from: data) else { return }
+			Task { @MainActor [weak self] in self?.incomingDeletedEventID.send(eventID) }
+		case "detectionReview":
+			guard let review = try? decoder.decode(DetectionReview.self, from: data) else { return }
+			Task { @MainActor [weak self] in self?.incomingReview.send(review) }
 		case "settings":
 			guard let settings = try? decoder.decode(UserSettings.self, from: data) else { return }
 			Task { @MainActor [weak self] in self?.incomingSettings.send(settings) }
@@ -196,6 +218,8 @@ extension ConnectivityManager: WCSessionDelegate {
 public final class ConnectivityManager: ObservableObject {
 	public static let shared = ConnectivityManager()
 	public let incomingEvent = PassthroughSubject<SmokingEvent, Never>()
+	public let incomingDeletedEventID = PassthroughSubject<UUID, Never>()
+	public let incomingReview = PassthroughSubject<DetectionReview, Never>()
 	public let incomingSettings = CurrentValueSubject<UserSettings?, Never>(nil)
 	@Published public private(set) var isActivated = false
 	@Published public private(set) var isReachable = false
@@ -206,6 +230,8 @@ public final class ConnectivityManager: ObservableObject {
 	private init() {}
 
 	public func send(event: SmokingEvent) {}
+	public func sendDeletedEvent(id: UUID) {}
+	public func send(review: DetectionReview) {}
 	public func send(settings: UserSettings) {}
 }
 #endif

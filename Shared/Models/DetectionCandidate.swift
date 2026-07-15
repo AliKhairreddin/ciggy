@@ -1,6 +1,6 @@
 import Foundation
 
-/// A sensor signal that may represent smoking and still needs a person's review.
+/// A sensor signal that may represent smoking and can be reviewed after it is logged.
 public struct DetectionCandidate: Identifiable, Codable, Equatable, Sendable {
 	public let id: UUID
 	public let gestureAt: Date
@@ -36,8 +36,8 @@ public struct DetectionCandidate: Identifiable, Codable, Equatable, Sendable {
 		return peakHeartRate - baselineHeartRate
 	}
 
-	/// Converts a reviewed candidate into a stored event. Call only after confirmation.
-	public func confirmedEvent(notes: String? = nil) -> SmokingEvent {
+	/// Converts a motion candidate into the automatic event shown in a passive summary.
+	public func detectedEvent(notes: String? = nil) -> SmokingEvent {
 		SmokingEvent(
 			id: id,
 			timestamp: gestureAt,
@@ -45,6 +45,11 @@ public struct DetectionCandidate: Identifiable, Codable, Equatable, Sendable {
 			heartRate: peakHeartRate,
 			notes: notes
 		)
+	}
+
+	/// Backward-compatible alias for older callers and stored confirmation flows.
+	public func confirmedEvent(notes: String? = nil) -> SmokingEvent {
+		detectedEvent(notes: notes)
 	}
 }
 

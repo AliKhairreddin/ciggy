@@ -10,8 +10,8 @@ struct CiggyWatchApp: App {
 	@Environment(\.scenePhase) private var scenePhase
 	@StateObject private var repository = EventRepository()
 	@StateObject private var settingsStore = UserSettingsStore()
-	@StateObject private var feedbackStore = DetectionFeedbackStore()
-	@StateObject private var candidateStore = DetectionCandidateStore()
+	@StateObject private var reviewStore = DetectionReviewStore()
+	@StateObject private var legacyCandidateStore = DetectionCandidateStore()
 	@StateObject private var watchCoordinator = WatchAppCoordinator()
 
 	var body: some Scene {
@@ -19,11 +19,15 @@ struct CiggyWatchApp: App {
 			NavigationStack { WatchDashboardView() }
 				.environmentObject(repository)
 				.environmentObject(settingsStore)
-				.environmentObject(feedbackStore)
-				.environmentObject(candidateStore)
+				.environmentObject(reviewStore)
 				.environmentObject(watchCoordinator)
 				.onAppear {
-					watchCoordinator.start(settings: settingsStore, candidateStore: candidateStore)
+					watchCoordinator.start(
+						repository: repository,
+						settings: settingsStore,
+						reviewStore: reviewStore,
+						legacyCandidateStore: legacyCandidateStore
+					)
 				}
 				.onChange(of: scenePhase) { _, phase in
 					switch phase {
@@ -61,15 +65,22 @@ final class WatchAppCoordinator: ObservableObject {
 	private var hasStarted = false
 	private var isForegroundMonitoring = false
 	private var hasRequestedHealthAuthorization = false
+	private weak var repository: EventRepository?
 	private weak var settingsStore: UserSettingsStore?
-	private weak var candidateStore: DetectionCandidateStore?
+	private weak var reviewStore: DetectionReviewStore?
 	private var cancellables: Set<AnyCancellable> = []
 
-	func start(settings: UserSettingsStore, candidateStore: DetectionCandidateStore) {
+	func start(
+		repository: EventRepository,
+		settings: UserSettingsStore,
+		reviewStore: DetectionReviewStore,
+		legacyCandidateStore: DetectionCandidateStore
+	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		self.repository = repository
 		settingsStore = settings
-		self.candidateStore = candidateStore
+		self.reviewStore = reviewStore
 
 		settings.$settings
 			.removeDuplicates()
@@ -98,11 +109,49 @@ final class WatchAppCoordinator: ObservableObject {
 			}
 			.store(in: &cancellables)
 
-		detection.candidatePublisher
-			.sink { @MainActor [weak self] candidate in
-				self?.present(candidate, candidateStore: candidateStore, schedulesNotification: true)
+		ConnectivityManager.shared.incomingEvent
+			.sink { @MainActor event in
+				repository.addEvent(event)
 			}
 			.store(in: &cancellables)
+
+		ConnectivityManager.shared.incomingDeletedEventID
+			.sink { @MainActor eventID in
+				repository.removeEvent(id: eventID)
+			}
+			.store(in: &cancellables)
+
+		ConnectivityManager.shared.incomingReview
+			.sink { @MainActor review in
+				reviewStore.upsert(review)
+			}
+			.store(in: &cancellables)
+
+		detection.candidatePublisher
+			.sink { @MainActor [weak self] candidate in
+				self?.autoRecord(
+					[candidate],
+					origin: .liveWatch,
+					windowStart: candidate.motionSessionStartedAt ?? candidate.gestureAt,
+					windowEnd: candidate.gestureAt,
+					repository: repository,
+					reviewStore: reviewStore
+				)
+			}
+			.store(in: &cancellables)
+
+		let legacyCandidates = legacyCandidateStore.pendingCandidates
+		if let first = legacyCandidates.first, let last = legacyCandidates.last {
+			autoRecord(
+				legacyCandidates,
+				origin: .watchHistory,
+				windowStart: first.motionSessionStartedAt ?? first.gestureAt,
+				windowEnd: last.gestureAt,
+				repository: repository,
+				reviewStore: reviewStore
+			)
+			legacyCandidates.forEach { legacyCandidateStore.resolve(candidateID: $0.id) }
+		}
 
 		if WKApplication.shared().applicationState == .active {
 			appDidBecomeActive()
@@ -110,7 +159,7 @@ final class WatchAppCoordinator: ObservableObject {
 	}
 
 	func appDidBecomeActive() {
-		guard hasStarted, let settingsStore, let candidateStore else { return }
+		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
 		if isForegroundMonitoring == false {
 			isForegroundMonitoring = true
 			MotionManager.shared.start()
@@ -119,13 +168,27 @@ final class WatchAppCoordinator: ObservableObject {
 
 		let backgroundMotion = BackgroundMotionMonitor.shared
 		backgroundMotion.armRecording()
-		Task { @MainActor [weak self, weak candidateStore] in
-			guard let self, let candidateStore else { return }
+		Task { @MainActor [weak self, weak repository, weak reviewStore] in
+			guard let self, let repository, let reviewStore else { return }
 			guard let batch = await backgroundMotion.processAvailableHistory(
 				sensitivity: settingsStore.settings.sensitivity
 			) else { return }
-			for candidate in batch.candidates {
-				self.present(candidate, candidateStore: candidateStore, schedulesNotification: false)
+			if let review = self.autoRecord(
+				batch.candidates,
+				origin: .watchHistory,
+				windowStart: batch.processedFrom,
+				windowEnd: batch.processedThrough,
+				repository: repository,
+				reviewStore: reviewStore
+			), self.notificationsEnabled {
+				NotificationManager.scheduleDetectionSummaryNotification(
+					reviewID: review.id,
+					count: batch.candidates.count,
+					historyHours: max(
+						1,
+						Int(ceil(batch.processedThrough.timeIntervalSince(batch.processedFrom) / 3_600))
+					)
+				)
 			}
 			backgroundMotion.commit(batch)
 		}
@@ -153,43 +216,30 @@ final class WatchAppCoordinator: ObservableObject {
 		}
 	}
 
-	func confirm(
-		_ candidate: DetectionCandidate,
+	@discardableResult
+	private func autoRecord(
+		_ candidates: [DetectionCandidate],
+		origin: DetectionReviewOrigin,
+		windowStart: Date,
+		windowEnd: Date,
 		repository: EventRepository,
-		feedbackStore: DetectionFeedbackStore,
-		candidateStore: DetectionCandidateStore
-	) {
-		guard candidateStore.pendingCandidate?.id == candidate.id else { return }
-		let event = candidate.confirmedEvent()
-		repository.addEvent(event)
-		feedbackStore.record(candidate: candidate, decision: .confirmed)
-		ConnectivityManager.shared.send(event: event)
-		NotificationManager.removeDetectionCandidateNotification(candidateID: candidate.id)
-		candidateStore.resolve(candidateID: candidate.id)
-		WKInterfaceDevice.current().play(.success)
-	}
-
-	func dismiss(
-		_ candidate: DetectionCandidate,
-		feedbackStore: DetectionFeedbackStore,
-		candidateStore: DetectionCandidateStore
-	) {
-		guard candidateStore.pendingCandidate?.id == candidate.id else { return }
-		feedbackStore.record(candidate: candidate, decision: .dismissed)
-		NotificationManager.removeDetectionCandidateNotification(candidateID: candidate.id)
-		candidateStore.resolve(candidateID: candidate.id)
-		WKInterfaceDevice.current().play(.click)
-	}
-
-	private func present(
-		_ candidate: DetectionCandidate,
-		candidateStore: DetectionCandidateStore,
-		schedulesNotification: Bool
-	) {
-		guard candidateStore.present(candidate) else { return }
-		if notificationsEnabled && schedulesNotification {
-			NotificationManager.scheduleDetectionCandidateNotification(candidateID: candidate.id)
+		reviewStore: DetectionReviewStore
+	) -> DetectionReview? {
+		var newEvents: [SmokingEvent] = []
+		for candidate in candidates {
+			let event = candidate.detectedEvent()
+			guard repository.addEvent(event) else { continue }
+			newEvents.append(event)
+			ConnectivityManager.shared.send(event: event)
 		}
+		guard let review = reviewStore.record(
+			events: newEvents,
+			origin: origin,
+			windowStart: windowStart,
+			windowEnd: windowEnd
+		) else { return nil }
+		ConnectivityManager.shared.send(review: review)
+		return review
 	}
 }
 #else

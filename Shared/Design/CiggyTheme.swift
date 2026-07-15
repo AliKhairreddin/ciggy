@@ -64,6 +64,25 @@ public struct CiggyBrandMark: View {
 	}
 }
 
+/// Neutral account avatar used in the top-left position on both companion apps.
+public struct CiggyProfileMark: View {
+	private let size: CGFloat
+
+	public init(size: CGFloat = 44) {
+		self.size = size
+	}
+
+	public var body: some View {
+		Image(systemName: "person.crop.circle.fill")
+			.font(.system(size: size, weight: .semibold))
+			.symbolRenderingMode(.palette)
+			.foregroundStyle(CiggyTheme.softMint, CiggyTheme.elevatedSurface)
+			.frame(width: size, height: size)
+			.overlay(Circle().stroke(CiggyTheme.mint.opacity(0.3), lineWidth: 1))
+			.accessibilityHidden(true)
+	}
+}
+
 public struct CiggyPanel<Content: View>: View {
 	private let content: Content
 

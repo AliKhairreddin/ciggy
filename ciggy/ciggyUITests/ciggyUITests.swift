@@ -34,6 +34,25 @@ final class ciggyUITests: XCTestCase {
     }
 
     @MainActor
+    func testHistoricalDetectionPreview() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.tabBars.buttons["Settings"].tap()
+        let previewButton = app.buttons["Preview 6 detected in 8 hours"]
+        for _ in 0..<5 where previewButton.isHittable == false {
+            app.swipeUp()
+        }
+        XCTAssertTrue(previewButton.isHittable)
+        previewButton.tap()
+
+        app.tabBars.buttons["Today"].tap()
+        XCTAssertTrue(app.staticTexts["6 cigarettes detected"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Accurate"].exists)
+        XCTAssertTrue(app.buttons["Adjust count"].exists)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

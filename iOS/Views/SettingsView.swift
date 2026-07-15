@@ -3,7 +3,9 @@ import CiggyShared
 import SwiftUI
 
 struct SettingsView: View {
+	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
+	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@StateObject private var viewModel = SettingsViewModel()
 	@State private var isSaving = false
 	@State private var didSave = false
@@ -16,6 +18,9 @@ struct SettingsView: View {
 					header
 					detectionCard
 					notificationCard
+					#if DEBUG
+					detectionPreviewCard
+					#endif
 					privacyCard
 					saveButton
 					versionFooter
@@ -67,9 +72,9 @@ struct SettingsView: View {
 					.accessibilityLabel("Motion detection sensitivity")
 
 				HStack {
-					Text("Fewer false prompts")
+					Text("Fewer false detections")
 					Spacer()
-					Text("Earlier prompts")
+					Text("Earlier detections")
 				}
 				.font(.caption2)
 				.foregroundStyle(CiggyTheme.secondaryText)
@@ -89,10 +94,10 @@ struct SettingsView: View {
 					Image(systemName: "bell.badge.fill")
 						.foregroundStyle(CiggyTheme.sunlight)
 					VStack(alignment: .leading, spacing: 2) {
-						Text("Confirmation prompts")
+						Text("Detection summaries")
 							.font(.headline)
 							.foregroundStyle(.white)
-						Text("Ask when a motion pattern is detected")
+						Text("Notify me after Watch history is checked")
 							.font(.caption)
 							.foregroundStyle(CiggyTheme.secondaryText)
 					}
@@ -101,6 +106,33 @@ struct SettingsView: View {
 			.tint(CiggyTheme.mint)
 		}
 	}
+
+	#if DEBUG
+	private var detectionPreviewCard: some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 12) {
+				Label("Try the history experience", systemImage: "sparkles")
+					.font(.headline)
+					.foregroundStyle(.white)
+				Text("Adds a clearly labeled debug preview of 6 detections across the last 8 hours and syncs it to the paired Watch.")
+					.font(.caption)
+					.foregroundStyle(CiggyTheme.secondaryText)
+				Button("Preview 6 detected in 8 hours") {
+					DetectionReviewWorkflow.createHistoricalPreview(
+						repository: repository,
+						store: reviewStore
+					)
+				}
+				.font(.subheadline.weight(.bold))
+				.foregroundStyle(CiggyTheme.deepInk)
+				.frame(maxWidth: .infinity)
+				.padding(.vertical, 12)
+				.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+				.buttonStyle(.plain)
+			}
+		}
+	}
+	#endif
 
 	private var privacyCard: some View {
 		NavigationLink(destination: PrivacyInfoView()) {
@@ -176,9 +208,9 @@ struct SettingsView: View {
 	private var sensitivityDescription: String {
 		switch viewModel.sensitivity {
 		case ..<0.34:
-			return "Waits for about seven matching movements before asking."
+			return "Waits for about seven matching movements before recording a detection."
 		case 0.67...:
-			return "Can ask after about four matching movements; more false prompts are possible."
+			return "Can detect after about four matching movements; more false detections are possible."
 		default:
 			return "Looks for about five matching movements within one short session."
 		}
@@ -194,12 +226,12 @@ private struct PrivacyInfoView: View {
 					privacyRow(
 						icon: "iphone.gen3",
 						title: "Stored on your devices",
-						body: "Smoking events, optional notes, settings, and detection feedback stay locally on your iPhone and Apple Watch."
+						body: "Smoking events, optional notes, settings, and detection reviews stay locally on your iPhone and Apple Watch."
 					)
 					privacyRow(
 						icon: "applewatch.radiowaves.left.and.right",
 						title: "Watch sync",
-						body: "Confirmed events and settings move between your paired devices with WatchConnectivity."
+						body: "Automatic events, count corrections, review feedback, and settings move between your paired devices with WatchConnectivity."
 					)
 					privacyRow(
 						icon: "waveform.path.ecg",
@@ -209,7 +241,7 @@ private struct PrivacyInfoView: View {
 					privacyRow(
 						icon: "cloud.slash.fill",
 						title: "No cloud upload",
-						body: "This prototype does not upload events, notes, settings, or detection feedback to a cloud service."
+						body: "This prototype does not upload events, notes, settings, or detection reviews to a cloud service."
 					)
 				}
 				.padding(18)
@@ -246,6 +278,8 @@ private struct PrivacyInfoView: View {
 struct SettingsView_Previews: PreviewProvider {
 	static var previews: some View {
 		NavigationStack { SettingsView().environmentObject(UserSettingsStore()) }
+			.environmentObject(EventRepository())
+			.environmentObject(DetectionReviewStore())
 	}
 }
 #endif

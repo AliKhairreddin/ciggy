@@ -7,6 +7,7 @@ import WatchKit
 
 struct HistoricalMotionBatch: Sendable {
 	let candidates: [DetectionCandidate]
+	let processedFrom: Date
 	let processedThrough: Date
 }
 
@@ -108,7 +109,11 @@ final class BackgroundMotionMonitor: ObservableObject {
 				queryChunkDuration: queryChunkDuration
 			)
 		}.value
-		return HistoricalMotionBatch(candidates: candidates, processedThrough: end)
+		return HistoricalMotionBatch(
+			candidates: candidates,
+			processedFrom: start,
+			processedThrough: end
+		)
 	}
 
 	func commit(_ batch: HistoricalMotionBatch) {

@@ -6,19 +6,21 @@ import SwiftUI
 struct DashboardView: View {
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
+	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@StateObject private var viewModel = DashboardViewModel()
 	@ObservedObject private var connectivity = ConnectivityManager.shared
+	@State private var reviewToAdjust: DetectionReview?
 
 	var body: some View {
 		ZStack {
 			CiggyTheme.appBackground.ignoresSafeArea()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
-					brandHeader
+					profileHeader
 					todayHero
+					detectionExperience
 					quickMetrics
 					weeklyChart
-					detectionCard
 				}
 				.padding(.horizontal, 18)
 				.padding(.top, 10)
@@ -27,19 +29,26 @@ struct DashboardView: View {
 		}
 		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
+		.sheet(item: $reviewToAdjust) { review in
+			DetectionCountAdjustmentView(review: review) { correctedCount in
+				DetectionReviewWorkflow.adjust(
+					review,
+					to: correctedCount,
+					repository: repository,
+					store: reviewStore
+				)
+			}
+			.presentationDetents([.medium])
+		}
 	}
 
-	private var brandHeader: some View {
-		HStack(spacing: 12) {
-			CiggyBrandMark(size: 46)
-			VStack(alignment: .leading, spacing: 1) {
-				Text("ciggy")
-					.font(.system(size: 30, weight: .black, design: .rounded))
-					.foregroundStyle(.white)
-				Text("notice the pattern. change the pattern.")
-					.font(.caption)
-					.foregroundStyle(CiggyTheme.secondaryText)
+	private var profileHeader: some View {
+		HStack {
+			NavigationLink(destination: SettingsView()) {
+				CiggyProfileMark(size: 46)
 			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Open profile and settings")
 			Spacer()
 			CiggyStatusPill(
 				syncStatusTitle,
@@ -47,7 +56,6 @@ struct DashboardView: View {
 				color: connectivity.isLiveSyncAvailable ? CiggyTheme.mint : CiggyTheme.sunlight
 			)
 		}
-		.accessibilityElement(children: .combine)
 	}
 
 	private var todayHero: some View {
@@ -155,18 +163,84 @@ struct DashboardView: View {
 		}
 	}
 
-	private var detectionCard: some View {
+	@ViewBuilder
+	private var detectionExperience: some View {
+		if let review = reviewStore.latestReview {
+			detectionReviewCard(review)
+		} else {
+			detectionReadyCard
+		}
+	}
+
+	private func detectionReviewCard(_ review: DetectionReview) -> some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 14) {
+				HStack(alignment: .top, spacing: 13) {
+					Image(systemName: review.origin == .watchHistory ? "clock.arrow.circlepath" : "waveform.path.ecg")
+						.font(.title3.weight(.bold))
+						.foregroundStyle(CiggyTheme.deepInk)
+						.frame(width: 44, height: 44)
+						.background(CiggyTheme.brandGradient, in: Circle())
+					VStack(alignment: .leading, spacing: 4) {
+						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected")
+							.font(.headline)
+							.foregroundStyle(.white)
+						Text(reviewSummaryText(review))
+							.font(.subheadline)
+							.foregroundStyle(CiggyTheme.secondaryText)
+					}
+					Spacer(minLength: 0)
+				}
+
+				if review.decision == .pending {
+					Text("Already included in your total. Only respond if you want to teach Ciggy.")
+						.font(.caption)
+						.foregroundStyle(CiggyTheme.secondaryText)
+					HStack(spacing: 10) {
+						Button {
+							DetectionReviewWorkflow.markAccurate(review, store: reviewStore)
+						} label: {
+							Label("Accurate", systemImage: "checkmark")
+								.frame(maxWidth: .infinity)
+								.padding(.vertical, 11)
+								.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+						}
+						.foregroundStyle(CiggyTheme.deepInk)
+						.buttonStyle(.plain)
+
+						Button {
+							reviewToAdjust = review
+						} label: {
+							Text("Adjust count")
+								.frame(maxWidth: .infinity)
+								.padding(.vertical, 11)
+								.background(CiggyTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+						}
+						.foregroundStyle(.white)
+						.buttonStyle(.plain)
+					}
+					.font(.subheadline.weight(.bold))
+				} else {
+					Label(reviewDecisionText(review), systemImage: "checkmark.circle.fill")
+						.font(.subheadline.weight(.semibold))
+						.foregroundStyle(CiggyTheme.mint)
+				}
+			}
+		}
+	}
+
+	private var detectionReadyCard: some View {
 		HStack(spacing: 14) {
-			Image(systemName: "hand.raised.fingers.spread.fill")
+			Image(systemName: "clock.arrow.circlepath")
 				.font(.title2)
 				.foregroundStyle(CiggyTheme.deepInk)
 				.frame(width: 48, height: 48)
 				.background(CiggyTheme.brandGradient, in: Circle())
 			VStack(alignment: .leading, spacing: 3) {
-				Text("Motion-first detection")
+				Text("Watch history is ready")
 					.font(.subheadline.weight(.bold))
 					.foregroundStyle(.white)
-				Text("Your Watch looks for a repeated hand-to-mouth pattern, then asks you to confirm.")
+				Text("Detected cigarettes appear here automatically as one quiet summary—no confirmation pop-up each time.")
 					.font(.caption)
 					.foregroundStyle(CiggyTheme.secondaryText)
 			}
@@ -177,6 +251,24 @@ struct DashboardView: View {
 			RoundedRectangle(cornerRadius: 20, style: .continuous)
 				.stroke(CiggyTheme.mint.opacity(0.18), lineWidth: 1)
 		)
+	}
+
+	private func reviewSummaryText(_ review: DetectionReview) -> String {
+		if review.origin == .watchHistory {
+			return "Found in the last \(review.historyHours) \(review.historyHours == 1 ? "hour" : "hours") of Watch history."
+		}
+		return "Noticed by your Watch while motion monitoring was active."
+	}
+
+	private func reviewDecisionText(_ review: DetectionReview) -> String {
+		switch review.decision {
+		case .pending:
+			return ""
+		case .accurate:
+			return "Marked accurate on your devices"
+		case .adjusted:
+			return "Count adjusted to \(review.displayCount) on your devices"
+		}
 	}
 
 	private func metricCard(title: String, value: String, icon: String, color: Color) -> some View {
@@ -225,6 +317,68 @@ struct DashboardView_Previews: PreviewProvider {
 			DashboardView()
 				.environmentObject(EventRepository())
 				.environmentObject(UserSettingsStore())
+				.environmentObject(DetectionReviewStore())
+		}
+	}
+}
+
+private struct DetectionCountAdjustmentView: View {
+	@Environment(\.dismiss) private var dismiss
+	let review: DetectionReview
+	let onSave: (Int) -> Void
+	@State private var count: Int
+
+	init(review: DetectionReview, onSave: @escaping (Int) -> Void) {
+		self.review = review
+		self.onSave = onSave
+		_count = State(initialValue: review.displayCount)
+	}
+
+	var body: some View {
+		NavigationStack {
+			ZStack {
+				CiggyTheme.appBackground.ignoresSafeArea()
+				VStack(spacing: 22) {
+					Text("How many were actually smoked?")
+						.font(.title2.weight(.black))
+						.foregroundStyle(.white)
+						.multilineTextAlignment(.center)
+
+					Stepper(value: $count, in: 0...100) {
+						HStack {
+							Text("Correct count")
+							Spacer()
+							Text("\(count)")
+								.font(.title.weight(.black))
+								.foregroundStyle(CiggyTheme.mint)
+						}
+					}
+					.padding()
+					.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+					Text("This updates the total on iPhone and Apple Watch. Event times remain estimates from the detected window.")
+						.font(.caption)
+						.foregroundStyle(CiggyTheme.secondaryText)
+						.multilineTextAlignment(.center)
+
+					Button("Save corrected count") {
+						onSave(count)
+						dismiss()
+					}
+					.font(.headline)
+					.foregroundStyle(CiggyTheme.deepInk)
+					.frame(maxWidth: .infinity)
+					.padding(.vertical, 15)
+					.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+					.buttonStyle(.plain)
+				}
+				.padding(22)
+			}
+			.toolbar {
+				ToolbarItem(placement: .cancellationAction) {
+					Button("Cancel") { dismiss() }
+				}
+			}
 		}
 	}
 }

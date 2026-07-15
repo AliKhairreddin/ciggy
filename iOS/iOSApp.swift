@@ -7,6 +7,7 @@ import CiggyShared
 struct CiggyiOSApp: App {
 	@StateObject private var repository = EventRepository()
 	@StateObject private var settingsStore = UserSettingsStore()
+	@StateObject private var reviewStore = DetectionReviewStore()
 	@StateObject private var appCoordinator = IOSAppCoordinator()
 
 	var body: some Scene {
@@ -14,8 +15,13 @@ struct CiggyiOSApp: App {
 			RootTabView()
 				.environmentObject(repository)
 				.environmentObject(settingsStore)
+				.environmentObject(reviewStore)
 				.onAppear {
-					appCoordinator.start(repository: repository, settings: settingsStore)
+					appCoordinator.start(
+						repository: repository,
+						settings: settingsStore,
+						reviewStore: reviewStore
+					)
 					// Apply sensitivity to detection algorithm if used on iOS later
 					// Seed a baseline for money-saved estimate if not set
 					if UserDefaults.standard.integer(forKey: "baselineCigsPerDay") == 0 {
@@ -32,13 +38,29 @@ final class IOSAppCoordinator: ObservableObject {
 	private var cancellables = Set<AnyCancellable>()
 	private var hasStarted = false
 
-	func start(repository: EventRepository, settings: UserSettingsStore) {
+	func start(
+		repository: EventRepository,
+		settings: UserSettingsStore,
+		reviewStore: DetectionReviewStore
+	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
 
 		ConnectivityManager.shared.incomingEvent
 			.sink { @MainActor event in
 				repository.addEvent(event)
+			}
+			.store(in: &cancellables)
+
+		ConnectivityManager.shared.incomingDeletedEventID
+			.sink { @MainActor eventID in
+				repository.removeEvent(id: eventID)
+			}
+			.store(in: &cancellables)
+
+		ConnectivityManager.shared.incomingReview
+			.sink { @MainActor review in
+				reviewStore.upsert(review)
 			}
 			.store(in: &cancellables)
 
