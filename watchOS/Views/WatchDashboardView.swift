@@ -27,7 +27,6 @@ struct WatchDashboardView: View {
 				.padding(.bottom, 8)
 			}
 		}
-		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository) }
 		.sheet(isPresented: candidateIsPresented) {
 			if let candidate = candidateStore.pendingCandidate {
@@ -64,6 +63,17 @@ struct WatchDashboardView: View {
 				.fill(viewModel.isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
 				.frame(width: 7, height: 7)
 				.shadow(color: viewModel.isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember, radius: 4)
+			NavigationLink(destination: WatchSettingsView()) {
+				Image(systemName: "gearshape.fill")
+					.font(.system(size: 12, weight: .bold))
+					.foregroundStyle(.white)
+					.frame(width: 30, height: 30)
+					.background(CiggyTheme.elevatedSurface, in: Circle())
+					.overlay(Circle().stroke(CiggyTheme.border, lineWidth: 1))
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Settings")
+			.accessibilityIdentifier("watch-settings-button")
 		}
 		.padding(.horizontal, 2)
 	}

@@ -100,11 +100,18 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	private func refreshSessionState() {
 		isActivated = session?.activationState == .activated
-		isReachable = session?.isReachable == true
+		guard isActivated, let session else {
+			isReachable = false
+			isCounterpartAppInstalled = false
+			return
+		}
+		// WatchConnectivity logs a runtime warning when reachability and pairing
+		// properties are read before activation has completed.
+		isReachable = session.isReachable
 		#if os(iOS)
-		isCounterpartAppInstalled = session?.isPaired == true && session?.isWatchAppInstalled == true
+		isCounterpartAppInstalled = session.isPaired && session.isWatchAppInstalled
 		#elseif os(watchOS)
-		isCounterpartAppInstalled = session?.isCompanionAppInstalled == true
+		isCounterpartAppInstalled = session.isCompanionAppInstalled
 		#endif
 		if isLiveSyncAvailable {
 			lastSyncError = nil
