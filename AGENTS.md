@@ -10,6 +10,8 @@
 
 ## Xcode project integrity
 
+- Full Xcode is installed at `/Applications/dev/Xcode.app`, outside the standard `/Applications` location. Do not infer that Xcode is unavailable from `xcode-select -p` reporting Command Line Tools.
+- Run Xcode commands with `DEVELOPER_DIR=/Applications/dev/Xcode.app/Contents/Developer` (for example, `DEVELOPER_DIR=/Applications/dev/Xcode.app/Contents/Developer xcodebuild ...`) so builds, tests, `xcrun`, and simulator tooling use the full iOS/watchOS toolchain.
 - Keep `ciggy/ciggy.xcodeproj` synchronized with the Swift package and source tree whenever files, targets, capabilities, bundle identifiers, deployment targets, or app relationships change.
 - Before committing, verify that the iOS target includes `iOS/`, the watchOS target includes `watchOS/`, both link `CiggyShared`, and the iOS target embeds and depends on the Watch app target.
 - Keep the Watch app's `WKCompanionAppBundleIdentifier` exactly equal to the iOS app's bundle identifier.
