@@ -25,7 +25,7 @@ struct CiggyWatchApp: App {
 				.onAppear {
 					watchCoordinator.start(settings: settingsStore, candidateStore: candidateStore)
 				}
-				.onChange(of: scenePhase) { phase in
+				.onChange(of: scenePhase) { _, phase in
 					switch phase {
 					case .active:
 						watchCoordinator.appDidBecomeActive()

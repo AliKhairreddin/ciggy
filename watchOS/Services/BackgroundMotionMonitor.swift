@@ -1,5 +1,6 @@
 #if os(watchOS)
 import CiggyShared
+import Combine
 import CoreMotion
 import Foundation
 import WatchKit
