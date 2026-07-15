@@ -10,6 +10,7 @@ struct WatchDashboardView: View {
 	@EnvironmentObject private var coordinator: WatchAppCoordinator
 	@StateObject private var viewModel = WatchDashboardViewModel()
 	@ObservedObject private var connectivity = ConnectivityManager.shared
+	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
 
 	var body: some View {
 		ZStack {
@@ -32,6 +33,7 @@ struct WatchDashboardView: View {
 			if let candidate = candidateStore.pendingCandidate {
 				DetectionConfirmationView(
 					candidate: candidate,
+					pendingCount: candidateStore.pendingCount,
 					onConfirm: {
 						coordinator.confirm(
 							candidate,
@@ -60,9 +62,9 @@ struct WatchDashboardView: View {
 				.foregroundStyle(.white)
 			Spacer()
 			Circle()
-				.fill(viewModel.isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
+				.fill(isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
 				.frame(width: 7, height: 7)
-				.shadow(color: viewModel.isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember, radius: 4)
+				.shadow(color: isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember, radius: 4)
 			NavigationLink(destination: WatchSettingsView()) {
 				Image(systemName: "gearshape.fill")
 					.font(.system(size: 12, weight: .bold))
@@ -97,20 +99,26 @@ struct WatchDashboardView: View {
 					.font(.system(size: 8, weight: .bold))
 					.tracking(0.6)
 					.foregroundStyle(CiggyTheme.secondaryText)
+				if candidateStore.pendingCount > 0 {
+					Text("+\(candidateStore.pendingCount) POSSIBLE")
+						.font(.system(size: 7, weight: .black))
+						.tracking(0.5)
+						.foregroundStyle(CiggyTheme.sunlight)
+				}
 			}
 		}
 		.frame(width: 126, height: 126)
 		.accessibilityElement(children: .ignore)
-		.accessibilityLabel("\(viewModel.todayCount) cigarettes today, daily limit \(settings.settings.dailyLimit)")
+		.accessibilityLabel(todayAccessibilityLabel)
 	}
 
 	private var motionStatus: some View {
 		HStack(spacing: 9) {
-			Image(systemName: viewModel.isMotionMonitoring ? "hand.raised.fingers.spread.fill" : "exclamationmark.triangle.fill")
+			Image(systemName: isMotionMonitoring ? "hand.raised.fingers.spread.fill" : "exclamationmark.triangle.fill")
 				.font(.system(size: 15, weight: .bold))
-				.foregroundStyle(viewModel.isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
+				.foregroundStyle(isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
 			VStack(alignment: .leading, spacing: 1) {
-				Text(viewModel.isMotionMonitoring ? "Motion is listening" : "Motion unavailable")
+				Text(isMotionMonitoring ? "Motion monitoring" : "Motion unavailable")
 					.font(.system(size: 12, weight: .bold))
 					.foregroundStyle(.white)
 				Text(sensorDetail)
@@ -172,12 +180,29 @@ struct WatchDashboardView: View {
 		min(1, Double(viewModel.todayCount) / Double(max(1, settings.settings.dailyLimit)))
 	}
 
+	private var todayAccessibilityLabel: String {
+		let base = "\(viewModel.todayCount) confirmed cigarettes today, daily limit \(settings.settings.dailyLimit)"
+		guard candidateStore.pendingCount > 0 else { return base }
+		return "\(base), \(candidateStore.pendingCount) possible events awaiting review"
+	}
+
 	private var sensorDetail: String {
+		if backgroundMotion.isProcessingHistory {
+			return "Checking recorded background movement"
+		}
+		if candidateStore.pendingCount > 0 {
+			return "\(candidateStore.pendingCount) possible awaiting review"
+		}
 		if viewModel.currentHeartRate > 0 {
 			let simulated = viewModel.isUsingSimulatedHeartRate ? " · demo" : ""
-			return "Repeated gestures · \(Int(viewModel.currentHeartRate)) BPM\(simulated)"
+			let background = backgroundMotion.isCaptureArmed ? " · background armed" : ""
+			return "\(Int(viewModel.currentHeartRate)) BPM\(simulated)\(background)"
 		}
-		return "Looking for repeated gestures"
+		return backgroundMotion.isCaptureArmed ? "Live now · background armed" : "Looking for repeated gestures"
+	}
+
+	private var isMotionMonitoring: Bool {
+		viewModel.isMotionMonitoring || backgroundMotion.isCaptureArmed
 	}
 
 	private var syncStatusText: String {

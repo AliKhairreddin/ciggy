@@ -39,7 +39,9 @@ The current automatic detector is intentionally conservative and still requires 
 
 The prototype never substitutes generated heart-rate data on a physical device. Simulator-only data is visibly labeled, heart-rate context uses HealthKit sample timestamps, and notification/sensitivity settings are synchronized between the phone and Watch.
 
-Automatic collection is currently a foreground prototype: it observes wrist motion and any heart-rate samples that watchOS saves while Ciggy is running. It does not start a workout or claim continuous background detection. Real-device calibration is still required before treating assisted detection as dependable.
+Automatic collection uses two complementary paths. While Ciggy is visible, it processes live device motion and any heart-rate samples that watchOS saves. On a physical Apple Watch, it also arms `CMSensorRecorder` for up to 12 hours of historical 50 Hz accelerometer capture that continues while Ciggy is suspended or terminated. When Ciggy next wakes or opens, it retrieves samples that are old enough to be available, downsamples them for efficient analysis, and queues probable smoking sessions for confirmation.
+
+The app requests a best-effort background refresh after 10 hours to renew the 12-hour recording window, and every foreground launch re-arms it. watchOS can delay background refresh tasks, so this design substantially extends monitoring but cannot promise gap-free, indefinite collection. Newly recorded samples can take up to three minutes to become retrievable, history is retained for up to three days, and `CMSensorRecorder` is unavailable in Simulator. Unconfirmed detections remain separate from the trusted cigarette total until the user confirms them. Real-device calibration is still required before treating assisted detection as dependable.
 
 ## Recommended implementation path
 

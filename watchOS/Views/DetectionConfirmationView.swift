@@ -4,6 +4,7 @@ import SwiftUI
 
 struct DetectionConfirmationView: View {
 	let candidate: DetectionCandidate
+	let pendingCount: Int
 	let onConfirm: () -> Void
 	let onDismiss: () -> Void
 
@@ -29,6 +30,12 @@ struct DetectionConfirmationView: View {
 						.font(.system(size: 11))
 						.foregroundStyle(CiggyTheme.secondaryText)
 						.multilineTextAlignment(.center)
+
+					if pendingCount > 1 {
+						Text("1 of \(pendingCount) possible events")
+							.font(.system(size: 9, weight: .bold))
+							.foregroundStyle(CiggyTheme.sunlight)
+					}
 
 					Button(action: onConfirm) {
 						Label("Yes, log 1", systemImage: "checkmark")
@@ -59,10 +66,14 @@ struct DetectionConfirmationView: View {
 
 	private var evidenceText: String {
 		let count = candidate.motionGestureCount ?? 0
+		let dateStyle: Date.FormatStyle.DateStyle = Calendar.current.isDateInToday(candidate.gestureAt)
+			? .omitted
+			: .abbreviated
+		let time = candidate.gestureAt.formatted(date: dateStyle, time: .shortened)
 		if count > 0 {
-			return "Ciggy noticed \(count) repeated hand-to-mouth movements. You make the call."
+			return "Around \(time), Ciggy noticed \(count) repeated hand-to-mouth movements. You make the call."
 		}
-		return "Ciggy noticed a repeated hand-to-mouth pattern. You make the call."
+		return "Around \(time), Ciggy noticed a repeated hand-to-mouth pattern. You make the call."
 	}
 }
 #endif

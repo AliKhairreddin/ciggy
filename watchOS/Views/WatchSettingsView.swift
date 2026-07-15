@@ -6,6 +6,7 @@ struct WatchSettingsView: View {
 	@EnvironmentObject private var settingsStore: UserSettingsStore
 	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@ObservedObject private var motion = MotionManager.shared
+	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
 	@ObservedObject private var health = HealthKitManager.shared
 
 	var body: some View {
@@ -124,9 +125,15 @@ struct WatchSettingsView: View {
 					.foregroundStyle(CiggyTheme.secondaryText)
 				diagnosticRow(
 					icon: "hand.raised.fingers.spread.fill",
-					title: "Motion",
-					detail: motion.isMonitoring ? "Listening" : "Unavailable",
-					color: motion.isMonitoring ? CiggyTheme.mint : CiggyTheme.ember
+					title: "Live motion",
+					detail: motion.isMonitoring ? "Listening" : "Paused",
+					color: motion.isMonitoring ? CiggyTheme.mint : CiggyTheme.sunlight
+				)
+				diagnosticRow(
+					icon: "clock.arrow.circlepath",
+					title: "Background",
+					detail: backgroundMotion.statusText,
+					color: backgroundMotion.isCaptureArmed ? CiggyTheme.mint : CiggyTheme.ember
 				)
 				diagnosticRow(
 					icon: "iphone.radiowaves.left.and.right",
@@ -141,7 +148,7 @@ struct WatchSettingsView: View {
 					color: CiggyTheme.lavender
 				)
 
-				Text("Heart rate is optional context. Repeated hand-to-mouth motion drives detection.")
+				Text("Background movement is checked when Ciggy wakes. Heart rate remains optional context.")
 					.font(.system(size: 9))
 					.foregroundStyle(CiggyTheme.secondaryText)
 			}

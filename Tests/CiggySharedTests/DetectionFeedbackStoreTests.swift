@@ -71,4 +71,49 @@ final class DetectionFeedbackStoreTests: XCTestCase {
 		XCTAssertTrue(restoredStore.resolve(candidateID: candidate.id))
 		XCTAssertNil(DetectionCandidateStore(userDefaults: defaults, storageKey: key).pendingCandidate)
 	}
+
+	func testPendingCandidatesQueueInGestureOrder() {
+		let suiteName = "DetectionCandidateQueueTests.\(UUID().uuidString)"
+		let defaults = UserDefaults(suiteName: suiteName)!
+		defer { defaults.removePersistentDomain(forName: suiteName) }
+		let key = "pending"
+		let later = DetectionCandidate(
+			gestureAt: Date(timeIntervalSince1970: 200),
+			detectedAt: Date(timeIntervalSince1970: 203)
+		)
+		let earlier = DetectionCandidate(
+			gestureAt: Date(timeIntervalSince1970: 100),
+			detectedAt: Date(timeIntervalSince1970: 103)
+		)
+		let store = DetectionCandidateStore(userDefaults: defaults, storageKey: key)
+
+		XCTAssertTrue(store.present(later))
+		XCTAssertTrue(store.present(earlier))
+		XCTAssertFalse(store.present(earlier))
+		XCTAssertEqual(store.pendingCandidates, [earlier, later])
+		XCTAssertEqual(store.pendingCount, 2)
+
+		XCTAssertTrue(store.resolve(candidateID: earlier.id))
+		XCTAssertEqual(store.pendingCandidate, later)
+		XCTAssertEqual(
+			DetectionCandidateStore(userDefaults: defaults, storageKey: key).pendingCandidates,
+			[later]
+		)
+	}
+
+	func testPendingCandidateStoreMigratesLegacySingleCandidate() throws {
+		let suiteName = "DetectionCandidateMigrationTests.\(UUID().uuidString)"
+		let defaults = UserDefaults(suiteName: suiteName)!
+		defer { defaults.removePersistentDomain(forName: suiteName) }
+		let key = "pending"
+		let candidate = DetectionCandidate(
+			gestureAt: Date(timeIntervalSince1970: 100),
+			detectedAt: Date(timeIntervalSince1970: 103)
+		)
+		defaults.set(try JSONEncoder().encode(candidate), forKey: key)
+
+		let store = DetectionCandidateStore(userDefaults: defaults, storageKey: key)
+
+		XCTAssertEqual(store.pendingCandidates, [candidate])
+	}
 }
