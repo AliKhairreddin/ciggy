@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import Charts
 import CiggyShared
@@ -84,5 +85,4 @@ struct DashboardView_Previews: PreviewProvider {
 			.environmentObject(UserSettingsStore())
 	}
 }
-
-
+#endif

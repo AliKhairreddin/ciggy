@@ -11,14 +11,19 @@ public enum NotificationManager {
 		}
 	}
 
-	public static func scheduleDetectionNotification(heartRate: Double?) {
+	public static func scheduleDetectionCandidateNotification(candidateID: UUID) {
 		let content = UNMutableNotificationContent()
-		content.title = "Smoking detected"
-		content.body = heartRate != nil ? "Heart rate \(Int(heartRate!)) BPM" : "Stay strong and keep going!"
+		content.title = "Possible smoking event"
+		content.body = "Open Ciggy to confirm or dismiss it."
 		content.sound = .default
 		let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-		let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+		let request = UNNotificationRequest(identifier: candidateID.uuidString, content: content, trigger: trigger)
 		UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+	}
+
+	public static func removeDetectionCandidateNotification(candidateID: UUID) {
+		UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [candidateID.uuidString])
+		UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [candidateID.uuidString])
 	}
 
 	public static func scheduleEncouragement(after seconds: TimeInterval, message: String) {
@@ -31,5 +36,4 @@ public enum NotificationManager {
 		UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
 	}
 }
-
 

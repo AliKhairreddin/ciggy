@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import Combine
 import CiggyShared
@@ -13,8 +14,11 @@ final class DashboardViewModel: ObservableObject {
 	@Published var lastEventDescription: String = "No events yet"
 
 	private var cancellables = Set<AnyCancellable>()
+	private var hasBound = false
 
 	func bind(repository: EventRepository, settings: UserSettingsStore) {
+		guard hasBound == false else { return }
+		hasBound = true
 		repository.$events
 			.combineLatest(settings.$settings)
 			.receive(on: DispatchQueue.main)
@@ -46,5 +50,4 @@ final class DashboardViewModel: ObservableObject {
 		}
 	}
 }
-
-
+#endif

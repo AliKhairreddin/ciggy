@@ -4,6 +4,7 @@ import PackageDescription
 let package = Package(
 	name: "Ciggy",
 	platforms: [
+		.macOS(.v13),
 		.iOS(.v17),
 		.watchOS(.v10)
 	],
@@ -26,6 +27,11 @@ let package = Package(
 			name: "CiggyWatch",
 			dependencies: ["CiggyShared"],
 			path: "watchOS"
+		),
+		.testTarget(
+			name: "CiggySharedTests",
+			dependencies: ["CiggyShared"],
+			path: "Tests/CiggySharedTests"
 		)
 	]
 )

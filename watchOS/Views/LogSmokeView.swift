@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import CiggyShared
 
@@ -23,7 +24,13 @@ struct LogSmokeView: View {
 	}
 
 	private func save() {
-		let event = SmokingEvent(timestamp: Date(), source: .manual, heartRate: HealthKitManager.shared.currentHeartRate, notes: notes.isEmpty ? nil : notes)
+		let currentHeartRate = HealthKitManager.shared.currentHeartRate
+		let event = SmokingEvent(
+			timestamp: Date(),
+			source: .manual,
+			heartRate: currentHeartRate > 0 ? currentHeartRate : nil,
+			notes: notes.isEmpty ? nil : notes
+		)
 		repository.addEvent(event)
 		ConnectivityManager.shared.send(event: event)
 		dismiss()
@@ -35,5 +42,4 @@ struct LogSmokeView_Previews: PreviewProvider {
 		NavigationView { LogSmokeView().environmentObject(EventRepository()) }
 	}
 }
-
-
+#endif

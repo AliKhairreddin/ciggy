@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import Charts
 import CiggyShared
@@ -23,11 +24,21 @@ struct ReportsView: View {
 						}
 						.frame(height: 220)
 					}
-					group("Heart Rate Trend (mock)") {
-						Chart(viewModel.mockHeartRateTrend, id: \.0) { pair in
-							LineMark(x: .value("Time", pair.0), y: .value("BPM", pair.1))
+					group("Heart Rate at Logged Events") {
+						if viewModel.heartRateTrend.isEmpty {
+							ContentUnavailableView(
+								"No Heart-Rate Samples",
+								systemImage: "heart.slash",
+								description: Text("Heart rate will appear here when a logged event includes a recorded sample.")
+							)
+							.frame(minHeight: 160)
+						} else {
+							Chart(viewModel.heartRateTrend, id: \.0) { pair in
+								LineMark(x: .value("Time", pair.0), y: .value("BPM", pair.1))
+								PointMark(x: .value("Time", pair.0), y: .value("BPM", pair.1))
+							}
+							.frame(height: 220)
 						}
-						.frame(height: 220)
 					}
 				}
 				.padding()
@@ -54,5 +65,4 @@ struct ReportsView_Previews: PreviewProvider {
 			.environmentObject(EventRepository())
 	}
 }
-
-
+#endif

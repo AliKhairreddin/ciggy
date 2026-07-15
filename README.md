@@ -29,9 +29,15 @@ The current codebase already has the main software building blocks:
 - An iOS companion app with dashboard, reports, goals, and settings screens.
 - Shared models and repositories for smoking events.
 - WatchConnectivity-based event forwarding from watchOS to iOS.
-- A first-pass detection algorithm that fuses gesture detections with heart-rate spikes.
+- A causal detection pipeline that fuses distinct motion peaks with later heart-rate samples.
+- A Watch confirmation prompt that keeps probable detections out of the event history until the user confirms them.
+- Local confirmation and dismissal feedback that can support future threshold tuning.
 
-The current automatic detector is intentionally naive. It is enough for prototyping, demos, and collecting early user feedback, but it should not be marketed as medically accurate or reliable without validation.
+The current automatic detector is intentionally conservative and still requires real-world calibration. It is enough for prototyping, demos, and collecting early user feedback, but it should not be marketed as medically accurate or reliable without validation.
+
+The prototype never substitutes generated heart-rate data on a physical device. Simulator-only data is visibly labeled, detected candidates use HealthKit sample timestamps, and notification/sensitivity settings are synchronized between the phone and Watch.
+
+Automatic collection is currently a foreground prototype: it observes heart-rate samples that watchOS saves while Ciggy is running, and it does not start a workout or claim continuous background detection. Real-device validation with sparse and delayed HealthKit samples is still required before treating assisted detection as dependable.
 
 ## Recommended implementation path
 
@@ -66,3 +72,7 @@ The current automatic detector is intentionally naive. It is enough for prototyp
 ## Bottom line
 
 This is possible in hardware and software terms, and it is a worthwhile idea if positioned as a supportive habit-tracking app rather than a perfect detector. The best next step is to ship a manual-first MVP, add assisted detection behind clear user controls, and improve the detector with opt-in confirmation feedback.
+
+## Development
+
+With an Xcode developer toolchain selected, run `swift test` to execute the deterministic fusion, motion-debounce, persistence, and fresh-install metric tests. The package also exposes separate `CiggyiOS` and `CiggyWatch` products for platform builds.

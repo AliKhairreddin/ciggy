@@ -7,9 +7,15 @@ import Combine
 public final class EventRepository: ObservableObject {
 	@Published public private(set) var events: [SmokingEvent] = []
 
-	private let storageKey = "EventRepository.events.v1"
+	private let userDefaults: UserDefaults
+	private let storageKey: String
 
-	public init() {
+	public init(
+		userDefaults: UserDefaults = .standard,
+		storageKey: String = "EventRepository.events.v1"
+	) {
+		self.userDefaults = userDefaults
+		self.storageKey = storageKey
 		load()
 	}
 
@@ -37,9 +43,10 @@ public final class EventRepository: ObservableObject {
 
 	/// Returns consecutive smoke-free days ending on the supplied day.
 	///
-	/// The search is bounded by the oldest stored event so an empty repository does not
-	/// produce an unbounded loop. With no history, the user has a one-day current streak.
+	/// The search is bounded by the oldest stored event. With no history there is not yet
+	/// enough evidence to claim a smoke-free streak, so the result is zero.
 	public func streakSmokeFreeDays(considering day: Date = Date()) -> Int {
+		guard events.isEmpty == false else { return 0 }
 		let calendar = Calendar.current
 		let targetDay = day.startOfDayInCurrentCalendar
 		let earliestDay = events.map { $0.timestamp.startOfDayInCurrentCalendar }.min() ?? targetDay
@@ -69,7 +76,7 @@ public final class EventRepository: ObservableObject {
 	}
 
 	private func load() {
-		guard let data = UserDefaults.standard.data(forKey: storageKey),
+		guard let data = userDefaults.data(forKey: storageKey),
 			let decoded = try? JSONDecoder().decode([SmokingEvent].self, from: data) else {
 			events = []
 			return
@@ -79,9 +86,7 @@ public final class EventRepository: ObservableObject {
 
 	private func save() {
 		if let data = try? JSONEncoder().encode(events) {
-			UserDefaults.standard.set(data, forKey: storageKey)
+			userDefaults.set(data, forKey: storageKey)
 		}
 	}
 }
-
-

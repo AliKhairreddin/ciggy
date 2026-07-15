@@ -12,7 +12,7 @@ public struct UserSettings: Codable, Equatable, Sendable {
 		quitDate: Date? = nil,
 		dailyLimit: Int = 10,
 		sensitivity: Double = 0.5,
-		notificationsEnabled: Bool = true
+		notificationsEnabled: Bool = false
 	) {
 		self.quitDate = quitDate
 		self.dailyLimit = Self.clampedDailyLimit(dailyLimit)
@@ -57,5 +57,4 @@ public final class UserSettingsStore: ObservableObject {
 		}
 	}
 }
-
 

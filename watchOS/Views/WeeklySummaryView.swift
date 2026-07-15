@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 import Charts
 import CiggyShared
@@ -23,5 +24,4 @@ struct WeeklySummaryView_Previews: PreviewProvider {
 		WeeklySummaryView().environmentObject(EventRepository())
 	}
 }
-
-
+#endif

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import CiggyShared
 
@@ -8,19 +9,20 @@ struct GoalsView: View {
 	var body: some View {
 		Form {
 			Section(header: Text("Quit Plan")) {
-				DatePicker("Quit Date", selection: Binding(
-					get: { viewModel.quitDate ?? Date() },
-					set: { viewModel.quitDate = $0 }
-				), displayedComponents: .date)
-			}
-			Section(header: Text("Daily Limit")) {
-				Stepper(value: $viewModel.dailyLimit, in: 1...100) {
-					Text("Daily limit: \(viewModel.dailyLimit)")
+				Toggle("Set a quit date", isOn: $viewModel.hasQuitDate)
+				if viewModel.hasQuitDate {
+					DatePicker("Quit Date", selection: Binding(
+						get: { viewModel.quitDate ?? Date() },
+						set: { viewModel.quitDate = $0 }
+					), displayedComponents: .date)
 				}
 			}
-			Section(footer: Text("Set realistic reduction goals to build momentum.")) {
-				Stepper(value: $viewModel.reductionGoal, in: 0...max(0, viewModel.dailyLimit-1)) {
-					Text("Reduce by: \(viewModel.reductionGoal) / day")
+			Section(
+				header: Text("Daily Limit"),
+				footer: Text("Set a realistic limit you can reduce over time.")
+			) {
+				Stepper(value: $viewModel.dailyLimit, in: 1...100) {
+					Text("Daily limit: \(viewModel.dailyLimit)")
 				}
 			}
 			Section {
@@ -37,5 +39,4 @@ struct GoalsView_Previews: PreviewProvider {
 		NavigationView { GoalsView().environmentObject(UserSettingsStore()) }
 	}
 }
-
-
+#endif

@@ -1,22 +1,34 @@
+#if os(iOS)
+import Combine
 import Foundation
 import CiggyShared
 
 @MainActor
 final class GoalsViewModel: ObservableObject {
+	@Published var hasQuitDate = false
 	@Published var quitDate: Date? = nil
 	@Published var dailyLimit: Int = 10
-	@Published var reductionGoal: Int = 0
+	private var cancellables = Set<AnyCancellable>()
+	private var hasBound = false
 
 	func bind(settings: UserSettingsStore) {
-		quitDate = settings.settings.quitDate
-		dailyLimit = settings.settings.dailyLimit
-		reductionGoal = max(0, settings.settings.dailyLimit - 2)
+		guard hasBound == false else { return }
+		hasBound = true
+		settings.$settings
+			.removeDuplicates()
+			.sink { @MainActor [weak self] updatedSettings in
+				self?.hasQuitDate = updatedSettings.quitDate != nil
+				self?.quitDate = updatedSettings.quitDate
+				self?.dailyLimit = updatedSettings.dailyLimit
+			}
+			.store(in: &cancellables)
 	}
 
 	func save(settings: UserSettingsStore) {
-		settings.settings.quitDate = quitDate
-		settings.settings.dailyLimit = max(1, dailyLimit)
+		var updatedSettings = settings.settings
+		updatedSettings.quitDate = hasQuitDate ? (quitDate ?? Date()) : nil
+		updatedSettings.dailyLimit = max(1, dailyLimit)
+		settings.settings = updatedSettings
 	}
 }
-
-
+#endif
