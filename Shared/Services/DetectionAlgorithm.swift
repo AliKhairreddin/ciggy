@@ -8,6 +8,7 @@ public final class DetectionAlgorithm: ObservableObject {
 
 	/// Emits a motion-pattern candidate that callers can auto-log into a passive summary.
 	public let candidatePublisher = PassthroughSubject<DetectionCandidate, Never>()
+	@Published public private(set) var sessionGestureCount = 0
 
 	private var cancellables = Set<AnyCancellable>()
 	private let motion: MotionManager
@@ -29,6 +30,11 @@ public final class DetectionAlgorithm: ObservableObject {
 		engine.updateSensitivity(multiplier)
 	}
 
+	public func resetSession() {
+		engine.resetSession()
+		sessionGestureCount = 0
+	}
+
 	private func bind() {
 		health.heartRatePublisher
 			.sink { [weak self] reading in
@@ -41,9 +47,10 @@ public final class DetectionAlgorithm: ObservableObject {
 		motion.gestureDetected
 			.sink { [weak self] timestamp in
 				Task { @MainActor [weak self] in
-					guard let self,
-					      let candidate = self.engine.recordGesture(at: timestamp) else { return }
-					self.candidatePublisher.send(candidate)
+					guard let self else { return }
+					let candidate = self.engine.recordGesture(at: timestamp)
+					self.sessionGestureCount = self.engine.observedGestureCount
+					if let candidate { self.candidatePublisher.send(candidate) }
 				}
 			}
 			.store(in: &cancellables)

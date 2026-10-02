@@ -29,7 +29,7 @@ The current codebase already has the main software building blocks:
 - An iOS companion app with dashboard, reports, goals, and settings screens.
 - Shared models and repositories for smoking events.
 - WatchConnectivity-based event forwarding from watchOS to iOS.
-- A motion-first detection pipeline that groups repeated, separated hand-to-mouth movements into one probable smoking session.
+- A motion-first detection pipeline that reads gravity, user acceleration, and gyroscope-derived rotation rate, verifies complete raise/hold/return cycles relative to the resting wrist, and groups repeated cycles into one probable smoking session.
 - Default prototype grouping of five matching movements within eight minutes, with sensitivity settings ranging from four to seven movements.
 - Optional heart-rate context attached when HealthKit happens to provide samples; heart rate never gates a detection.
 - Automatic logging of probable detections into one quiet, reviewable summary instead of a blocking prompt for every event.
@@ -40,7 +40,7 @@ The current automatic detector is intentionally conservative and still requires 
 
 The prototype never substitutes generated heart-rate data on a physical device. Simulator-only data is visibly labeled, heart-rate context uses HealthKit sample timestamps, and notification/sensitivity settings are synchronized between the phone and Watch.
 
-Automatic collection uses two complementary paths. While Ciggy is visible, it processes live device motion and any heart-rate samples that watchOS saves. On a physical Apple Watch, it also arms `CMSensorRecorder` for up to 12 hours of historical 50 Hz accelerometer capture that continues while Ciggy is suspended or terminated. When Ciggy next wakes or opens, it retrieves samples that are old enough to be available, downsamples them for efficient analysis, automatically logs probable smoking sessions, and creates one history summary on both devices.
+Automatic collection uses two complementary paths. While Ciggy is visible, it processes live device motion and any heart-rate samples that watchOS saves. On a physical Apple Watch, it also arms `CMSensorRecorder` for up to 12 hours of historical 50 Hz accelerometer capture that continues while Ciggy is suspended or terminated. When Ciggy next opens, it retrieves samples that are old enough to be available, downsamples them for efficient analysis, automatically logs probable smoking sessions, and creates one history summary on both devices. Historical analysis preserves its classifier and cursor together across app launches; live monitoring does not discard an unprocessed backlog, and history does not duplicate previously logged or corrected automatic sessions.
 
 The app requests a best-effort background refresh after 10 hours to renew the 12-hour recording window, and every foreground launch re-arms it. watchOS can delay background refresh tasks, so this design substantially extends monitoring but cannot promise gap-free, indefinite collection. Newly recorded samples can take up to three minutes to become retrievable, history is retained for up to three days, and `CMSensorRecorder` is unavailable in Simulator. Automatic detections are included immediately and stay visibly reviewable; users can correct the count without answering a prompt each time. Real-device calibration is still required before treating assisted detection as dependable.
 
@@ -78,6 +78,12 @@ The app requests a best-effort background refresh after 10 hours to renew the 12
 ## Bottom line
 
 This is possible in hardware and software terms, and it is a worthwhile idea if positioned as a supportive habit-tracking app rather than a perfect detector. The best next step is to calibrate the passive assisted-detection flow with real users and improve the detector from optional accuracy and count-correction feedback.
+
+## Motion APIs and live Watch testing
+
+See [the motion test guide](docs/motion-testing.md) for sensor details, physical-device installation, an empty-hand gesture test, opt-in raw recording, and APIs for the UI to display diagnostics or collect labelled calibration data.
+
+Outgoing event/review mutations and incoming messages received before repositories are ready now persist across app restarts. Live sync acknowledges receipt, while physical devices also use durable WatchConnectivity transfers.
 
 ## Development
 

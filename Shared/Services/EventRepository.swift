@@ -11,6 +11,8 @@ public final class EventRepository: ObservableObject {
 	private let storageKey: String
 	private let deletedStorageKey: String
 	private var deletedEventIDs: Set<UUID> = []
+	private var automaticEventTimes: [UUID: Date] = [:]
+	private var automaticTimesKey: String { "\(storageKey).automaticTimes.v1" }
 
 	public init(
 		userDefaults: UserDefaults = .standard,
@@ -27,6 +29,7 @@ public final class EventRepository: ObservableObject {
 		guard deletedEventIDs.contains(event.id) == false else { return false }
 		guard events.contains(where: { $0.id == event.id }) == false else { return false }
 		events.append(event)
+		if event.source == .automatic { automaticEventTimes[event.id] = event.timestamp }
 		events.sort { $0.timestamp < $1.timestamp }
 		save()
 		return true
@@ -46,6 +49,12 @@ public final class EventRepository: ObservableObject {
 		deletedEventIDs.formUnion(events.map(\.id))
 		events.removeAll()
 		save()
+	}
+
+	/// Retain the time of corrected automatic events so a later, lower-fidelity
+	/// history pass cannot restore the same smoking session with a different ID.
+	public func hasRecordedAutomaticSession(near date: Date, tolerance: TimeInterval = 8 * 60) -> Bool {
+		automaticEventTimes.values.contains { abs($0.timeIntervalSince(date)) < tolerance }
 	}
 
 	public func events(on day: Date) -> [SmokingEvent] {
@@ -93,6 +102,8 @@ public final class EventRepository: ObservableObject {
 	}
 
 	private func load() {
+		if let data = userDefaults.data(forKey: automaticTimesKey),
+		   let decoded = try? JSONDecoder().decode([UUID: Date].self, from: data) { automaticEventTimes = decoded }
 		if let deletedData = userDefaults.data(forKey: deletedStorageKey),
 		   let decodedDeletedIDs = try? JSONDecoder().decode([UUID].self, from: deletedData) {
 			deletedEventIDs = Set(decodedDeletedIDs)
@@ -105,9 +116,11 @@ public final class EventRepository: ObservableObject {
 		events = decoded
 			.filter { deletedEventIDs.contains($0.id) == false }
 			.sorted { $0.timestamp < $1.timestamp }
+		for event in events where event.source == .automatic { automaticEventTimes[event.id] = event.timestamp }
 	}
 
 	private func save() {
+		if let data = try? JSONEncoder().encode(automaticEventTimes) { userDefaults.set(data, forKey: automaticTimesKey) }
 		if let data = try? JSONEncoder().encode(events) {
 			userDefaults.set(data, forKey: storageKey)
 		}

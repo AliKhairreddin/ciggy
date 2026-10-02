@@ -65,6 +65,7 @@ final class WatchAppCoordinator: ObservableObject {
 	private var hasStarted = false
 	private var isForegroundMonitoring = false
 	private var hasRequestedHealthAuthorization = false
+	private var hasStartedDebugRecording = false
 	private weak var repository: EventRepository?
 	private weak var settingsStore: UserSettingsStore?
 	private weak var reviewStore: DetectionReviewStore?
@@ -141,6 +142,7 @@ final class WatchAppCoordinator: ObservableObject {
 			.store(in: &cancellables)
 
 		let legacyCandidates = legacyCandidateStore.pendingCandidates
+		ConnectivityManager.shared.activateIncomingDelivery()
 		if let first = legacyCandidates.first, let last = legacyCandidates.last {
 			autoRecord(
 				legacyCandidates,
@@ -160,6 +162,19 @@ final class WatchAppCoordinator: ObservableObject {
 
 	func appDidBecomeActive() {
 		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
+		ConnectivityManager.shared.resumeSync()
+		BackgroundMotionMonitor.shared.armRecording()
+		#if DEBUG
+		// Opt-in launch argument enables a physical-watch test without coupling the
+		// sensor APIs to the UI being designed in the other chat.
+		if hasStartedDebugRecording == false, ProcessInfo.processInfo.arguments.contains("-CiggyRecordMotion") {
+			hasStartedDebugRecording = true
+			MotionRecordingStore.shared.completedRecording
+				.sink { @MainActor url in ConnectivityManager.shared.sendMotionRecording(at: url) }
+				.store(in: &cancellables)
+			MotionRecordingStore.shared.start(label: .unlabelled)
+		}
+		#endif
 		if isForegroundMonitoring == false {
 			isForegroundMonitoring = true
 			MotionManager.shared.start()
@@ -167,7 +182,6 @@ final class WatchAppCoordinator: ObservableObject {
 		}
 
 		let backgroundMotion = BackgroundMotionMonitor.shared
-		backgroundMotion.armRecording()
 		Task { @MainActor [weak self, weak repository, weak reviewStore] in
 			guard let self, let repository, let reviewStore else { return }
 			guard let batch = await backgroundMotion.processAvailableHistory(
@@ -196,9 +210,9 @@ final class WatchAppCoordinator: ObservableObject {
 
 	func appDidEnterBackground() {
 		guard hasStarted else { return }
-		BackgroundMotionMonitor.shared.markForegroundProcessed()
 		BackgroundMotionMonitor.shared.armRecording()
 		MotionManager.shared.stop()
+		detection.resetSession()
 		HealthKitManager.shared.stopHeartRateStreaming()
 		isForegroundMonitoring = false
 	}
@@ -227,6 +241,9 @@ final class WatchAppCoordinator: ObservableObject {
 	) -> DetectionReview? {
 		var newEvents: [SmokingEvent] = []
 		for candidate in candidates {
+			// Foreground and recorded motion observe the same wrist movement using
+			// different sensors. Do not double-log a session when history catches up.
+			if origin == .watchHistory, repository.hasRecordedAutomaticSession(near: candidate.gestureAt) { continue }
 			let event = candidate.detectedEvent()
 			guard repository.addEvent(event) else { continue }
 			newEvents.append(event)

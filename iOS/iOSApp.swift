@@ -5,6 +5,7 @@ import CiggyShared
 #if os(iOS)
 @main
 struct CiggyiOSApp: App {
+	@Environment(\.scenePhase) private var scenePhase
 	@StateObject private var repository = EventRepository()
 	@StateObject private var settingsStore = UserSettingsStore()
 	@StateObject private var reviewStore = DetectionReviewStore()
@@ -27,6 +28,9 @@ struct CiggyiOSApp: App {
 					if UserDefaults.standard.integer(forKey: "baselineCigsPerDay") == 0 {
 						UserDefaults.standard.set(settingsStore.settings.dailyLimit, forKey: "baselineCigsPerDay")
 					}
+				}
+				.onChange(of: scenePhase) { _, phase in
+					if phase == .active { ConnectivityManager.shared.resumeSync() }
 				}
 		}
 	}
@@ -78,6 +82,7 @@ final class IOSAppCoordinator: ObservableObject {
 				ConnectivityManager.shared.send(settings: sharedSettings)
 			}
 			.store(in: &cancellables)
+		ConnectivityManager.shared.activateIncomingDelivery()
 	}
 }
 

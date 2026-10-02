@@ -24,10 +24,15 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
 	private var latestSettingsPayload: [String: Any]?
 	private var settingsSyncNeedsRetry = false
-	private var pendingDurablePayloads: [[String: Any]] = []
+	private let transportStore = ConnectivityTransportStore()
+	private var isIncomingDeliveryReady = false
+	private var liveTransfers: Set<UUID> = []
+	private let recordingTransfersKey = "Ciggy.connectivity.recordingTransfers.v1"
+	private var pendingRecordingPaths: [String] = []
 
 	private override init() {
 		super.init()
+		pendingRecordingPaths = UserDefaults.standard.stringArray(forKey: recordingTransfersKey) ?? []
 		session?.delegate = self
 		session?.activate()
 		refreshSessionState()
@@ -52,6 +57,41 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		latestSettingsPayload = encodedPayload(type: "settings", value: settings)
 		settingsSyncNeedsRetry = true
 		flushLatestSettings()
+	}
+
+	/// Call after repositories subscribe, including after a background-only launch.
+	public func activateIncomingDelivery() {
+		isIncomingDeliveryReady = true
+		flushIncoming()
+		resumeSync()
+	}
+
+	public func resumeSync() {
+		refreshSessionState()
+		flushLatestSettings()
+		flushPendingDurablePayloads()
+		flushRecordingTransfers()
+	}
+
+	/// Explicit export only; raw wrist recordings are never uploaded automatically.
+	public func sendMotionRecording(at url: URL) {
+		guard url.isFileURL, FileManager.default.fileExists(atPath: url.path) else { return }
+		if pendingRecordingPaths.contains(url.path) == false {
+			pendingRecordingPaths.append(url.path)
+			UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
+		}
+		flushRecordingTransfers()
+	}
+
+	private func flushRecordingTransfers() {
+		guard let session, session.activationState == .activated else { return }
+		#if !targetEnvironment(simulator)
+		let outstanding = Set(session.outstandingFileTransfers.compactMap { $0.file.metadata?["recordingPath"] as? String })
+		for path in pendingRecordingPaths where outstanding.contains(path) == false {
+			guard FileManager.default.fileExists(atPath: path) else { continue }
+			session.transferFile(URL(fileURLWithPath: path), metadata: ["type": "motionRecording", "recordingPath": path])
+		}
+		#endif
 	}
 
 	private func encodedPayload<Value: Encodable>(type: String, value: Value) -> [String: Any]? {
@@ -93,25 +133,60 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	}
 
 	private func queueDurable(_ payload: [String: Any]) {
-		pendingDurablePayloads.append(payload)
+		guard let type = payload["type"] as? String, let data = payload["data"] as? Data else { return }
+		transportStore.enqueue(.init(type: type, data: data))
 		flushPendingDurablePayloads()
 	}
 
 	private func flushPendingDurablePayloads() {
 		guard let session, session.activationState == .activated else { return }
-		if session.isReachable {
-			pendingDurablePayloads.forEach { sendLiveIfReachable($0) }
+		let outstandingIDs = Set(session.outstandingUserInfoTransfers.compactMap {
+			($0.userInfo["transportID"] as? String).flatMap(UUID.init(uuidString:))
+		})
+		for envelope in transportStore.outgoing {
+			let payload: [String: Any] = ["type": envelope.type, "data": envelope.data, "transportID": envelope.id.uuidString]
+			if session.isReachable, liveTransfers.insert(envelope.id).inserted {
+				session.sendMessage(payload, replyHandler: { [weak self] reply in
+					let acknowledged = reply["acknowledged"] as? String == envelope.id.uuidString
+					Task { @MainActor [weak self] in
+						self?.liveTransfers.remove(envelope.id)
+						if acknowledged { self?.transportStore.acknowledge(id: envelope.id) }
+					}
+				}, errorHandler: { [weak self] error in
+					Task { @MainActor [weak self] in
+						self?.liveTransfers.remove(envelope.id)
+						self?.lastSyncError = error.localizedDescription
+					}
+				})
+			}
+			#if !targetEnvironment(simulator)
+			if outstandingIDs.contains(envelope.id) == false { session.transferUserInfo(payload) }
+			#endif
 		}
-		#if targetEnvironment(simulator)
-		// Simulator does not deliver transferUserInfo. Keep mutations in memory until
-		// the companion becomes reachable, then complete via sendMessage.
-		guard session.isReachable else { return }
-		#else
-		// Physical devices get durable background delivery in addition to the immediate
-		// foreground message. Stores de-duplicate events and revisions by stable IDs.
-		pendingDurablePayloads.forEach { session.transferUserInfo($0) }
-		#endif
-		pendingDurablePayloads.removeAll()
+	}
+
+	private func flushIncoming() {
+		guard isIncomingDeliveryReady else { return }
+		for envelope in transportStore.incoming {
+			deliver(type: envelope.type, data: envelope.data)
+			transportStore.didDeliver(id: envelope.id)
+		}
+	}
+
+	private func deliver(type: String, data: Data) {
+		let decoder = JSONDecoder()
+		decoder.dateDecodingStrategy = .iso8601
+		switch type {
+		case "event":
+			if let value = try? decoder.decode(SmokingEvent.self, from: data) { incomingEvent.send(value) }
+		case "eventDeletion":
+			if let value = try? decoder.decode(UUID.self, from: data) { incomingDeletedEventID.send(value) }
+		case "detectionReview":
+			if let value = try? decoder.decode(DetectionReview.self, from: data) { incomingReview.send(value) }
+		case "settings":
+			if let value = try? decoder.decode(UserSettings.self, from: data) { incomingSettings.send(value) }
+		default: break
+		}
 	}
 
 	private func refreshSessionState() {
@@ -146,6 +221,7 @@ extension ConnectivityManager: WCSessionDelegate {
 			guard activationState == .activated else { return }
 			self?.flushLatestSettings()
 			self?.flushPendingDurablePayloads()
+			self?.flushRecordingTransfers()
 		}
 	}
 
@@ -155,6 +231,7 @@ extension ConnectivityManager: WCSessionDelegate {
 			guard self?.isReachable == true else { return }
 			self?.flushLatestSettings()
 			self?.flushPendingDurablePayloads()
+			self?.flushRecordingTransfers()
 		}
 	}
 
@@ -177,6 +254,50 @@ extension ConnectivityManager: WCSessionDelegate {
 		handle(message)
 	}
 
+	nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String: Any],
+	                                replyHandler: @escaping ([String: Any]) -> Void) {
+		handle(message, replyHandler: replyHandler)
+	}
+
+	nonisolated public func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
+		guard let value = userInfoTransfer.userInfo["transportID"] as? String,
+		      let id = UUID(uuidString: value) else { return }
+		let message = error?.localizedDescription
+		Task { @MainActor [weak self] in
+			if let message { self?.lastSyncError = message }
+			else { self?.transportStore.acknowledge(id: id) }
+		}
+	}
+
+	nonisolated public func session(_ session: WCSession, didReceive file: WCSessionFile) {
+		guard file.metadata?["type"] as? String == "motionRecording",
+		      let size = try? file.fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+		      size <= 10 * 1_024 * 1_024,
+		      let data = try? Data(contentsOf: file.fileURL) else { return }
+		// Persist before returning, then validate/import on the main actor. A later
+		// app launch recovers any inbox file left by an interrupted import.
+		do { try MotionRecordingStore.preserveIncomingRecording(data: data) }
+		catch {
+			Task { @MainActor [weak self] in self?.lastSyncError = "Could not save the incoming motion recording." }
+			return
+		}
+		Task { @MainActor [weak self] in
+			MotionRecordingStore.shared.recoverIncomingRecordings()
+			if let error = MotionRecordingStore.shared.lastError { self?.lastSyncError = error }
+		}
+	}
+
+	nonisolated public func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+		guard let path = fileTransfer.file.metadata?["recordingPath"] as? String else { return }
+		let message = error?.localizedDescription
+		Task { @MainActor [weak self] in
+			guard let self else { return }
+			if let message { self.lastSyncError = message; return }
+			self.pendingRecordingPaths.removeAll { $0 == path }
+			UserDefaults.standard.set(self.pendingRecordingPaths, forKey: self.recordingTransfersKey)
+		}
+	}
+
 	nonisolated public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
 		handle(userInfo)
 	}
@@ -188,27 +309,16 @@ extension ConnectivityManager: WCSessionDelegate {
 		handle(applicationContext)
 	}
 
-	nonisolated private func handle(_ payload: [String: Any]) {
+	nonisolated private func handle(_ payload: [String: Any], replyHandler: (([String: Any]) -> Void)? = nil) {
 		guard let type = payload["type"] as? String,
-		      let data = payload["data"] as? Data else { return }
-
-		let decoder = JSONDecoder()
-		decoder.dateDecodingStrategy = .iso8601
-		switch type {
-		case "event":
-			guard let event = try? decoder.decode(SmokingEvent.self, from: data) else { return }
-			Task { @MainActor [weak self] in self?.incomingEvent.send(event) }
-		case "eventDeletion":
-			guard let eventID = try? decoder.decode(UUID.self, from: data) else { return }
-			Task { @MainActor [weak self] in self?.incomingDeletedEventID.send(eventID) }
-		case "detectionReview":
-			guard let review = try? decoder.decode(DetectionReview.self, from: data) else { return }
-			Task { @MainActor [weak self] in self?.incomingReview.send(review) }
-		case "settings":
-			guard let settings = try? decoder.decode(UserSettings.self, from: data) else { return }
-			Task { @MainActor [weak self] in self?.incomingSettings.send(settings) }
-		default:
-			break
+		      let data = payload["data"] as? Data else { replyHandler?([:]); return }
+		let id = (payload["transportID"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
+		let envelope = ConnectivityEnvelope(id: id, type: type, data: data)
+		Task { @MainActor [weak self] in
+			guard let self else { replyHandler?([:]); return }
+			self.transportStore.receive(envelope)
+			self.flushIncoming()
+			replyHandler?(["acknowledged": id.uuidString])
 		}
 	}
 }
@@ -233,5 +343,8 @@ public final class ConnectivityManager: ObservableObject {
 	public func sendDeletedEvent(id: UUID) {}
 	public func send(review: DetectionReview) {}
 	public func send(settings: UserSettings) {}
+	public func activateIncomingDelivery() {}
+	public func resumeSync() {}
+	public func sendMotionRecording(at url: URL) {}
 }
 #endif

@@ -1,78 +1,62 @@
 import Foundation
 
-/// A platform-neutral accelerometer sample used to analyze sensor-recorder history.
 public struct RecordedAccelerationSample: Equatable, Sendable {
-	public let timestamp: Date
-	public let x: Double
-	public let y: Double
-	public let z: Double
-
-	public init(timestamp: Date, x: Double, y: Double, z: Double) {
-		self.timestamp = timestamp
-		self.x = x
-		self.y = y
-		self.z = z
-	}
+    public let timestamp: Date
+    public let x: Double
+    public let y: Double
+    public let z: Double
+    public init(timestamp: Date, x: Double, y: Double, z: Double) {
+        self.timestamp = timestamp; self.x = x; self.y = y; self.z = z
+    }
 }
 
-/// Converts recorded acceleration into an approximate gravity attitude, then feeds the
-/// same gesture and smoking-session engines used by live monitoring.
-///
-/// Historical sensor recording supplies acceleration rather than `CMDeviceMotion`, so a
-/// low-pass filter estimates gravity before pitch and roll are calculated. Processing is
-/// intentionally downsampled to reduce the cost of reviewing hours of 50 Hz history.
-public struct RecordedMotionAnalyzer: Sendable {
-	public var sampleInterval: TimeInterval
-	public var gravityFilterStrength: Double
+/// Background recordings provide acceleration only. Estimate gravity using a
+/// time-based filter, retain residual acceleration, and infer angular speed from
+/// consecutive gravity vectors. Never fabricate gyroscope data for this path.
+public struct RecordedMotionAnalyzer: Codable, Sendable {
+    public let sampleInterval: TimeInterval
+    public let gravityTimeConstant: TimeInterval
+    private var gestureEngine: MotionGestureEngine
+    private var fusionEngine: DetectionFusionEngine
+    private var gravity: MotionVector?
+    private var lastSampleAt: Date?
 
-	private var gestureEngine: MotionGestureEngine
-	private var fusionEngine: DetectionFusionEngine
-	private var gravity: (x: Double, y: Double, z: Double)?
-	private var lastSampleAt: Date?
+    public init(sensitivity: Double = 0.5, sampleInterval: TimeInterval = 0.1,
+                gravityTimeConstant: TimeInterval = 0.25,
+                gestureEngine: MotionGestureEngine = .init(),
+                fusionConfiguration: DetectionFusionEngine.Configuration = .init()) {
+        self.sampleInterval = max(0.02, sampleInterval)
+        self.gravityTimeConstant = max(0.05, gravityTimeConstant)
+        self.gestureEngine = gestureEngine
+        fusionEngine = DetectionFusionEngine(configuration: fusionConfiguration)
+        fusionEngine.updateSensitivity(sensitivity)
+    }
 
-	public init(
-		sensitivity: Double = 0.5,
-		sampleInterval: TimeInterval = 0.1,
-		gravityFilterStrength: Double = 0.8,
-		gestureEngine: MotionGestureEngine = .init(),
-		fusionConfiguration: DetectionFusionEngine.Configuration = .init()
-	) {
-		self.sampleInterval = max(0.02, sampleInterval)
-		self.gravityFilterStrength = max(0, min(0.98, gravityFilterStrength))
-		self.gestureEngine = gestureEngine
-		self.fusionEngine = DetectionFusionEngine(configuration: fusionConfiguration)
-		self.fusionEngine.updateSensitivity(sensitivity)
-	}
+    public mutating func updateSensitivity(_ sensitivity: Double) { fusionEngine.updateSensitivity(sensitivity) }
 
-	/// Returns a candidate after enough separated hand-to-mouth-like raises are observed.
-	public mutating func record(_ sample: RecordedAccelerationSample) -> DetectionCandidate? {
-		if let lastSampleAt {
-			let elapsed = sample.timestamp.timeIntervalSince(lastSampleAt)
-			guard elapsed >= sampleInterval else { return nil }
-			guard elapsed >= 0 else { return nil }
-		}
-		lastSampleAt = sample.timestamp
-
-		if let previous = gravity {
-			let retained = gravityFilterStrength
-			let incoming = 1 - retained
-			gravity = (
-				x: retained * previous.x + incoming * sample.x,
-				y: retained * previous.y + incoming * sample.y,
-				z: retained * previous.z + incoming * sample.z
-			)
-		} else {
-			gravity = (sample.x, sample.y, sample.z)
-		}
-
-		guard let gravity else { return nil }
-		let pitch = atan2(-gravity.x, hypot(gravity.y, gravity.z))
-		let roll = atan2(gravity.y, gravity.z)
-		guard let gestureAt = gestureEngine.record(
-			pitch: pitch,
-			roll: roll,
-			at: sample.timestamp
-		) else { return nil }
-		return fusionEngine.recordGesture(at: gestureAt)
-	}
+    public mutating func record(_ sample: RecordedAccelerationSample) -> DetectionCandidate? {
+        let acceleration = MotionVector(x: sample.x, y: sample.y, z: sample.z)
+        guard acceleration.isFinite, sample.timestamp.timeIntervalSince1970.isFinite else { return nil }
+        let elapsed = lastSampleAt.map { sample.timestamp.timeIntervalSince($0) } ?? sampleInterval
+        guard elapsed >= sampleInterval - 0.000_001 else { return nil }
+        if elapsed > gestureEngine.configuration.maximumSampleGap {
+            gravity = nil
+            gestureEngine.reset()
+            // The session engine keeps separated complete gestures; it resets them
+            // on a long inter-gesture gap. A sensor gap cannot complete a gesture.
+        }
+        lastSampleAt = sample.timestamp
+        let weight = 1 - exp(-elapsed / gravityTimeConstant)
+        gravity = gravity?.blended(with: acceleration, weight: weight) ?? acceleration
+        guard let gravity else { return nil }
+        let motion = MotionSample(
+            timestamp: sample.timestamp,
+            gravity: gravity,
+            userAcceleration: .init(x: acceleration.x - gravity.x, y: acceleration.y - gravity.y, z: acceleration.z - gravity.z),
+            rotationRate: nil,
+            source: .recordedAccelerometer
+        )
+        guard let gestureAt = gestureEngine.record(motion) else { return nil }
+        return fusionEngine.recordGesture(at: gestureAt)
+    }
 }

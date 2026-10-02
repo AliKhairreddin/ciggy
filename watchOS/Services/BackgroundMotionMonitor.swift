@@ -9,6 +9,12 @@ struct HistoricalMotionBatch: Sendable {
 	let candidates: [DetectionCandidate]
 	let processedFrom: Date
 	let processedThrough: Date
+	let analyzer: RecordedMotionAnalyzer
+}
+
+private struct MotionHistoryCheckpoint: Codable {
+	let processedThrough: Date
+	let analyzer: RecordedMotionAnalyzer
 }
 
 /// Arms watchOS historical accelerometer capture and analyzes the recorded backlog when
@@ -26,6 +32,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let recorder = CMSensorRecorder()
 	private let userDefaults: UserDefaults
 	private let cursorKey = "BackgroundMotionMonitor.processedThrough.v1"
+	private let checkpointKey = "BackgroundMotionMonitor.checkpoint.v2"
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
 	private let captureDuration: TimeInterval = 12 * 60 * 60
 	private let renewalInterval: TimeInterval = 10 * 60 * 60
@@ -72,24 +79,19 @@ final class BackgroundMotionMonitor: ObservableObject {
 		}
 
 		let now = Date()
-		if processedThrough == nil {
-			advanceCursor(to: now)
-		}
+		if processedThrough == nil { userDefaults.set(now, forKey: cursorKey) }
 		recorder.recordAccelerometer(forDuration: captureDuration)
 		userDefaults.set(now.addingTimeInterval(captureDuration), forKey: armedUntilKey)
-		isCaptureArmed = true
+		// The first call can still be awaiting the system permission prompt.
+		isCaptureArmed = CMSensorRecorder.authorizationStatus() == .authorized
 		lastError = nil
 		scheduleRenewal(after: renewalInterval)
-	}
-
-	/// Advances the history cursor past time already handled by live foreground motion.
-	func markForegroundProcessed(through date: Date = Date()) {
-		advanceCursor(to: date)
 	}
 
 	/// Reads samples old enough to be available from Core Motion and returns all probable
 	/// sessions. The caller persists the candidates before committing `processedThrough`.
 	func processAvailableHistory(sensitivity: Double) async -> HistoricalMotionBatch? {
+		refreshStatus()
 		guard isCaptureAvailable, isProcessingHistory == false else { return nil }
 		guard CMSensorRecorder.authorizationStatus() == .authorized else { return nil }
 		guard let storedCursor = processedThrough else { return nil }
@@ -101,39 +103,48 @@ final class BackgroundMotionMonitor: ObservableObject {
 		isProcessingHistory = true
 		defer { isProcessingHistory = false }
 		let queryChunkDuration = self.queryChunkDuration
-		let candidates = await Task.detached(priority: .utility) {
+		var analyzer = checkpoint?.analyzer ?? RecordedMotionAnalyzer(sensitivity: sensitivity)
+		analyzer.updateSensitivity(sensitivity)
+		let initialAnalyzer = analyzer
+		let result = await Task.detached(priority: .utility) {
 			HistoricalMotionProcessor.process(
 				from: start,
 				to: end,
-				sensitivity: sensitivity,
+				analyzer: initialAnalyzer,
 				queryChunkDuration: queryChunkDuration
 			)
 		}.value
 		return HistoricalMotionBatch(
-			candidates: candidates,
+			candidates: result.candidates,
 			processedFrom: start,
-			processedThrough: end
+			processedThrough: end,
+			analyzer: result.analyzer
 		)
 	}
 
 	func commit(_ batch: HistoricalMotionBatch) {
-		advanceCursor(to: batch.processedThrough)
+		guard processedThrough.map({ batch.processedThrough >= $0 }) ?? true else { return }
+		let checkpoint = MotionHistoryCheckpoint(processedThrough: batch.processedThrough, analyzer: batch.analyzer)
+		// Cursor and classifier state are one value: a relaunch must not lose a
+		// partial smoking session or the cooldown established in the previous batch.
+		guard let data = try? JSONEncoder().encode(checkpoint) else { return }
+		userDefaults.set(data, forKey: checkpointKey)
 	}
 
 	private var processedThrough: Date? {
-		userDefaults.object(forKey: cursorKey) as? Date
+		checkpoint?.processedThrough ?? userDefaults.object(forKey: cursorKey) as? Date
 	}
 
-	private func advanceCursor(to date: Date) {
-		guard processedThrough.map({ date > $0 }) ?? true else { return }
-		userDefaults.set(date, forKey: cursorKey)
+	private var checkpoint: MotionHistoryCheckpoint? {
+		guard let data = userDefaults.data(forKey: checkpointKey) else { return nil }
+		return try? JSONDecoder().decode(MotionHistoryCheckpoint.self, from: data)
 	}
 
 	private func refreshStatus() {
 		isCaptureAvailable = CMSensorRecorder.isAccelerometerRecordingAvailable()
 		let armedUntil = userDefaults.object(forKey: armedUntilKey) as? Date
 		let authorization = CMSensorRecorder.authorizationStatus()
-		let hasPermission = authorization != .denied && authorization != .restricted
+		let hasPermission = authorization == .authorized
 		isCaptureArmed = isCaptureAvailable && hasPermission && (armedUntil.map { $0 > Date() } ?? false)
 	}
 
@@ -151,14 +162,18 @@ final class BackgroundMotionMonitor: ObservableObject {
 }
 
 private enum HistoricalMotionProcessor {
+	struct Result: Sendable {
+		let candidates: [DetectionCandidate]
+		let analyzer: RecordedMotionAnalyzer
+	}
 	nonisolated static func process(
 		from start: Date,
 		to end: Date,
-		sensitivity: Double,
+		analyzer initialAnalyzer: RecordedMotionAnalyzer,
 		queryChunkDuration: TimeInterval
-	) -> [DetectionCandidate] {
+	) -> Result {
 		let recorder = CMSensorRecorder()
-		var analyzer = RecordedMotionAnalyzer(sensitivity: sensitivity)
+		var analyzer = initialAnalyzer
 		var candidates: [DetectionCandidate] = []
 		var queryStart = start
 
@@ -183,7 +198,7 @@ private enum HistoricalMotionProcessor {
 			queryStart = queryEnd
 		}
 
-		return candidates
+		return Result(candidates: candidates, analyzer: analyzer)
 	}
 }
 #endif

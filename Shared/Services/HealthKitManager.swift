@@ -51,6 +51,7 @@ public final class HealthKitManager: ObservableObject {
 
 	/// Observes new saved heart-rate samples. Simulation is limited to simulator builds.
 	public func startHeartRateStreaming() {
+		guard query == nil else { return }
 		stopMockHeartRate()
 		guard HKHealthStore.isHealthDataAvailable(),
 				let hrType = HKObjectType.quantityType(forIdentifier: .heartRate),

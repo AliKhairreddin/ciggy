@@ -1,11 +1,12 @@
 import Foundation
+import CryptoKit
 
 /// Groups repeated hand-to-mouth gestures into one probable smoking session.
 ///
 /// Motion is the primary signal. Heart-rate samples are retained only to attach
 /// optional context to the candidate and are never required for detection.
-public struct DetectionFusionEngine: Sendable {
-	public struct Configuration: Sendable, Equatable {
+public struct DetectionFusionEngine: Codable, Sendable {
+	public struct Configuration: Codable, Sendable, Equatable {
 		public var minimumGestureCount: Int
 		public var sessionWindowSeconds: TimeInterval
 		public var minimumGestureSeparationSeconds: TimeInterval
@@ -37,7 +38,11 @@ public struct DetectionFusionEngine: Sendable {
 	public var hasActiveMotionSession: Bool { gestureTimestamps.isEmpty == false }
 	public var observedGestureCount: Int { gestureTimestamps.count }
 
-	private var recentHeartRates: [(timestamp: Date, bpm: Double)] = []
+	private struct HeartRateContext: Codable, Sendable {
+		let timestamp: Date
+		let bpm: Double
+	}
+	private var recentHeartRates: [HeartRateContext] = []
 	private var gestureTimestamps: [Date] = []
 	private var lastCandidateAt: Date?
 
@@ -48,7 +53,7 @@ public struct DetectionFusionEngine: Sendable {
 	/// Higher sensitivity asks for fewer repeated movements; it never changes
 	/// the core requirement that multiple separated raise/lower cycles occur.
 	public mutating func updateSensitivity(_ sensitivity: Double) {
-		let clamped = max(0, min(1, sensitivity))
+		let clamped = sensitivity.isFinite ? max(0, min(1, sensitivity)) : 0.5
 		switch clamped {
 		case ..<0.34:
 			configuration.minimumGestureCount = 7
@@ -62,7 +67,7 @@ public struct DetectionFusionEngine: Sendable {
 	/// Stores optional physiological context. This method never emits a candidate.
 	public mutating func recordHeartRate(_ bpm: Double, at timestamp: Date) {
 		guard bpm.isFinite, bpm > 0 else { return }
-		recentHeartRates.append((timestamp, bpm))
+		recentHeartRates.append(.init(timestamp: timestamp, bpm: bpm))
 		recentHeartRates.sort { $0.timestamp < $1.timestamp }
 		trimHeartRates(relativeTo: timestamp)
 	}
@@ -70,6 +75,8 @@ public struct DetectionFusionEngine: Sendable {
 	/// Records a distinct hand-to-mouth gesture and emits once the motion pattern
 	/// reaches the configured count inside a cigarette-sized time window.
 	public mutating func recordGesture(at timestamp: Date) -> DetectionCandidate? {
+		guard timestamp.timeIntervalSince1970.isFinite,
+		      abs(timestamp.timeIntervalSince1970) < Double(Int64.max) / 1_000 else { return nil }
 		if let lastCandidateAt,
 		   timestamp.timeIntervalSince(lastCandidateAt) < configuration.detectionCooldownSeconds {
 			return nil
@@ -98,6 +105,7 @@ public struct DetectionFusionEngine: Sendable {
 			.max()
 
 		let candidate = DetectionCandidate(
+			id: Self.candidateID(at: timestamp),
 			gestureAt: timestamp,
 			detectedAt: timestamp,
 			motionSessionStartedAt: sessionStartedAt,
@@ -108,6 +116,23 @@ public struct DetectionFusionEngine: Sendable {
 		lastCandidateAt = timestamp
 		gestureTimestamps.removeAll()
 		return candidate
+	}
+
+	/// Clears an interrupted session while preserving the cooldown of a logged event.
+	public mutating func resetSession() {
+		gestureTimestamps.removeAll()
+		recentHeartRates.removeAll()
+	}
+
+	/// Reprocessing the same sensor window after termination must emit the same event
+	/// ID, including when the previous event has a deletion tombstone.
+	private static func candidateID(at timestamp: Date) -> UUID {
+		let key = "ciggy-motion-v2:\(Int64(timestamp.timeIntervalSince1970 * 1_000))"
+		var bytes = Array(SHA256.hash(data: Data(key.utf8)).prefix(16))
+		bytes[6] = (bytes[6] & 0x0f) | 0x50
+		bytes[8] = (bytes[8] & 0x3f) | 0x80
+		return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+		                   bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
 	}
 
 	private func baselineHeartRate(before timestamp: Date) -> Double? {
