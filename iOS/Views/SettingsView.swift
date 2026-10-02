@@ -3,19 +3,22 @@ import CiggyShared
 import SwiftUI
 
 struct SettingsView: View {
+	var showsNavigationBar = false
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@StateObject private var viewModel = SettingsViewModel()
 	@State private var isSaving = false
 	@State private var didSave = false
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
 					header
+					CiggyStoryCard("A sidekick, on your terms.", subtitle: "You choose how Ciggy pays attention.", color: CiggyTheme.softMint)
 					detectionCard
 					notificationCard
 					#if DEBUG
@@ -30,19 +33,15 @@ struct SettingsView: View {
 				.padding(.bottom, 28)
 			}
 		}
-		.toolbar(.hidden, for: .navigationBar)
+		.navigationTitle("Settings")
+		.navigationBarTitleDisplayMode(.inline)
+		.toolbar(showsNavigationBar ? .visible : .hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(settings: settings) }
+		.sensoryFeedback(.success, trigger: didSave)
 	}
 
 	private var header: some View {
-		VStack(alignment: .leading, spacing: 5) {
-			Text("Tune Ciggy")
-				.font(.system(size: 34, weight: .black, design: .rounded))
-				.foregroundStyle(.white)
-			Text("Choose how the app listens and when it speaks up.")
-				.font(.subheadline)
-				.foregroundStyle(CiggyTheme.secondaryText)
-		}
+		CiggyScreenHeader("The control room", title: "A little fine-tuning.", subtitle: "Make yourself at home.")
 	}
 
 	private var detectionCard: some View {
@@ -56,7 +55,7 @@ struct SettingsView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						Text("Motion detection")
 							.font(.headline)
-							.foregroundStyle(.white)
+							.foregroundStyle(CiggyTheme.primaryText)
 						Text("Repeated hand-to-mouth movement")
 							.font(.caption)
 							.foregroundStyle(CiggyTheme.secondaryText)
@@ -68,7 +67,7 @@ struct SettingsView: View {
 				}
 
 				Slider(value: $viewModel.sensitivity, in: 0...1, step: 0.01)
-					.tint(CiggyTheme.mint)
+					.tint(CiggyTheme.ember)
 					.accessibilityLabel("Motion detection sensitivity")
 
 				HStack {
@@ -96,14 +95,14 @@ struct SettingsView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						Text("Detection summaries")
 							.font(.headline)
-							.foregroundStyle(.white)
+							.foregroundStyle(CiggyTheme.primaryText)
 						Text("Notify me after Watch history is checked")
 							.font(.caption)
 							.foregroundStyle(CiggyTheme.secondaryText)
 					}
 				}
 			}
-			.tint(CiggyTheme.mint)
+			.tint(CiggyTheme.ember)
 		}
 	}
 
@@ -113,7 +112,7 @@ struct SettingsView: View {
 			VStack(alignment: .leading, spacing: 12) {
 				Label("Try the history experience", systemImage: "sparkles")
 					.font(.headline)
-					.foregroundStyle(.white)
+					.foregroundStyle(CiggyTheme.primaryText)
 				Text("Adds a clearly labeled debug preview of 6 detections across the last 8 hours and syncs it to the paired Watch.")
 					.font(.caption)
 					.foregroundStyle(CiggyTheme.secondaryText)
@@ -142,7 +141,7 @@ struct SettingsView: View {
 				VStack(alignment: .leading, spacing: 2) {
 					Text("Your data")
 						.font(.headline)
-						.foregroundStyle(.white)
+						.foregroundStyle(CiggyTheme.primaryText)
 					Text("See what is stored and shared")
 						.font(.caption)
 						.foregroundStyle(CiggyTheme.secondaryText)
@@ -169,9 +168,9 @@ struct SettingsView: View {
 			Task {
 				await viewModel.save(settings: settings)
 				isSaving = false
-				withAnimation(.spring(response: 0.3)) { didSave = true }
+				withAnimation(reduceMotion ? nil : .spring(response: 0.3)) { didSave = true }
 				try? await Task.sleep(nanoseconds: 2_000_000_000)
-				withAnimation { didSave = false }
+				withAnimation(reduceMotion ? nil : .default) { didSave = false }
 			}
 		} label: {
 			Label(
@@ -182,7 +181,7 @@ struct SettingsView: View {
 			.foregroundStyle(CiggyTheme.deepInk)
 			.frame(maxWidth: .infinity)
 			.padding(.vertical, 16)
-			.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+			.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
 		}
 		.buttonStyle(.plain)
 	}
@@ -220,7 +219,7 @@ struct SettingsView: View {
 private struct PrivacyInfoView: View {
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(spacing: 14) {
 					privacyRow(
@@ -249,9 +248,6 @@ private struct PrivacyInfoView: View {
 		}
 		.navigationTitle("Your data")
 		.navigationBarTitleDisplayMode(.inline)
-		.toolbarBackground(CiggyTheme.ink, for: .navigationBar)
-		.toolbarBackground(.visible, for: .navigationBar)
-		.toolbarColorScheme(.dark, for: .navigationBar)
 	}
 
 	private func privacyRow(icon: String, title: String, body: String) -> some View {
@@ -264,7 +260,7 @@ private struct PrivacyInfoView: View {
 				VStack(alignment: .leading, spacing: 5) {
 					Text(title)
 						.font(.headline)
-						.foregroundStyle(.white)
+						.foregroundStyle(CiggyTheme.primaryText)
 					Text(body)
 						.font(.subheadline)
 						.foregroundStyle(CiggyTheme.secondaryText)

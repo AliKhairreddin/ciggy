@@ -12,11 +12,11 @@ struct LogSmokeView: View {
 			CiggyTheme.appBackground.ignoresSafeArea()
 			ScrollView {
 				VStack(spacing: 12) {
-					CiggyBrandMark(size: 42)
+					CiggyMascot(animated: false).frame(width: 68, height: 68)
 					Text("Log 1 cigarette")
 						.font(.system(size: 19, weight: .black, design: .rounded))
 						.foregroundStyle(.white)
-					Text("Add it now, without judgment.")
+					Text("One cigarette. Zero judgment.")
 						.font(.system(size: 10))
 						.foregroundStyle(CiggyTheme.secondaryText)
 

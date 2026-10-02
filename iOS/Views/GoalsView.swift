@@ -3,16 +3,19 @@ import CiggyShared
 import SwiftUI
 
 struct GoalsView: View {
+	var showsNavigationBar = false
 	@EnvironmentObject private var settings: UserSettingsStore
 	@StateObject private var viewModel = GoalsViewModel()
 	@State private var didSave = false
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
 					header
+					CiggyStoryCard("Less pressure. More you.", subtitle: "A realistic limit is a good place to start.", color: CiggyTheme.peach)
 					limitCard
 					quitDateCard
 					saveButton
@@ -22,19 +25,15 @@ struct GoalsView: View {
 				.padding(.bottom, 28)
 			}
 		}
-		.toolbar(.hidden, for: .navigationBar)
+		.navigationTitle("Goals")
+		.navigationBarTitleDisplayMode(.inline)
+		.toolbar(showsNavigationBar ? .visible : .hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(settings: settings) }
+		.sensoryFeedback(.success, trigger: didSave)
 	}
 
 	private var header: some View {
-		VStack(alignment: .leading, spacing: 5) {
-			Text("Make it yours")
-				.font(.system(size: 34, weight: .black, design: .rounded))
-				.foregroundStyle(.white)
-			Text("Small limits are useful when they feel realistic.")
-				.font(.subheadline)
-				.foregroundStyle(CiggyTheme.secondaryText)
-		}
+		CiggyScreenHeader("The little plan", title: "Your pace. Your rules.", subtitle: "Small steps still move you forward.")
 	}
 
 	private var limitCard: some View {
@@ -44,7 +43,7 @@ struct GoalsView: View {
 					VStack(alignment: .leading, spacing: 3) {
 						Text("Daily limit")
 							.font(.headline)
-							.foregroundStyle(.white)
+							.foregroundStyle(CiggyTheme.primaryText)
 						Text("Your target for each day")
 							.font(.caption)
 							.foregroundStyle(CiggyTheme.secondaryText)
@@ -55,12 +54,14 @@ struct GoalsView: View {
 						.foregroundStyle(CiggyTheme.mint)
 				}
 
+				CiggyPackMeter(count: 0, limit: viewModel.dailyLimit)
+
 				HStack(spacing: 24) {
 					Button { viewModel.dailyLimit = max(1, viewModel.dailyLimit - 1) } label: {
 						Image(systemName: "minus")
 							.font(.headline)
 							.frame(width: 48, height: 48)
-							.background(CiggyTheme.elevatedSurface, in: Circle())
+							.ciggyGlass(in: Circle(), interactive: true)
 					}
 					.buttonStyle(.plain)
 					.accessibilityLabel("Decrease daily limit")
@@ -68,7 +69,9 @@ struct GoalsView: View {
 					VStack(spacing: 0) {
 						Text("\(viewModel.dailyLimit)")
 							.font(.system(size: 58, weight: .black, design: .rounded))
-							.foregroundStyle(.white)
+							.contentTransition(.numericText())
+							.accessibilityIdentifier("daily-limit-value")
+							.foregroundStyle(CiggyTheme.primaryText)
 						Text("cigarettes")
 							.font(.caption.weight(.semibold))
 							.foregroundStyle(CiggyTheme.secondaryText)
@@ -80,7 +83,7 @@ struct GoalsView: View {
 							.font(.headline)
 							.foregroundStyle(CiggyTheme.deepInk)
 							.frame(width: 48, height: 48)
-							.background(CiggyTheme.brandGradient, in: Circle())
+							.ciggyGlass(in: Circle(), interactive: true)
 					}
 					.buttonStyle(.plain)
 					.accessibilityLabel("Increase daily limit")
@@ -99,14 +102,14 @@ struct GoalsView: View {
 						VStack(alignment: .leading, spacing: 2) {
 							Text("Set a quit date")
 								.font(.headline)
-								.foregroundStyle(.white)
+								.foregroundStyle(CiggyTheme.primaryText)
 							Text("Give the journey a destination")
 								.font(.caption)
 								.foregroundStyle(CiggyTheme.secondaryText)
 						}
 					}
 				}
-				.tint(CiggyTheme.mint)
+				.tint(CiggyTheme.ember)
 
 				if viewModel.hasQuitDate {
 					Divider().overlay(CiggyTheme.border)
@@ -118,8 +121,8 @@ struct GoalsView: View {
 						),
 						displayedComponents: .date
 					)
-					.foregroundStyle(.white)
-					.tint(CiggyTheme.mint)
+					.foregroundStyle(CiggyTheme.primaryText)
+					.tint(CiggyTheme.ember)
 				}
 			}
 		}
@@ -128,10 +131,10 @@ struct GoalsView: View {
 	private var saveButton: some View {
 		Button {
 			viewModel.save(settings: settings)
-			withAnimation(.spring(response: 0.3)) { didSave = true }
+			withAnimation(reduceMotion ? nil : .spring(response: 0.3)) { didSave = true }
 			Task {
 				try? await Task.sleep(nanoseconds: 2_000_000_000)
-				await MainActor.run { withAnimation { didSave = false } }
+				await MainActor.run { withAnimation(reduceMotion ? nil : .default) { didSave = false } }
 			}
 		} label: {
 			Label(didSave ? "Goals saved" : "Save my goals", systemImage: didSave ? "checkmark" : "arrow.right")
@@ -139,7 +142,7 @@ struct GoalsView: View {
 				.foregroundStyle(CiggyTheme.deepInk)
 				.frame(maxWidth: .infinity)
 				.padding(.vertical, 16)
-				.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+				.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
 		}
 		.buttonStyle(.plain)
 	}

@@ -10,25 +10,55 @@ struct DashboardView: View {
 	@StateObject private var viewModel = DashboardViewModel()
 	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@State private var reviewToAdjust: DetectionReview?
+	@State private var isLogging = false
+	@State private var lastLoggedEvent: SmokingEvent?
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
 					profileHeader
 					todayHero
-					detectionExperience
 					quickMetrics
+					detectionExperience
 					weeklyChart
 				}
 				.padding(.horizontal, 18)
-				.padding(.top, 10)
+				.padding(.top, 14)
 				.padding(.bottom, 28)
 			}
 		}
 		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
+		.sheet(isPresented: $isLogging) {
+			PhoneLogSmokeView { event in
+				lastLoggedEvent = event
+			}
+			.presentationDetents([.medium, .large])
+			.presentationDragIndicator(.visible)
+		}
+		.sensoryFeedback(.success, trigger: lastLoggedEvent?.id)
+		.safeAreaInset(edge: .bottom) {
+			if let event = lastLoggedEvent {
+				HStack {
+					Label("Logged. No judgment.", systemImage: "checkmark.circle.fill")
+					Spacer()
+					Button("Undo") {
+						repository.removeEvent(id: event.id)
+						ConnectivityManager.shared.sendDeletedEvent(id: event.id)
+						lastLoggedEvent = nil
+					}.fontWeight(.bold).accessibilityIdentifier("undo-phone-log")
+					Button { lastLoggedEvent = nil } label: { Image(systemName: "xmark") }
+						.accessibilityLabel("Dismiss log confirmation")
+				}
+				.font(.subheadline).padding(16)
+				.ciggyGlass(in: RoundedRectangle(cornerRadius: 22))
+				.padding(.horizontal, 18).padding(.bottom, 8)
+				.foregroundStyle(CiggyTheme.ink)
+			}
+		}
 		.sheet(item: $reviewToAdjust) { review in
 			DetectionCountAdjustmentView(review: review) { correctedCount in
 				DetectionReviewWorkflow.adjust(
@@ -43,59 +73,80 @@ struct DashboardView: View {
 	}
 
 	private var profileHeader: some View {
-		HStack {
-			NavigationLink(destination: SettingsView()) {
-				CiggyProfileMark(size: 46)
-			}
-			.buttonStyle(.plain)
-			.accessibilityLabel("Open profile and settings")
+		HStack(spacing: 10) {
+			CiggyBrandMark(size: 38)
+			Text("ciggy").font(.system(size: 33, weight: .black, design: .rounded)).tracking(-2)
+				.foregroundStyle(CiggyTheme.ink)
 			Spacer()
-			CiggyStatusPill(
-				syncStatusTitle,
-				systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath",
-				color: connectivity.isLiveSyncAvailable ? CiggyTheme.mint : CiggyTheme.sunlight
-			)
+			NavigationLink(destination: SettingsView(showsNavigationBar: true)) { CiggyProfileMark(size: 44) }
+				.buttonStyle(.plain).accessibilityLabel("Open profile and settings")
 		}
 	}
 
 	private var todayHero: some View {
-		CiggyPanel {
-			HStack(spacing: 22) {
-				ZStack {
-					Circle()
-						.stroke(CiggyTheme.elevatedSurface, lineWidth: 13)
-					Circle()
-						.trim(from: 0, to: max(0.025, viewModel.todayProgress))
-						.stroke(
-							viewModel.todayProgress >= 1 ? CiggyTheme.emberGradient : CiggyTheme.brandGradient,
-							style: StrokeStyle(lineWidth: 13, lineCap: .round)
-						)
-						.rotationEffect(.degrees(-90))
-					VStack(spacing: 0) {
-						Text("\(viewModel.dailyCount)")
-							.font(.system(size: 38, weight: .black, design: .rounded))
-						Text("of \(settings.settings.dailyLimit)")
-							.font(.caption.weight(.semibold))
-							.foregroundStyle(CiggyTheme.secondaryText)
-					}
-				}
-				.frame(width: 132, height: 132)
-
-				VStack(alignment: .leading, spacing: 8) {
-					Text("TODAY")
-						.font(.caption2.weight(.bold))
-						.tracking(1.6)
-						.foregroundStyle(CiggyTheme.mint)
-					Text(todayMessage)
-						.font(.title3.weight(.bold))
-						.foregroundStyle(.white)
-					Text("Last logged \(viewModel.lastEventDescription.lowercased()).")
-						.font(.subheadline)
-						.foregroundStyle(CiggyTheme.secondaryText)
-				}
-				.frame(maxWidth: .infinity, alignment: .leading)
+		VStack(alignment: .leading, spacing: 18) {
+			HStack {
+				Text(Date(), format: .dateTime.weekday(.wide).month(.abbreviated).day())
+					.textCase(.uppercase).tracking(1.5).font(.caption2.weight(.heavy))
+				Spacer()
+				Text("YOUR DAILY CHECK-IN").font(.system(size: 8, weight: .heavy)).tracking(1)
+					.accessibilityHidden(true)
 			}
+			Text("Let's clear the air.")
+				.font(.system(.largeTitle, design: .rounded, weight: .black)).tracking(-1.4)
+			ViewThatFits(in: .horizontal) {
+				heroCountRow
+				VStack(alignment: .leading, spacing: 12) { dailyCount; CiggyMascot().frame(width: 160, height: 160).frame(maxWidth: .infinity) }
+			}
+			CiggyPackMeter(count: viewModel.dailyCount, limit: settings.settings.dailyLimit)
+			HStack(alignment: .top) {
+				VStack(alignment: .leading, spacing: 4) {
+					Text(todayMessage).font(.subheadline.weight(.bold))
+					Text(viewModel.dailyCount == 0 ? "One day at a time. You've got this." : "Last logged \(viewModel.lastEventDescription.lowercased()).")
+						.font(.caption).foregroundStyle(CiggyTheme.ink.opacity(0.7))
+				}
+				Spacer(minLength: 4)
+				NavigationLink(destination: GoalsView(showsNavigationBar: true)) {
+					Text("Limit \(settings.settings.dailyLimit)").font(.caption.weight(.bold))
+						.padding(.horizontal, 12).padding(.vertical, 9).ciggyGlass(in: Capsule(), interactive: true)
+				}.buttonStyle(.plain).accessibilityLabel("Edit daily limit, currently \(settings.settings.dailyLimit)")
+			}
+			Button { isLogging = true } label: {
+				HStack {
+					Image(systemName: "plus").font(.title3.weight(.semibold))
+					Text("Log a cigarette").font(.headline)
+					Spacer()
+					Image(systemName: "arrow.up.right").font(.subheadline.weight(.bold))
+				}.padding(17).frame(maxWidth: .infinity)
+					.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
+			}.buttonStyle(.plain).accessibilityIdentifier("phone-log-button")
 		}
+		.foregroundStyle(CiggyTheme.ink)
+		.padding(22)
+		.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 32))
+		.overlay(RoundedRectangle(cornerRadius: 32).stroke(CiggyTheme.ink.opacity(0.18), lineWidth: 1))
+		.shadow(color: CiggyTheme.ember.opacity(0.12), radius: 18, x: 0, y: 8)
+	}
+
+	private var heroCountRow: some View {
+		HStack(alignment: .center, spacing: 0) {
+			dailyCount.frame(minWidth: 130, alignment: .leading)
+			Spacer(minLength: 0)
+			CiggyMascot().frame(width: 156, height: 156)
+		}
+	}
+
+	private var dailyCount: some View {
+		VStack(alignment: .leading, spacing: -2) {
+			Text("\(viewModel.dailyCount)")
+				.font(.system(size: 76, weight: .black, design: .rounded)).tracking(-5)
+				.contentTransition(.numericText())
+				.animation(reduceMotion ? nil : .spring(response: 0.4), value: viewModel.dailyCount)
+			Text("cigarettes today").font(.subheadline.weight(.semibold))
+		}
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel("\(viewModel.dailyCount) cigarettes today")
+		.accessibilityIdentifier("today-count")
 	}
 
 	private var quickMetrics: some View {
@@ -113,7 +164,7 @@ struct DashboardView: View {
 				color: CiggyTheme.lavender
 			)
 			metricCard(
-				title: "Saved",
+				title: "Est. saved",
 				value: String(format: "$%.0f", viewModel.moneySaved),
 				icon: "leaf.fill",
 				color: CiggyTheme.mint
@@ -126,10 +177,10 @@ struct DashboardView: View {
 			VStack(alignment: .leading, spacing: 14) {
 				HStack {
 					VStack(alignment: .leading, spacing: 2) {
-						Text("Last 7 days")
+						Text("Your week, on paper")
 							.font(.headline)
-							.foregroundStyle(.white)
-						Text("Your smoking rhythm at a glance")
+							.foregroundStyle(CiggyTheme.primaryText)
+						Text("Every log is a little more awareness.")
 							.font(.caption)
 							.foregroundStyle(CiggyTheme.secondaryText)
 					}
@@ -143,7 +194,7 @@ struct DashboardView: View {
 						x: .value("Day", item.date, unit: .day),
 						y: .value("Count", item.count)
 					)
-					.foregroundStyle(CiggyTheme.brandGradient)
+					.foregroundStyle(CiggyTheme.emberGradient)
 					.cornerRadius(6)
 				}
 				.frame(height: 170)
@@ -184,7 +235,7 @@ struct DashboardView: View {
 					VStack(alignment: .leading, spacing: 4) {
 						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected")
 							.font(.headline)
-							.foregroundStyle(.white)
+							.foregroundStyle(CiggyTheme.primaryText)
 						Text(reviewSummaryText(review))
 							.font(.subheadline)
 							.foregroundStyle(CiggyTheme.secondaryText)
@@ -216,7 +267,7 @@ struct DashboardView: View {
 								.padding(.vertical, 11)
 								.background(CiggyTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 						}
-						.foregroundStyle(.white)
+						.foregroundStyle(CiggyTheme.primaryText)
 						.buttonStyle(.plain)
 					}
 					.font(.subheadline.weight(.bold))
@@ -230,27 +281,18 @@ struct DashboardView: View {
 	}
 
 	private var detectionReadyCard: some View {
-		HStack(spacing: 14) {
-			Image(systemName: "clock.arrow.circlepath")
-				.font(.title2)
-				.foregroundStyle(CiggyTheme.deepInk)
-				.frame(width: 48, height: 48)
-				.background(CiggyTheme.brandGradient, in: Circle())
-			VStack(alignment: .leading, spacing: 3) {
-				Text("Watch history is ready")
-					.font(.subheadline.weight(.bold))
-					.foregroundStyle(.white)
-				Text("Detected cigarettes appear here automatically as one quiet summary—no confirmation pop-up each time.")
-					.font(.caption)
-					.foregroundStyle(CiggyTheme.secondaryText)
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 12) {
+				HStack {
+					Label("Your little wrist sidekick", systemImage: "applewatch")
+						.font(.subheadline.weight(.bold)).foregroundStyle(CiggyTheme.primaryText)
+					Spacer(minLength: 0)
+				}
+				CiggyStatusPill(syncStatusTitle, systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath", color: connectivity.isLiveSyncAvailable ? CiggyTheme.mint : CiggyTheme.ember)
+				Text("Your Watch gathers possible cigarettes into a quiet summary. You can adjust it whenever you like.")
+					.font(.caption).foregroundStyle(CiggyTheme.secondaryText)
 			}
 		}
-		.padding(16)
-		.background(CiggyTheme.mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-		.overlay(
-			RoundedRectangle(cornerRadius: 20, style: .continuous)
-				.stroke(CiggyTheme.mint.opacity(0.18), lineWidth: 1)
-		)
 	}
 
 	private func reviewSummaryText(_ review: DetectionReview) -> String {
@@ -278,7 +320,7 @@ struct DashboardView: View {
 				.foregroundStyle(color)
 			Text(value)
 				.font(.title2.weight(.black))
-				.foregroundStyle(.white)
+				.foregroundStyle(CiggyTheme.primaryText)
 			Text(title)
 				.font(.caption2)
 				.foregroundStyle(CiggyTheme.secondaryText)
@@ -286,18 +328,18 @@ struct DashboardView: View {
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(13)
-		.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+		.background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 22))
 		.overlay(
-			RoundedRectangle(cornerRadius: 18, style: .continuous)
+			RoundedRectangle(cornerRadius: 22, style: .continuous)
 				.stroke(CiggyTheme.border, lineWidth: 1)
 		)
 	}
 
 	private var todayMessage: String {
 		let remaining = max(0, settings.settings.dailyLimit - viewModel.dailyCount)
-		if viewModel.dailyCount == 0 { return "A clear start." }
-		if remaining == 0 { return "Pause and reset." }
-		return "\(remaining) left in your limit."
+		if viewModel.dailyCount == 0 { return "A fresh page." }
+		if remaining == 0 { return "Take a breather. Reset at your pace." }
+		return "\(remaining) below your daily limit."
 	}
 
 	private var syncStatusTitle: String {
@@ -337,11 +379,11 @@ private struct DetectionCountAdjustmentView: View {
 	var body: some View {
 		NavigationStack {
 			ZStack {
-				CiggyTheme.appBackground.ignoresSafeArea()
+				CiggyBackdrop()
 				VStack(spacing: 22) {
 					Text("How many were actually smoked?")
 						.font(.title2.weight(.black))
-						.foregroundStyle(.white)
+						.foregroundStyle(CiggyTheme.primaryText)
 						.multilineTextAlignment(.center)
 
 					Stepper(value: $count, in: 0...100) {

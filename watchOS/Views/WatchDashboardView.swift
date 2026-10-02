@@ -13,17 +13,17 @@ struct WatchDashboardView: View {
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(spacing: 10) {
 					profileHeader
 					todayRing
+					logButton
 					if let review = reviewStore.latestReview {
 						detectionReviewCard(review)
 					}
 					motionStatus
 					syncStatus
-					logButton
 					weeklyLink
 				}
 				.padding(.horizontal, 4)
@@ -50,6 +50,7 @@ struct WatchDashboardView: View {
 			}
 			.buttonStyle(.plain)
 			.accessibilityLabel("Open profile and settings")
+			Text("ciggy").font(.system(size: 20, weight: .black, design: .rounded)).tracking(-1).foregroundStyle(CiggyTheme.paper)
 			Spacer()
 			Circle()
 				.fill(isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
@@ -81,8 +82,10 @@ struct WatchDashboardView: View {
 					style: StrokeStyle(lineWidth: 11, lineCap: .round)
 				)
 				.rotationEffect(.degrees(-90))
+			CiggyMascot(animated: false).frame(width: 58, height: 58).offset(x: 43, y: 36)
 			VStack(spacing: -1) {
 				Text("\(viewModel.todayCount)")
+					.contentTransition(.numericText())
 					.font(.system(size: 38, weight: .black, design: .rounded))
 					.foregroundStyle(.white)
 				Text("TODAY · \(settings.settings.dailyLimit) LIMIT")
@@ -278,7 +281,7 @@ private struct WatchDetectionCountAdjustmentView: View {
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(spacing: 10) {
 					Text("Correct count")

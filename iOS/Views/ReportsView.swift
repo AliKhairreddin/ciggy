@@ -16,10 +16,11 @@ struct ReportsView: View {
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
 					header
+					CiggyStoryCard("Connect the little dots.", subtitle: "Your habits have a rhythm. Let’s find it.")
 					rangePicker
 					activityChart
 					heartRateCard
@@ -35,14 +36,7 @@ struct ReportsView: View {
 	}
 
 	private var header: some View {
-		VStack(alignment: .leading, spacing: 5) {
-			Text("Your rhythm")
-				.font(.system(size: 34, weight: .black, design: .rounded))
-				.foregroundStyle(.white)
-			Text("Patterns become easier to change once you can see them.")
-				.font(.subheadline)
-				.foregroundStyle(CiggyTheme.secondaryText)
-		}
+		CiggyScreenHeader("The bigger picture", title: "You've got a rhythm.", subtitle: "A little curiosity goes a long way.")
 	}
 
 	private var rangePicker: some View {
@@ -52,7 +46,6 @@ struct ReportsView: View {
 			}
 		}
 		.pickerStyle(.segmented)
-		.colorScheme(.dark)
 	}
 
 	private var activityChart: some View {
@@ -62,8 +55,8 @@ struct ReportsView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						Text(range == .week ? "Daily activity" : "Monthly trend")
 							.font(.headline)
-							.foregroundStyle(.white)
-						Text("Confirmed and manual logs")
+							.foregroundStyle(CiggyTheme.primaryText)
+						Text("Manual and automatic logs")
 							.font(.caption)
 							.foregroundStyle(CiggyTheme.secondaryText)
 					}
@@ -73,13 +66,18 @@ struct ReportsView: View {
 						.foregroundStyle(CiggyTheme.mint)
 				}
 
+				if visibleCounts.allSatisfy({ $0.count == 0 }) {
+					Label("A blank page for now. Your logs will fill it in.", systemImage: "pencil.and.scribble")
+						.font(.caption).foregroundStyle(CiggyTheme.secondaryText)
+				}
+
 				Chart(visibleCounts) { item in
 					if range == .week {
 						BarMark(
 							x: .value("Day", item.date, unit: .day),
 							y: .value("Count", item.count)
 						)
-						.foregroundStyle(CiggyTheme.brandGradient)
+						.foregroundStyle(CiggyTheme.emberGradient)
 						.cornerRadius(6)
 					} else {
 						AreaMark(
@@ -108,6 +106,7 @@ struct ReportsView: View {
 							.foregroundStyle(CiggyTheme.secondaryText)
 					}
 				}
+				.chartYScale(domain: 0...max(1, (visibleCounts.map(\.count).max() ?? 0)))
 				.chartYAxis {
 					AxisMarks(position: .leading) { _ in
 						AxisGridLine().foregroundStyle(CiggyTheme.border)
@@ -126,7 +125,7 @@ struct ReportsView: View {
 						.foregroundStyle(CiggyTheme.ember)
 					Text("Heart-rate context")
 						.font(.headline)
-						.foregroundStyle(.white)
+						.foregroundStyle(CiggyTheme.primaryText)
 					Spacer()
 					Text("Optional")
 						.font(.caption2.weight(.bold))

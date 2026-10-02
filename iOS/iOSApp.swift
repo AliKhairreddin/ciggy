@@ -97,9 +97,8 @@ struct RootTabView: View {
 			NavigationStack { SettingsView() }
 				.tabItem { Label("Settings", systemImage: "gearshape.fill") }
 		}
-		.tint(CiggyTheme.mint)
-		.toolbarBackground(CiggyTheme.deepInk, for: .tabBar)
-		.toolbarBackground(.visible, for: .tabBar)
+		.tint(CiggyTheme.ember)
+		.preferredColorScheme(.light)
 	}
 }
 #else
