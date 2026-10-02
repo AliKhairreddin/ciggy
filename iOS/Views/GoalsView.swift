@@ -3,6 +3,8 @@ import CiggyShared
 import SwiftUI
 
 struct GoalsView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	var showsNavigationBar = false
 	@EnvironmentObject private var settings: UserSettingsStore
 	@StateObject private var viewModel = GoalsViewModel()
@@ -43,15 +45,15 @@ struct GoalsView: View {
 					VStack(alignment: .leading, spacing: 3) {
 						Text("Daily limit")
 							.font(.headline)
-							.foregroundStyle(CiggyTheme.primaryText)
+							.foregroundStyle(palette.primaryText)
 						Text("Your target for each day")
 							.font(.caption)
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer()
 					Image(systemName: "target")
 						.font(.title2)
-						.foregroundStyle(CiggyTheme.mint)
+						.foregroundStyle(palette.mint)
 				}
 
 				CiggyPackMeter(count: 0, limit: viewModel.dailyLimit)
@@ -71,17 +73,17 @@ struct GoalsView: View {
 							.font(.system(size: 58, weight: .black, design: .rounded))
 							.contentTransition(.numericText())
 							.accessibilityIdentifier("daily-limit-value")
-							.foregroundStyle(CiggyTheme.primaryText)
+							.foregroundStyle(palette.primaryText)
 						Text("cigarettes")
 							.font(.caption.weight(.semibold))
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 					.frame(minWidth: 116)
 
 					Button { viewModel.dailyLimit = min(100, viewModel.dailyLimit + 1) } label: {
 						Image(systemName: "plus")
 							.font(.headline)
-							.foregroundStyle(CiggyTheme.deepInk)
+							.foregroundStyle(palette.primaryText)
 							.frame(width: 48, height: 48)
 							.ciggyGlass(in: Circle(), interactive: true)
 					}
@@ -102,17 +104,17 @@ struct GoalsView: View {
 						VStack(alignment: .leading, spacing: 2) {
 							Text("Set a quit date")
 								.font(.headline)
-								.foregroundStyle(CiggyTheme.primaryText)
+								.foregroundStyle(palette.primaryText)
 							Text("Give the journey a destination")
 								.font(.caption)
-								.foregroundStyle(CiggyTheme.secondaryText)
+								.foregroundStyle(palette.secondaryText)
 						}
 					}
 				}
 				.tint(CiggyTheme.ember)
 
 				if viewModel.hasQuitDate {
-					Divider().overlay(CiggyTheme.border)
+					Divider().overlay(palette.border)
 					DatePicker(
 						"Target date",
 						selection: Binding(
@@ -121,7 +123,7 @@ struct GoalsView: View {
 						),
 						displayedComponents: .date
 					)
-					.foregroundStyle(CiggyTheme.primaryText)
+					.foregroundStyle(palette.primaryText)
 					.tint(CiggyTheme.ember)
 				}
 			}
@@ -139,7 +141,7 @@ struct GoalsView: View {
 		} label: {
 			Label(didSave ? "Goals saved" : "Save my goals", systemImage: didSave ? "checkmark" : "arrow.right")
 				.font(.headline)
-				.foregroundStyle(CiggyTheme.deepInk)
+				.foregroundStyle(palette.primaryText)
 				.frame(maxWidth: .infinity)
 				.padding(.vertical, 16)
 				.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)

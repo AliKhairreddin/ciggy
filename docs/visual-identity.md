@@ -1,6 +1,6 @@
 # Ciggy visual identity
 
-Ciggy pairs a playful cigarette character with a warm paper-and-ink identity. The iPhone uses cream graph paper, peach and ember, lilac illustration notes, rounded typography, and a cigarette-pack daily-limit meter. The Watch retains a dark canvas for glanceable counts and uses the same character, icon, and warmer accents.
+Ciggy pairs a playful cigarette character with a warm paper-and-ink identity. The iPhone uses cream graph paper, peach and ember, lilac illustration notes, rounded typography, and a cigarette-pack daily-limit meter. Both companion apps default to cream and use the same character, icon, and warmer accents. Settings offers **Cream**, **Dark**, and **Follow System**. Changes apply immediately and persist separately on each device, so incoming detection and goal settings never replace a local appearance choice. Follow System uses the current device’s SwiftUI color scheme. Dark appearance adapts text, cards, glass controls, charts, character details, and the Today poster to a warm plum palette. On Watch, the native clock area keeps an ink background because watchOS renders its system clock in white.
 
 The original character is drawn in SwiftUI Canvas. On Today it gently sways, blinks, waves, and animates its smoke ribbon. Decorative artwork has no accessibility label. Motion stops when Reduce Motion is enabled, the scene becomes inactive, or the character leaves the screen. Secondary-screen and Watch illustrations stay still.
 
@@ -10,6 +10,6 @@ Phone logging is available from Today. Its sheet accepts an optional note and re
 
 ## Validation
 
-Run `swift test` with the full Xcode developer directory, then build the `ciggy` scheme for an iPhone simulator and for generic iOS Release. That scheme embeds and builds the Watch companion. The UI tests cover phone logging, cancellation, undo persistence, goal persistence, the four branded screens, large-text logging, and the historical detection preview.
+Run `swift test` with the full Xcode developer directory, then build the `ciggy` scheme for an iPhone simulator and for generic iOS Release. That scheme embeds and builds the Watch companion. The UI tests cover phone logging, cancellation, undo persistence, goal persistence, the four branded screens, large-text logging, the historical detection preview, and immediate appearance changes and persistence on both devices.
 
 The repository currently has no App Store/TestFlight publishing workflow or hosting configuration. Simulator installation verifies the app locally; store distribution requires an existing signing and publishing workflow.

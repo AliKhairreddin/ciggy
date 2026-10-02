@@ -3,6 +3,8 @@ import CiggyShared
 import SwiftUI
 
 struct WatchDashboardView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
@@ -50,19 +52,19 @@ struct WatchDashboardView: View {
 			}
 			.buttonStyle(.plain)
 			.accessibilityLabel("Open profile and settings")
-			Text("ciggy").font(.system(size: 20, weight: .black, design: .rounded)).tracking(-1).foregroundStyle(CiggyTheme.paper)
+			Text("ciggy").font(.system(size: 20, weight: .black, design: .rounded)).tracking(-1).foregroundStyle(palette.primaryText)
 			Spacer()
 			Circle()
-				.fill(isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
+				.fill(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
 				.frame(width: 7, height: 7)
-				.shadow(color: isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember, radius: 4)
+				.shadow(color: isMotionMonitoring ? palette.mint : CiggyTheme.ember, radius: 4)
 			NavigationLink(destination: WatchSettingsView()) {
 				Image(systemName: "gearshape.fill")
 					.font(.system(size: 12, weight: .bold))
-					.foregroundStyle(.white)
+					.foregroundStyle(palette.primaryText)
 					.frame(width: 30, height: 30)
-					.background(CiggyTheme.elevatedSurface, in: Circle())
-					.overlay(Circle().stroke(CiggyTheme.border, lineWidth: 1))
+					.background(palette.elevatedSurface, in: Circle())
+					.overlay(Circle().stroke(palette.border, lineWidth: 1))
 			}
 			.buttonStyle(.plain)
 			.accessibilityLabel("Settings")
@@ -74,7 +76,7 @@ struct WatchDashboardView: View {
 	private var todayRing: some View {
 		ZStack {
 			Circle()
-				.stroke(CiggyTheme.elevatedSurface, lineWidth: 11)
+				.stroke(palette.elevatedSurface, lineWidth: 11)
 			Circle()
 				.trim(from: 0, to: max(0.025, todayProgress))
 				.stroke(
@@ -87,11 +89,11 @@ struct WatchDashboardView: View {
 				Text("\(viewModel.todayCount)")
 					.contentTransition(.numericText())
 					.font(.system(size: 38, weight: .black, design: .rounded))
-					.foregroundStyle(.white)
+					.foregroundStyle(palette.primaryText)
 				Text("TODAY · \(settings.settings.dailyLimit) LIMIT")
 					.font(.system(size: 8, weight: .bold))
 					.tracking(0.6)
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 			}
 		}
 		.frame(width: 126, height: 126)
@@ -110,10 +112,10 @@ struct WatchDashboardView: View {
 				VStack(alignment: .leading, spacing: 1) {
 					Text("\(review.displayCount) detected")
 						.font(.system(size: 14, weight: .black, design: .rounded))
-						.foregroundStyle(.white)
+						.foregroundStyle(palette.primaryText)
 					Text(review.origin == .watchHistory ? "Last \(review.historyHours)h of Watch history" : "While monitoring motion")
 						.font(.system(size: 8))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 				}
 				Spacer(minLength: 0)
 			}
@@ -121,7 +123,7 @@ struct WatchDashboardView: View {
 			if review.decision == .pending {
 				Text("Already added. Feedback is optional.")
 					.font(.system(size: 8))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 				HStack(spacing: 6) {
 					Button("Accurate") {
 						DetectionReviewWorkflow.markAccurate(review, store: reviewStore)
@@ -132,10 +134,10 @@ struct WatchDashboardView: View {
 					.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
 					Button("Adjust") { reviewToAdjust = review }
-						.foregroundStyle(.white)
+						.foregroundStyle(palette.primaryText)
 						.frame(maxWidth: .infinity)
 						.padding(.vertical, 7)
-						.background(CiggyTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+						.background(palette.elevatedSurface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 				}
 				.buttonStyle(.plain)
 				.font(.system(size: 10, weight: .bold))
@@ -145,14 +147,14 @@ struct WatchDashboardView: View {
 					systemImage: "checkmark.circle.fill"
 				)
 				.font(.system(size: 9, weight: .semibold))
-				.foregroundStyle(CiggyTheme.mint)
+				.foregroundStyle(palette.mint)
 			}
 		}
 		.padding(10)
-		.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+		.background(palette.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
 		.overlay(
 			RoundedRectangle(cornerRadius: 15, style: .continuous)
-				.stroke(CiggyTheme.mint.opacity(0.22), lineWidth: 1)
+				.stroke(palette.mint.opacity(0.22), lineWidth: 1)
 		)
 	}
 
@@ -160,22 +162,22 @@ struct WatchDashboardView: View {
 		HStack(spacing: 9) {
 			Image(systemName: isMotionMonitoring ? "hand.raised.fingers.spread.fill" : "exclamationmark.triangle.fill")
 				.font(.system(size: 15, weight: .bold))
-				.foregroundStyle(isMotionMonitoring ? CiggyTheme.mint : CiggyTheme.ember)
+				.foregroundStyle(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
 			VStack(alignment: .leading, spacing: 1) {
 				Text(isMotionMonitoring ? "Motion monitoring" : "Motion unavailable")
 					.font(.system(size: 12, weight: .bold))
-					.foregroundStyle(.white)
+					.foregroundStyle(palette.primaryText)
 				Text(sensorDetail)
 					.font(.system(size: 9))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 			}
 			Spacer(minLength: 0)
 		}
 		.padding(10)
-		.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+		.background(palette.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
 		.overlay(
 			RoundedRectangle(cornerRadius: 15, style: .continuous)
-				.stroke(CiggyTheme.border, lineWidth: 1)
+				.stroke(palette.border, lineWidth: 1)
 		)
 	}
 
@@ -194,12 +196,12 @@ struct WatchDashboardView: View {
 	private var syncStatus: some View {
 		HStack(spacing: 7) {
 			Image(systemName: connectivity.isLiveSyncAvailable ? "iphone.radiowaves.left.and.right" : "arrow.triangle.2.circlepath")
-				.foregroundStyle(connectivity.isLiveSyncAvailable ? CiggyTheme.mint : CiggyTheme.sunlight)
+				.foregroundStyle(connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.sunlight)
 			Text(syncStatusText)
 			Spacer(minLength: 0)
 		}
 		.font(.system(size: 10, weight: .semibold))
-		.foregroundStyle(CiggyTheme.secondaryText)
+		.foregroundStyle(palette.secondaryText)
 		.padding(.horizontal, 8)
 		.accessibilityElement(children: .combine)
 	}
@@ -214,7 +216,7 @@ struct WatchDashboardView: View {
 					.font(.caption2.weight(.bold))
 			}
 			.font(.system(size: 12, weight: .semibold))
-			.foregroundStyle(.white)
+			.foregroundStyle(palette.primaryText)
 			.padding(.horizontal, 10)
 		}
 		.buttonStyle(.plain)
@@ -268,6 +270,8 @@ struct WatchDashboardView_Previews: PreviewProvider {
 }
 
 private struct WatchDetectionCountAdjustmentView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@Environment(\.dismiss) private var dismiss
 	let review: DetectionReview
 	let onSave: (Int) -> Void
@@ -286,17 +290,17 @@ private struct WatchDetectionCountAdjustmentView: View {
 				VStack(spacing: 10) {
 					Text("Correct count")
 						.font(.system(size: 18, weight: .black, design: .rounded))
-						.foregroundStyle(.white)
+						.foregroundStyle(palette.primaryText)
 					Stepper(value: $count, in: 0...100) {
 						Text("\(count)")
 							.font(.system(size: 28, weight: .black, design: .rounded))
-							.foregroundStyle(CiggyTheme.mint)
+							.foregroundStyle(palette.mint)
 					}
 					.padding(9)
-					.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+					.background(palette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 					Text("Updates both devices")
 						.font(.system(size: 9))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 					Button("Save") {
 						onSave(count)
 						dismiss()
@@ -309,7 +313,7 @@ private struct WatchDetectionCountAdjustmentView: View {
 					.buttonStyle(.plain)
 					Button("Cancel") { dismiss() }
 						.font(.system(size: 11, weight: .semibold))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 						.buttonStyle(.plain)
 				}
 				.padding(.horizontal, 4)

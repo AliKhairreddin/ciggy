@@ -41,7 +41,8 @@ struct CiggyWatchApp: App {
 						break
 					}
 				}
-				.tint(CiggyTheme.mint)
+				.tint(CiggyTheme.ember)
+				.ciggyAppearance()
 		}
 	}
 }

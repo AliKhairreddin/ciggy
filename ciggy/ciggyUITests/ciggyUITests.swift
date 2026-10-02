@@ -138,6 +138,38 @@ final class ciggyUITests: XCTestCase {
     }
 
     @MainActor
+    func testAppearanceSwitchesImmediatelyAndPersists() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        let appearance = app.segmentedControls["appearance-picker"]
+        XCTAssertTrue(appearance.waitForExistence(timeout: 5))
+        appearance.buttons["Cream"].tap()
+        XCTAssertTrue(appearance.buttons["Cream"].isSelected)
+        capture(app, name: "Cream settings")
+
+        appearance.buttons["Dark"].tap()
+        XCTAssertTrue(appearance.buttons["Dark"].isSelected)
+        app.tabBars.buttons["Today"].tap()
+        capture(app, name: "Dark Today")
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(appearance.waitForExistence(timeout: 5))
+        XCTAssertTrue(appearance.buttons["Dark"].isSelected)
+
+        appearance.buttons["Follow System"].tap()
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(appearance.waitForExistence(timeout: 5))
+        XCTAssertTrue(appearance.buttons["Follow System"].isSelected)
+        appearance.buttons["Cream"].tap()
+        app.tabBars.buttons["Today"].tap()
+        capture(app, name: "Cream Today")
+    }
+
+    @MainActor
     private func capture(_ app: XCUIApplication, name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

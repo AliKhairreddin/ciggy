@@ -4,6 +4,8 @@ import CiggyShared
 import SwiftUI
 
 struct DashboardView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
@@ -56,7 +58,7 @@ struct DashboardView: View {
 				.font(.subheadline).padding(16)
 				.ciggyGlass(in: RoundedRectangle(cornerRadius: 22))
 				.padding(.horizontal, 18).padding(.bottom, 8)
-				.foregroundStyle(CiggyTheme.ink)
+				.foregroundStyle(palette.primaryText)
 			}
 		}
 		.sheet(item: $reviewToAdjust) { review in
@@ -76,7 +78,7 @@ struct DashboardView: View {
 		HStack(spacing: 10) {
 			CiggyBrandMark(size: 38)
 			Text("ciggy").font(.system(size: 33, weight: .black, design: .rounded)).tracking(-2)
-				.foregroundStyle(CiggyTheme.ink)
+				.foregroundStyle(palette.primaryText)
 			Spacer()
 			NavigationLink(destination: SettingsView(showsNavigationBar: true)) { CiggyProfileMark(size: 44) }
 				.buttonStyle(.plain).accessibilityLabel("Open profile and settings")
@@ -103,7 +105,7 @@ struct DashboardView: View {
 				VStack(alignment: .leading, spacing: 4) {
 					Text(todayMessage).font(.subheadline.weight(.bold))
 					Text(viewModel.dailyCount == 0 ? "One day at a time. You've got this." : "Last logged \(viewModel.lastEventDescription.lowercased()).")
-						.font(.caption).foregroundStyle(CiggyTheme.ink.opacity(0.7))
+						.font(.caption).foregroundStyle(palette.secondaryText)
 				}
 				Spacer(minLength: 4)
 				NavigationLink(destination: GoalsView(showsNavigationBar: true)) {
@@ -121,10 +123,10 @@ struct DashboardView: View {
 					.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
 			}.buttonStyle(.plain).accessibilityIdentifier("phone-log-button")
 		}
-		.foregroundStyle(CiggyTheme.ink)
+		.foregroundStyle(palette.primaryText)
 		.padding(22)
-		.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 32))
-		.overlay(RoundedRectangle(cornerRadius: 32).stroke(CiggyTheme.ink.opacity(0.18), lineWidth: 1))
+		.background(palette.heroGradient, in: RoundedRectangle(cornerRadius: 32))
+		.overlay(RoundedRectangle(cornerRadius: 32).stroke(palette.border, lineWidth: 1))
 		.shadow(color: CiggyTheme.ember.opacity(0.12), radius: 18, x: 0, y: 8)
 	}
 
@@ -167,7 +169,7 @@ struct DashboardView: View {
 				title: "Est. saved",
 				value: String(format: "$%.0f", viewModel.moneySaved),
 				icon: "leaf.fill",
-				color: CiggyTheme.mint
+				color: palette.mint
 			)
 		}
 	}
@@ -179,14 +181,14 @@ struct DashboardView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						Text("Your week, on paper")
 							.font(.headline)
-							.foregroundStyle(CiggyTheme.primaryText)
+							.foregroundStyle(palette.primaryText)
 						Text("Every log is a little more awareness.")
 							.font(.caption)
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer()
 					Image(systemName: "chart.bar.xaxis")
-						.foregroundStyle(CiggyTheme.mint)
+						.foregroundStyle(palette.mint)
 				}
 
 				Chart(ChartHelpers.dayCounts(for: repository.events, lastNDays: 7)) { item in
@@ -201,13 +203,13 @@ struct DashboardView: View {
 				.chartXAxis {
 					AxisMarks(values: .stride(by: .day)) { _ in
 						AxisValueLabel(format: .dateTime.weekday(.narrow))
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 				}
 				.chartYAxis {
 					AxisMarks(position: .leading) { _ in
-						AxisGridLine().foregroundStyle(CiggyTheme.border)
-						AxisValueLabel().foregroundStyle(CiggyTheme.secondaryText)
+						AxisGridLine().foregroundStyle(palette.border)
+						AxisValueLabel().foregroundStyle(palette.secondaryText)
 					}
 				}
 			}
@@ -235,10 +237,10 @@ struct DashboardView: View {
 					VStack(alignment: .leading, spacing: 4) {
 						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected")
 							.font(.headline)
-							.foregroundStyle(CiggyTheme.primaryText)
+							.foregroundStyle(palette.primaryText)
 						Text(reviewSummaryText(review))
 							.font(.subheadline)
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer(minLength: 0)
 				}
@@ -246,7 +248,7 @@ struct DashboardView: View {
 				if review.decision == .pending {
 					Text("Already included in your total. Only respond if you want to teach Ciggy.")
 						.font(.caption)
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 					HStack(spacing: 10) {
 						Button {
 							DetectionReviewWorkflow.markAccurate(review, store: reviewStore)
@@ -265,16 +267,16 @@ struct DashboardView: View {
 							Text("Adjust count")
 								.frame(maxWidth: .infinity)
 								.padding(.vertical, 11)
-								.background(CiggyTheme.elevatedSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+								.background(palette.elevatedSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 						}
-						.foregroundStyle(CiggyTheme.primaryText)
+						.foregroundStyle(palette.primaryText)
 						.buttonStyle(.plain)
 					}
 					.font(.subheadline.weight(.bold))
 				} else {
 					Label(reviewDecisionText(review), systemImage: "checkmark.circle.fill")
 						.font(.subheadline.weight(.semibold))
-						.foregroundStyle(CiggyTheme.mint)
+						.foregroundStyle(palette.mint)
 				}
 			}
 		}
@@ -285,12 +287,12 @@ struct DashboardView: View {
 			VStack(alignment: .leading, spacing: 12) {
 				HStack {
 					Label("Your little wrist sidekick", systemImage: "applewatch")
-						.font(.subheadline.weight(.bold)).foregroundStyle(CiggyTheme.primaryText)
+						.font(.subheadline.weight(.bold)).foregroundStyle(palette.primaryText)
 					Spacer(minLength: 0)
 				}
-				CiggyStatusPill(syncStatusTitle, systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath", color: connectivity.isLiveSyncAvailable ? CiggyTheme.mint : CiggyTheme.ember)
+				CiggyStatusPill(syncStatusTitle, systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath", color: connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.ember)
 				Text("Your Watch gathers possible cigarettes into a quiet summary. You can adjust it whenever you like.")
-					.font(.caption).foregroundStyle(CiggyTheme.secondaryText)
+					.font(.caption).foregroundStyle(palette.secondaryText)
 			}
 		}
 	}
@@ -320,10 +322,10 @@ struct DashboardView: View {
 				.foregroundStyle(color)
 			Text(value)
 				.font(.title2.weight(.black))
-				.foregroundStyle(CiggyTheme.primaryText)
+				.foregroundStyle(palette.primaryText)
 			Text(title)
 				.font(.caption2)
-				.foregroundStyle(CiggyTheme.secondaryText)
+				.foregroundStyle(palette.secondaryText)
 				.lineLimit(1)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -331,7 +333,7 @@ struct DashboardView: View {
 		.background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 22))
 		.overlay(
 			RoundedRectangle(cornerRadius: 22, style: .continuous)
-				.stroke(CiggyTheme.border, lineWidth: 1)
+				.stroke(palette.border, lineWidth: 1)
 		)
 	}
 
@@ -365,6 +367,8 @@ struct DashboardView_Previews: PreviewProvider {
 }
 
 private struct DetectionCountAdjustmentView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@Environment(\.dismiss) private var dismiss
 	let review: DetectionReview
 	let onSave: (Int) -> Void
@@ -383,7 +387,7 @@ private struct DetectionCountAdjustmentView: View {
 				VStack(spacing: 22) {
 					Text("How many were actually smoked?")
 						.font(.title2.weight(.black))
-						.foregroundStyle(CiggyTheme.primaryText)
+						.foregroundStyle(palette.primaryText)
 						.multilineTextAlignment(.center)
 
 					Stepper(value: $count, in: 0...100) {
@@ -392,15 +396,15 @@ private struct DetectionCountAdjustmentView: View {
 							Spacer()
 							Text("\(count)")
 								.font(.title.weight(.black))
-								.foregroundStyle(CiggyTheme.mint)
+								.foregroundStyle(palette.mint)
 						}
 					}
 					.padding()
-					.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+					.background(palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
 					Text("This updates the total on iPhone and Apple Watch. Event times remain estimates from the detected window.")
 						.font(.caption)
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 						.multilineTextAlignment(.center)
 
 					Button("Save corrected count") {

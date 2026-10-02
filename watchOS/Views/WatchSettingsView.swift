@@ -3,6 +3,8 @@ import CiggyShared
 import SwiftUI
 
 struct WatchSettingsView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settingsStore: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
@@ -13,10 +15,11 @@ struct WatchSettingsView: View {
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 10) {
 					header
+					watchCard { CiggyAppearanceSettings() }
 					detectionCard
 					goalCard
 					summaryNotificationCard
@@ -24,9 +27,9 @@ struct WatchSettingsView: View {
 					previewCard
 					#endif
 					diagnosticsCard
-					Text("Changes save on this Watch and sync to the paired iPhone automatically.")
+					Text("Detection and goal settings sync to your paired iPhone. Appearance stays on this Watch.")
 						.font(.system(size: 9))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 						.multilineTextAlignment(.center)
 						.frame(maxWidth: .infinity)
 						.padding(.horizontal, 5)
@@ -49,10 +52,10 @@ struct WatchSettingsView: View {
 			VStack(alignment: .leading, spacing: 1) {
 				Text("Tune Ciggy")
 					.font(.system(size: 17, weight: .black, design: .rounded))
-					.foregroundStyle(.white)
+					.foregroundStyle(palette.primaryText)
 				Text("Motion-first controls")
 					.font(.system(size: 9, weight: .semibold))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 			}
 			Spacer(minLength: 0)
 		}
@@ -65,10 +68,10 @@ struct WatchSettingsView: View {
 					Label("Sensitivity", systemImage: "hand.raised.fingers.spread.fill")
 					Spacer()
 					Text(sensitivityName)
-						.foregroundStyle(CiggyTheme.mint)
+						.foregroundStyle(palette.mint)
 				}
 				.font(.system(size: 11, weight: .bold))
-				.foregroundStyle(.white)
+				.foregroundStyle(palette.primaryText)
 
 				Slider(
 					value: sensitivityBinding,
@@ -79,12 +82,12 @@ struct WatchSettingsView: View {
 				) {
 					Text("Motion sensitivity")
 				}
-				.tint(CiggyTheme.mint)
+				.tint(palette.mint)
 				.accessibilityValue(sensitivityName)
 
 				Text(sensitivityDescription)
 					.font(.system(size: 9))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 			}
 		}
 	}
@@ -97,10 +100,10 @@ struct WatchSettingsView: View {
 					Spacer()
 					Text("\(settingsStore.settings.dailyLimit)")
 						.font(.system(size: 18, weight: .black, design: .rounded))
-						.foregroundStyle(CiggyTheme.mint)
+						.foregroundStyle(palette.mint)
 				}
 				.font(.system(size: 11, weight: .bold))
-				.foregroundStyle(.white)
+				.foregroundStyle(palette.primaryText)
 			}
 		}
 	}
@@ -111,13 +114,13 @@ struct WatchSettingsView: View {
 				VStack(alignment: .leading, spacing: 2) {
 					Label("Detection summaries", systemImage: "bell.badge.fill")
 						.font(.system(size: 11, weight: .bold))
-						.foregroundStyle(.white)
+						.foregroundStyle(palette.primaryText)
 					Text("Notify after history is checked")
 						.font(.system(size: 9))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 				}
 			}
-			.tint(CiggyTheme.mint)
+			.tint(palette.mint)
 		}
 	}
 
@@ -127,10 +130,10 @@ struct WatchSettingsView: View {
 			VStack(alignment: .leading, spacing: 8) {
 				Label("Try history summary", systemImage: "sparkles")
 					.font(.system(size: 11, weight: .bold))
-					.foregroundStyle(.white)
+					.foregroundStyle(palette.primaryText)
 				Text("Creates 6 debug detections over 8 hours and syncs them.")
 					.font(.system(size: 9))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 				Button("Preview 6 detected") {
 					DetectionReviewWorkflow.createHistoricalPreview(
 						repository: repository,
@@ -154,24 +157,24 @@ struct WatchSettingsView: View {
 				Text("STATUS")
 					.font(.system(size: 9, weight: .black))
 					.tracking(0.7)
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 				diagnosticRow(
 					icon: "hand.raised.fingers.spread.fill",
 					title: "Live motion",
 					detail: motion.isMonitoring ? "Listening" : "Paused",
-					color: motion.isMonitoring ? CiggyTheme.mint : CiggyTheme.sunlight
+					color: motion.isMonitoring ? palette.mint : CiggyTheme.sunlight
 				)
 				diagnosticRow(
 					icon: "clock.arrow.circlepath",
 					title: "Background",
 					detail: backgroundMotion.statusText,
-					color: backgroundMotion.isCaptureArmed ? CiggyTheme.mint : CiggyTheme.ember
+					color: backgroundMotion.isCaptureArmed ? palette.mint : CiggyTheme.ember
 				)
 				diagnosticRow(
 					icon: "iphone.radiowaves.left.and.right",
 					title: "iPhone",
 					detail: connectionDetail,
-					color: connectivity.isLiveSyncAvailable ? CiggyTheme.mint : CiggyTheme.sunlight
+					color: connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.sunlight
 				)
 				diagnosticRow(
 					icon: "heart.fill",
@@ -182,7 +185,7 @@ struct WatchSettingsView: View {
 
 				Text("Background movement is checked when Ciggy wakes. Heart rate remains optional context.")
 					.font(.system(size: 9))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 			}
 		}
 	}
@@ -190,10 +193,10 @@ struct WatchSettingsView: View {
 	private func watchCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
 		content()
 			.padding(10)
-			.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+			.background(palette.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
 			.overlay(
 				RoundedRectangle(cornerRadius: 15, style: .continuous)
-					.stroke(CiggyTheme.border, lineWidth: 1)
+					.stroke(palette.border, lineWidth: 1)
 			)
 	}
 
@@ -203,10 +206,10 @@ struct WatchSettingsView: View {
 				.foregroundStyle(color)
 				.frame(width: 15)
 			Text(title)
-				.foregroundStyle(.white)
+				.foregroundStyle(palette.primaryText)
 			Spacer(minLength: 2)
 			Text(detail)
-				.foregroundStyle(CiggyTheme.secondaryText)
+				.foregroundStyle(palette.secondaryText)
 		}
 		.font(.system(size: 10, weight: .semibold))
 	}

@@ -103,7 +103,7 @@ struct RootTabView: View {
 				.tabItem { Label("Settings", systemImage: "gearshape.fill") }
 		}
 		.tint(CiggyTheme.ember)
-		.preferredColorScheme(.light)
+		.ciggyAppearance()
 	}
 }
 #else

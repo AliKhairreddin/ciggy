@@ -4,23 +4,25 @@ import CiggyShared
 import SwiftUI
 
 struct WeeklySummaryView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@EnvironmentObject private var repository: EventRepository
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(alignment: .leading, spacing: 10) {
 					Text("7-day rhythm")
 						.font(.system(size: 19, weight: .black, design: .rounded))
-						.foregroundStyle(.white)
+						.foregroundStyle(palette.primaryText)
 					HStack(alignment: .firstTextBaseline, spacing: 4) {
 						Text("\(weeklyTotal)")
 							.font(.system(size: 32, weight: .black, design: .rounded))
-							.foregroundStyle(CiggyTheme.mint)
+							.foregroundStyle(palette.mint)
 						Text("logged this week")
 							.font(.system(size: 10))
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 
 					Chart(dayCounts) { item in
@@ -41,9 +43,9 @@ struct WeeklySummaryView: View {
 						Text(String(format: "%.1f / day", Double(weeklyTotal) / 7))
 					}
 					.font(.system(size: 11, weight: .semibold))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 					.padding(10)
-					.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+					.background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 				}
 				.padding(.horizontal, 4)
 			}

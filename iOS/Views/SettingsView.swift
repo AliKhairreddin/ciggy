@@ -3,6 +3,8 @@ import CiggyShared
 import SwiftUI
 
 struct SettingsView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	var showsNavigationBar = false
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
@@ -18,6 +20,7 @@ struct SettingsView: View {
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
 					header
+					CiggyPanel { CiggyAppearanceSettings() }
 					CiggyStoryCard("A sidekick, on your terms.", subtitle: "You choose how Ciggy pays attention.", color: CiggyTheme.softMint)
 					detectionCard
 					notificationCard
@@ -55,15 +58,15 @@ struct SettingsView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						Text("Motion detection")
 							.font(.headline)
-							.foregroundStyle(CiggyTheme.primaryText)
+							.foregroundStyle(palette.primaryText)
 						Text("Repeated hand-to-mouth movement")
 							.font(.caption)
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer()
 					Text(sensitivityName)
 						.font(.caption.weight(.bold))
-						.foregroundStyle(CiggyTheme.mint)
+						.foregroundStyle(palette.mint)
 				}
 
 				Slider(value: $viewModel.sensitivity, in: 0...1, step: 0.01)
@@ -76,11 +79,11 @@ struct SettingsView: View {
 					Text("Earlier detections")
 				}
 				.font(.caption2)
-				.foregroundStyle(CiggyTheme.secondaryText)
+				.foregroundStyle(palette.secondaryText)
 
 				Text(sensitivityDescription)
 					.font(.caption)
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 					.padding(.top, 2)
 			}
 		}
@@ -95,10 +98,10 @@ struct SettingsView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						Text("Detection summaries")
 							.font(.headline)
-							.foregroundStyle(CiggyTheme.primaryText)
+							.foregroundStyle(palette.primaryText)
 						Text("Notify me after Watch history is checked")
 							.font(.caption)
-							.foregroundStyle(CiggyTheme.secondaryText)
+							.foregroundStyle(palette.secondaryText)
 					}
 				}
 			}
@@ -112,10 +115,10 @@ struct SettingsView: View {
 			VStack(alignment: .leading, spacing: 12) {
 				Label("Try the history experience", systemImage: "sparkles")
 					.font(.headline)
-					.foregroundStyle(CiggyTheme.primaryText)
+					.foregroundStyle(palette.primaryText)
 				Text("Adds a clearly labeled debug preview of 6 detections across the last 8 hours and syncs it to the paired Watch.")
 					.font(.caption)
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 				Button("Preview 6 detected in 8 hours") {
 					DetectionReviewWorkflow.createHistoricalPreview(
 						repository: repository,
@@ -141,21 +144,21 @@ struct SettingsView: View {
 				VStack(alignment: .leading, spacing: 2) {
 					Text("Your data")
 						.font(.headline)
-						.foregroundStyle(CiggyTheme.primaryText)
+						.foregroundStyle(palette.primaryText)
 					Text("See what is stored and shared")
 						.font(.caption)
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 				}
 				Spacer()
 				Image(systemName: "chevron.right")
 					.font(.caption.weight(.bold))
-					.foregroundStyle(CiggyTheme.secondaryText)
+					.foregroundStyle(palette.secondaryText)
 			}
 			.padding()
-			.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+			.background(palette.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 			.overlay(
 				RoundedRectangle(cornerRadius: 22, style: .continuous)
-					.stroke(CiggyTheme.border, lineWidth: 1)
+					.stroke(palette.border, lineWidth: 1)
 			)
 		}
 		.buttonStyle(.plain)
@@ -178,7 +181,7 @@ struct SettingsView: View {
 				systemImage: didSave ? "checkmark" : "slider.horizontal.3"
 			)
 			.font(.headline)
-			.foregroundStyle(CiggyTheme.deepInk)
+			.foregroundStyle(palette.primaryText)
 			.frame(maxWidth: .infinity)
 			.padding(.vertical, 16)
 			.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
@@ -192,7 +195,7 @@ struct SettingsView: View {
 			Text("ciggy · built for awareness, never judgment")
 		}
 		.font(.caption2)
-		.foregroundStyle(CiggyTheme.secondaryText)
+		.foregroundStyle(palette.secondaryText)
 		.frame(maxWidth: .infinity)
 	}
 
@@ -217,6 +220,8 @@ struct SettingsView: View {
 }
 
 private struct PrivacyInfoView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	var body: some View {
 		ZStack {
 			CiggyBackdrop()
@@ -255,15 +260,15 @@ private struct PrivacyInfoView: View {
 			HStack(alignment: .top, spacing: 14) {
 				Image(systemName: icon)
 					.font(.title3)
-					.foregroundStyle(CiggyTheme.mint)
+					.foregroundStyle(palette.mint)
 					.frame(width: 28)
 				VStack(alignment: .leading, spacing: 5) {
 					Text(title)
 						.font(.headline)
-						.foregroundStyle(CiggyTheme.primaryText)
+						.foregroundStyle(palette.primaryText)
 					Text(body)
 						.font(.subheadline)
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 				}
 				Spacer(minLength: 0)
 			}

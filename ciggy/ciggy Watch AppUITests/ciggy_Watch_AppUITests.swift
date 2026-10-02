@@ -34,6 +34,42 @@ final class ciggy_Watch_AppUITests: XCTestCase {
     }
 
     @MainActor
+    func testWatchAppearancePersists() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let settings = app.buttons["watch-settings-button"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        let picker = app.descendants(matching: .any)["appearance-picker"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        let dark = app.buttons["Dark"].firstMatch
+        XCTAssertTrue(dark.waitForExistence(timeout: 3))
+        dark.tap()
+        if !picker.exists { app.navigationBars.buttons.firstMatch.tap() }
+        let darkShot = XCTAttachment(screenshot: app.screenshot())
+        darkShot.name = "Dark Watch settings"
+        darkShot.lifetime = .keepAlways
+        add(darkShot)
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(picker.label.contains("Dark") || (picker.value as? String)?.contains("Dark") == true || app.staticTexts["Dark"].exists)
+        picker.tap()
+        let cream = app.buttons["Cream"].firstMatch
+        XCTAssertTrue(cream.waitForExistence(timeout: 3))
+        cream.tap()
+        if !picker.exists { app.navigationBars.buttons.firstMatch.tap() }
+        let creamShot = XCTAttachment(screenshot: app.screenshot())
+        creamShot.name = "Cream Watch settings"
+        creamShot.lifetime = .keepAlways
+        add(creamShot)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

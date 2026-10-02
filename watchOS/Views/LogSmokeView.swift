@@ -3,27 +3,29 @@ import CiggyShared
 import SwiftUI
 
 struct LogSmokeView: View {
+	@Environment(\.colorScheme) private var colorScheme
+	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@Environment(\.dismiss) private var dismiss
 	@EnvironmentObject private var repository: EventRepository
 	@State private var notes = ""
 
 	var body: some View {
 		ZStack {
-			CiggyTheme.appBackground.ignoresSafeArea()
+			CiggyBackdrop()
 			ScrollView {
 				VStack(spacing: 12) {
 					CiggyMascot(animated: false).frame(width: 68, height: 68)
 					Text("Log 1 cigarette")
 						.font(.system(size: 19, weight: .black, design: .rounded))
-						.foregroundStyle(.white)
+						.foregroundStyle(palette.primaryText)
 					Text("One cigarette. Zero judgment.")
 						.font(.system(size: 10))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 
 					TextField("Optional note", text: $notes)
 						.textFieldStyle(.plain)
 						.padding(10)
-						.background(CiggyTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+						.background(palette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
 					Button(action: save) {
 						Label("Save 1", systemImage: "checkmark")
@@ -38,7 +40,7 @@ struct LogSmokeView: View {
 					Button("Cancel") { dismiss() }
 						.buttonStyle(.plain)
 						.font(.system(size: 12, weight: .semibold))
-						.foregroundStyle(CiggyTheme.secondaryText)
+						.foregroundStyle(palette.secondaryText)
 				}
 				.padding(.horizontal, 4)
 				.padding(.bottom, 8)
