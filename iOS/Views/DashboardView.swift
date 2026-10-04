@@ -68,7 +68,7 @@ struct DashboardView: View {
 					store: reviewStore
 				)
 			}
-			.presentationDetents([.medium])
+			.presentationDetents([.medium, .large])
 		}
 	}
 
@@ -474,41 +474,43 @@ private struct DetectionCountAdjustmentView: View {
 		NavigationStack {
 			ZStack {
 				CiggyBackdrop()
-				VStack(spacing: 22) {
-					Text("How many were actually smoked?")
-						.font(.title2.weight(.black))
-						.foregroundStyle(palette.primaryText)
-						.multilineTextAlignment(.center)
+				ScrollView {
+					VStack(spacing: 22) {
+						Text("How many were actually smoked?")
+							.font(.title2.weight(.black))
+							.foregroundStyle(palette.primaryText)
+							.multilineTextAlignment(.center)
 
-					Stepper(value: $count, in: 0...100) {
-						HStack {
-							Text("Correct count")
-							Spacer()
-							Text("\(count)")
-								.font(.title.weight(.black))
-								.foregroundStyle(palette.mint)
+						Stepper(value: $count, in: 0...100) {
+							HStack {
+								Text("Correct count")
+								Spacer()
+								Text("\(count)")
+									.font(.title.weight(.black))
+									.foregroundStyle(palette.mint)
+							}
 						}
-					}
-					.padding()
-					.background(palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+						.padding()
+						.background(palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-					Text("This updates the total on iPhone and Apple Watch. Event times remain estimates from the detected window.")
-						.font(.caption)
-						.foregroundStyle(palette.secondaryText)
-						.multilineTextAlignment(.center)
+						Text("This updates the total on iPhone and Apple Watch. Event times remain estimates from the detected window.")
+							.font(.caption)
+							.foregroundStyle(palette.secondaryText)
+							.multilineTextAlignment(.center)
 
-					Button("Save corrected count") {
-						onSave(count)
-						dismiss()
+						Button("Save corrected count") {
+							onSave(count)
+							dismiss()
+						}
+						.font(.headline)
+						.foregroundStyle(CiggyTheme.deepInk)
+						.frame(maxWidth: .infinity)
+						.padding(.vertical, 15)
+						.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+						.buttonStyle(.plain)
 					}
-					.font(.headline)
-					.foregroundStyle(CiggyTheme.deepInk)
-					.frame(maxWidth: .infinity)
-					.padding(.vertical, 15)
-					.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-					.buttonStyle(.plain)
+					.padding(22)
 				}
-				.padding(22)
 			}
 			.toolbar {
 				ToolbarItem(placement: .cancellationAction) {
