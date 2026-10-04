@@ -14,53 +14,51 @@ struct DashboardView: View {
 	@State private var reviewToAdjust: DetectionReview?
 	@State private var isLogging = false
 	@State private var lastLoggedEvent: SmokingEvent?
+	@State private var loggingNotes = ""
+	@State private var hasInlineDraft = false
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
+	@Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
 	var body: some View {
-		ZStack {
-			CiggyBackdrop()
-			ScrollView {
-				VStack(alignment: .leading, spacing: 18) {
-					profileHeader
-					todayHero
-					quickMetrics
-					detectionExperience
-					weeklyChart
-				}
-				.padding(.horizontal, 18)
-				.padding(.top, 14)
-				.padding(.bottom, 28)
+		CiggyAdaptiveScreen {
+			profileHeader
+			if hasInlineDraft { inlineLoggingCard }
+			logConfirmation
+			todayHero
+			quickMetrics
+			detectionExperience
+			weeklyChart
+		} overview: { mode in
+			profileHeader
+			if mode.isFolded {
+				foldedSummary
+				weeklyChart
+			} else {
+				logConfirmation
+				todayHero
+				quickMetrics
 			}
+		} controls: { mode in
+			if mode.isFolded || hasInlineDraft {
+				inlineLoggingCard
+				logConfirmation
+				quickMetrics
+			} else {
+				weeklyChart
+			}
+			detectionExperience
+			todaysTimeline
 		}
 		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
 		.sheet(isPresented: $isLogging) {
-			PhoneLogSmokeView { event in
+			PhoneLogSmokeView(notes: $loggingNotes) { event in
 				lastLoggedEvent = event
 			}
 			.presentationDetents([.medium, .large])
 			.presentationDragIndicator(.visible)
 		}
 		.sensoryFeedback(.success, trigger: lastLoggedEvent?.id)
-		.safeAreaInset(edge: .bottom) {
-			if let event = lastLoggedEvent {
-				HStack {
-					Label("Logged. No judgment.", systemImage: "checkmark.circle.fill")
-					Spacer()
-					Button("Undo") {
-						repository.removeEvent(id: event.id)
-						ConnectivityManager.shared.sendDeletedEvent(id: event.id)
-						lastLoggedEvent = nil
-					}.fontWeight(.bold).accessibilityIdentifier("undo-phone-log")
-					Button { lastLoggedEvent = nil } label: { Image(systemName: "xmark") }
-						.accessibilityLabel("Dismiss log confirmation")
-				}
-				.font(.subheadline).padding(16)
-				.ciggyGlass(in: RoundedRectangle(cornerRadius: 22))
-				.padding(.horizontal, 18).padding(.bottom, 8)
-				.foregroundStyle(palette.primaryText)
-			}
-		}
 		.sheet(item: $reviewToAdjust) { review in
 			DetectionCountAdjustmentView(review: review) { correctedCount in
 				DetectionReviewWorkflow.adjust(
@@ -71,6 +69,98 @@ struct DashboardView: View {
 				)
 			}
 			.presentationDetents([.medium])
+		}
+	}
+
+	@ViewBuilder
+	private var logConfirmation: some View {
+		if let event = lastLoggedEvent {
+			VStack(alignment: .leading, spacing: 8) {
+				Label("Logged. No judgment.", systemImage: "checkmark.circle.fill")
+				HStack {
+					Button("Undo") {
+						repository.removeEvent(id: event.id)
+						ConnectivityManager.shared.sendDeletedEvent(id: event.id)
+						lastLoggedEvent = nil
+					}.fontWeight(.bold).accessibilityIdentifier("undo-phone-log")
+						.frame(minHeight: 44)
+					Spacer()
+					Button { lastLoggedEvent = nil } label: {
+						Image(systemName: "xmark").frame(width: 44, height: 44)
+					}.accessibilityLabel("Dismiss log confirmation")
+				}
+			}
+			.font(.subheadline).padding(16)
+			.ciggyGlass(in: RoundedRectangle(cornerRadius: 22))
+			.foregroundStyle(palette.primaryText)
+		}
+	}
+
+	private var foldedSummary: some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 12) {
+				Text("TODAY, AT A GLANCE").font(.caption.weight(.bold)).tracking(1.4)
+				HStack {
+					dailyCount
+					Spacer(minLength: 0)
+					if !dynamicTypeSize.isAccessibilitySize {
+						CiggyMascot().frame(width: 88, height: 88)
+					}
+				}
+				CiggyPackMeter(count: viewModel.dailyCount, limit: settings.settings.dailyLimit)
+				Text(todayMessage).font(.subheadline.weight(.semibold))
+			}
+			.foregroundStyle(palette.primaryText)
+		}
+	}
+
+	private var inlineLoggingCard: some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 14) {
+				PhoneLogSmokeForm(notes: Binding(
+					get: { loggingNotes },
+					set: { loggingNotes = $0; hasInlineDraft = true }
+				), didSave: lastLoggedEvent != nil) {
+					guard lastLoggedEvent == nil else { return }
+					hasInlineDraft = false
+					lastLoggedEvent = PhoneSmokingLog.save(notes: loggingNotes, repository: repository)
+					loggingNotes = ""
+				}
+				if lastLoggedEvent != nil {
+					Button("Start another check-in") { lastLoggedEvent = nil }
+						.font(.subheadline.weight(.bold))
+				}
+			}
+		}
+	}
+
+	private var todaysTimeline: some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 14) {
+				Label("Today's little moments", systemImage: "clock")
+					.font(.headline).foregroundStyle(palette.primaryText)
+				let events = repository.events.filter { Calendar.current.isDateInToday($0.timestamp) }.reversed()
+				if events.isEmpty {
+					Text("A fresh page. Your check-ins will appear here.")
+						.font(.subheadline).foregroundStyle(palette.secondaryText)
+				} else {
+					ForEach(Array(events.prefix(8))) { event in
+						HStack(alignment: .top, spacing: 12) {
+							Image(systemName: event.source == .manual ? "plus.circle.fill" : "applewatch")
+								.foregroundStyle(palette.mint)
+							VStack(alignment: .leading, spacing: 3) {
+								Text(event.source == .manual ? "You checked in" : "Watch detection")
+									.font(.subheadline.weight(.semibold))
+								if let notes = event.notes {
+									Text(notes).font(.caption).foregroundStyle(palette.secondaryText)
+								}
+							}
+							Spacer(minLength: 4)
+							Text(event.timestamp, style: .time).font(.caption).foregroundStyle(palette.secondaryText)
+						}.foregroundStyle(palette.primaryText)
+					}
+				}
+			}
 		}
 	}
 
@@ -152,7 +242,7 @@ struct DashboardView: View {
 	}
 
 	private var quickMetrics: some View {
-		HStack(spacing: 12) {
+		LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: dynamicTypeSize.isAccessibilitySize ? 1 : 3), spacing: 12) {
 			metricCard(
 				title: "Smoke-free",
 				value: "\(viewModel.streakDays)d",
@@ -326,9 +416,9 @@ struct DashboardView: View {
 			Text(title)
 				.font(.caption2)
 				.foregroundStyle(palette.secondaryText)
-				.lineLimit(1)
+				.lineLimit(2)
 		}
-		.frame(maxWidth: .infinity, alignment: .leading)
+		.frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
 		.padding(13)
 		.background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 22))
 		.overlay(

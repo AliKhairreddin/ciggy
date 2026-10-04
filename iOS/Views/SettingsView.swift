@@ -16,32 +16,54 @@ struct SettingsView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
-		ZStack {
-			CiggyBackdrop()
-			ScrollView {
-				VStack(alignment: .leading, spacing: 18) {
-					header
-					CiggyPanel { CiggyAppearanceSettings() }
-					CiggyStoryCard("A sidekick, on your terms.", subtitle: "You choose how Ciggy pays attention.", color: CiggyTheme.softMint)
-					detectionCard
-					notificationCard
-					#if DEBUG
-					detectionPreviewCard
-					#endif
-					privacyCard
-					saveButton
-					versionFooter
-				}
-				.padding(.horizontal, 18)
-				.padding(.top, 10)
-				.padding(.bottom, 28)
+		CiggyAdaptiveScreen {
+			header
+			appearanceCard
+			story
+			settingsControls
+			privacyCard
+			saveButton
+			versionFooter
+		} overview: { _ in
+			header
+			story
+			CiggyPanel {
+				VStack(alignment: .leading, spacing: 12) {
+					Label(sensitivityName, systemImage: "hand.raised.fingers.spread.fill")
+						.font(.title2.weight(.bold))
+					Text(sensitivityDescription).font(.subheadline)
+					Label(viewModel.notificationsEnabled ? "Summaries enabled" : "Quiet summaries",
+						  systemImage: viewModel.notificationsEnabled ? "bell" : "bell.slash")
+						.font(.subheadline.weight(.semibold))
+				}.foregroundStyle(palette.primaryText)
 			}
+			privacyCard
+		} controls: { _ in
+			appearanceCard
+			settingsControls
+			saveButton
+			versionFooter
 		}
 		.navigationTitle("Settings")
 		.navigationBarTitleDisplayMode(.inline)
 		.toolbar(showsNavigationBar ? .visible : .hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(settings: settings) }
 		.sensoryFeedback(.success, trigger: didSave)
+	}
+
+	private var appearanceCard: some View { CiggyPanel { CiggyAppearanceSettings() } }
+
+	private var story: some View {
+		CiggyStoryCard("A sidekick, on your terms.", subtitle: "You choose how Ciggy pays attention.", color: CiggyTheme.softMint)
+	}
+
+	@ViewBuilder
+	private var settingsControls: some View {
+		detectionCard
+		notificationCard
+		#if DEBUG
+		detectionPreviewCard
+		#endif
 	}
 
 	private var header: some View {

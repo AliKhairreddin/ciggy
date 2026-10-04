@@ -17,24 +17,28 @@ struct ReportsView: View {
 	}
 
 	var body: some View {
-		ZStack {
-			CiggyBackdrop()
-			ScrollView {
-				VStack(alignment: .leading, spacing: 18) {
-					header
-					CiggyStoryCard("Connect the little dots.", subtitle: "Your habits have a rhythm. Let’s find it.")
-					rangePicker
-					activityChart
-					heartRateCard
-					evidenceNote
-				}
-				.padding(.horizontal, 18)
-				.padding(.top, 10)
-				.padding(.bottom, 28)
-			}
+		CiggyAdaptiveScreen {
+			header
+			story
+			rangePicker
+			activityChart
+			heartRateCard
+			evidenceNote
+		} overview: { _ in
+			header
+			activityChart
+		} controls: { _ in
+			rangePicker
+			story
+			heartRateCard
+			evidenceNote
 		}
 		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository) }
+	}
+
+	private var story: some View {
+		CiggyStoryCard("Connect the little dots.", subtitle: "Your habits have a rhythm. Let’s find it.")
 	}
 
 	private var header: some View {
@@ -48,6 +52,7 @@ struct ReportsView: View {
 			}
 		}
 		.pickerStyle(.segmented)
+		.accessibilityIdentifier("report-range-picker")
 	}
 
 	private var activityChart: some View {

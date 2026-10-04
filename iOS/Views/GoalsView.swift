@@ -12,26 +12,41 @@ struct GoalsView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
-		ZStack {
-			CiggyBackdrop()
-			ScrollView {
-				VStack(alignment: .leading, spacing: 18) {
-					header
-					CiggyStoryCard("Less pressure. More you.", subtitle: "A realistic limit is a good place to start.", color: CiggyTheme.peach)
-					limitCard
-					quitDateCard
-					saveButton
+		CiggyAdaptiveScreen {
+			header
+			story
+			limitCard
+			quitDateCard
+			saveButton
+		} overview: { mode in
+			header
+			story
+			if mode.isFolded {
+				CiggyPanel {
+					VStack(alignment: .leading, spacing: 16) {
+						Text("Your daily plan").font(.headline)
+						Text("\(viewModel.dailyLimit) cigarettes or fewer")
+							.font(.system(.title, design: .rounded, weight: .bold))
+						CiggyPackMeter(count: 0, limit: viewModel.dailyLimit)
+					}.foregroundStyle(palette.primaryText)
 				}
-				.padding(.horizontal, 18)
-				.padding(.top, 10)
-				.padding(.bottom, 28)
+			} else {
+				limitCard
 			}
+		} controls: { mode in
+			if mode.isFolded { limitCard }
+			quitDateCard
+			saveButton
 		}
 		.navigationTitle("Goals")
 		.navigationBarTitleDisplayMode(.inline)
 		.toolbar(showsNavigationBar ? .visible : .hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(settings: settings) }
 		.sensoryFeedback(.success, trigger: didSave)
+	}
+
+	private var story: some View {
+		CiggyStoryCard("Less pressure. More you.", subtitle: "A realistic limit is a good place to start.", color: CiggyTheme.peach)
 	}
 
 	private var header: some View {
@@ -58,7 +73,7 @@ struct GoalsView: View {
 
 				CiggyPackMeter(count: 0, limit: viewModel.dailyLimit)
 
-				HStack(spacing: 24) {
+				HStack(spacing: 12) {
 					Button { viewModel.dailyLimit = max(1, viewModel.dailyLimit - 1) } label: {
 						Image(systemName: "minus")
 							.font(.headline)
@@ -78,7 +93,7 @@ struct GoalsView: View {
 							.font(.caption.weight(.semibold))
 							.foregroundStyle(palette.secondaryText)
 					}
-					.frame(minWidth: 116)
+					.frame(minWidth: 80)
 
 					Button { viewModel.dailyLimit = min(100, viewModel.dailyLimit + 1) } label: {
 						Image(systemName: "plus")
