@@ -71,6 +71,7 @@ final class WatchAppCoordinator: ObservableObject {
 	private weak var settingsStore: UserSettingsStore?
 	private weak var reviewStore: DetectionReviewStore?
 	private var cancellables: Set<AnyCancellable> = []
+	private let widgetSync = WidgetSyncCoordinator()
 
 	func start(
 		repository: EventRepository,
@@ -80,6 +81,7 @@ final class WatchAppCoordinator: ObservableObject {
 	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		widgetSync.bind(repository: repository, settings: settings)
 		NotificationManager.configurePresentation()
 		self.repository = repository
 		settingsStore = settings

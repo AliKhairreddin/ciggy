@@ -178,6 +178,41 @@ final class ciggyUITests: XCTestCase {
     }
 
     @MainActor
+    func testLiveActivityStartsSurvivesRelaunchAndStops() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let button = app.buttons["live-activity-button"]
+        for _ in 0..<8 where !button.isHittable { app.swipeUp() }
+        XCTAssertTrue(button.isHittable)
+        if button.label == "Stop Live Activity" { button.tap() }
+        XCTAssertTrue(app.buttons["Start Live Activity"].waitForExistence(timeout: 5))
+        button.tap()
+        let stop = app.buttons["Stop Live Activity"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        for _ in 0..<8 where !stop.isHittable { app.swipeUp() }
+        XCTAssertTrue(stop.waitForExistence(timeout: 5))
+        capture(app, name: "Live Activity controls")
+        XCUIDevice.shared.press(.home)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertTrue(springboard.icons["ciggy"].waitForExistence(timeout: 5))
+        let island = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        island.name = "Dynamic Island"
+        island.lifetime = .keepAlways
+        add(island)
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        let resumedButton = app.buttons.matching(identifier: "live-activity-button").firstMatch
+        let ready = NSPredicate(format: "isHittable == true AND isEnabled == true")
+        expectation(for: ready, evaluatedWith: resumedButton)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(resumedButton.label, "Stop Live Activity")
+        resumedButton.tap()
+        XCTAssertTrue(app.buttons["Start Live Activity"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

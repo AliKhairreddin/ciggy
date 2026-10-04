@@ -26,6 +26,7 @@ struct DashboardView: View {
 			logConfirmation
 			todayHero
 			quickMetrics
+			LiveActivityCard()
 			detectionExperience
 			weeklyChart
 		} overview: { mode in
@@ -48,9 +49,13 @@ struct DashboardView: View {
 			}
 			detectionExperience
 			todaysTimeline
+			LiveActivityCard()
 		}
 		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
+		.onReceive(NotificationCenter.default.publisher(for: Notification.Name("Ciggy.widgetLogSaved"))) { notification in
+			lastLoggedEvent = notification.object as? SmokingEvent
+		}
 		.sheet(isPresented: $isLogging) {
 			PhoneLogSmokeView(notes: $loggingNotes) { event in
 				lastLoggedEvent = event

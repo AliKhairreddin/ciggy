@@ -12,6 +12,7 @@ struct WatchDashboardView: View {
 	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
 	@State private var reviewToAdjust: DetectionReview?
+	@State private var widgetDestination: String?
 
 	var body: some View {
 		ZStack {
@@ -33,6 +34,17 @@ struct WatchDashboardView: View {
 			}
 		}
 		.onAppear { viewModel.bind(repository: repository) }
+		.onOpenURL { url in
+			guard url.scheme == "ciggy" else { return }
+			if ["log", "reports", "goals"].contains(url.host ?? "") { widgetDestination = url.host }
+		}
+		.navigationDestination(item: $widgetDestination) { destination in
+			switch destination {
+			case "log": LogSmokeView()
+			case "reports": WeeklySummaryView()
+			default: WatchSettingsView()
+			}
+		}
 		.sheet(item: $reviewToAdjust) { review in
 			WatchDetectionCountAdjustmentView(review: review) { correctedCount in
 				DetectionReviewWorkflow.adjust(

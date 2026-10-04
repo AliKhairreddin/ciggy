@@ -10,6 +10,7 @@ struct CiggyiOSApp: App {
 	@StateObject private var settingsStore = UserSettingsStore()
 	@StateObject private var reviewStore = DetectionReviewStore()
 	@StateObject private var appCoordinator = IOSAppCoordinator()
+	@StateObject private var liveActivity = LiveActivityManager()
 
 	var body: some Scene {
 		WindowGroup {
@@ -17,7 +18,9 @@ struct CiggyiOSApp: App {
 				.environmentObject(repository)
 				.environmentObject(settingsStore)
 				.environmentObject(reviewStore)
+				.environmentObject(liveActivity)
 				.onAppear {
+					liveActivity.bind(repository: repository, settings: settingsStore)
 					appCoordinator.start(
 						repository: repository,
 						settings: settingsStore,
@@ -33,6 +36,7 @@ struct CiggyiOSApp: App {
 					if phase == .active {
 						ConnectivityManager.shared.resumeSync()
 						appCoordinator.refreshNotifications()
+						liveActivity.refresh()
 					}
 				}
 		}
@@ -44,6 +48,7 @@ struct CiggyiOSApp: App {
 final class IOSAppCoordinator: ObservableObject {
 	private var cancellables = Set<AnyCancellable>()
 	private var hasStarted = false
+	private let widgetSync = WidgetSyncCoordinator()
 	private var notificationsEnabled = false
 	private let roastPlanner = DailyRoastPlanner()
 	private let notificationRefresh = PassthroughSubject<Void, Never>()
@@ -61,6 +66,7 @@ final class IOSAppCoordinator: ObservableObject {
 	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		widgetSync.bind(repository: repository, settings: settings)
 		NotificationManager.configurePresentation()
 		// Existing history is a baseline, not a reason to alert on every launch.
 		lastNotificationCount = repository.dailyCount(on: Date())
@@ -144,22 +150,58 @@ final class IOSAppCoordinator: ObservableObject {
 
 /// Root TabView with Dashboard, Reports, Goals, Settings
 struct RootTabView: View {
+	@Environment(\.scenePhase) private var scenePhase
+	@State private var selectedTab = 0
+	@State private var isLogging = false
+
 	var body: some View {
-		TabView {
+		TabView(selection: $selectedTab) {
 			NavigationStack { DashboardView() }
 				.tabItem { Label("Today", systemImage: "circle.grid.2x2.fill") }
+				.tag(0)
 
 			NavigationStack { ReportsView() }
 				.tabItem { Label("Reports", systemImage: "chart.bar.fill") }
+				.tag(1)
 
 			NavigationStack { GoalsView() }
 				.tabItem { Label("Goals", systemImage: "target") }
+				.tag(2)
 
 			NavigationStack { SettingsView() }
 				.tabItem { Label("Settings", systemImage: "gearshape.fill") }
+				.tag(3)
 		}
 		.tint(CiggyTheme.ember)
 		.ciggyAppearance()
+		.onOpenURL { url in
+			guard url.scheme == "ciggy" else { return }
+			openDestination(url.host)
+		}
+		.onAppear { openDestination(WidgetNavigation.consume()) }
+		.onChange(of: scenePhase) { _, phase in
+			if phase == .active { openDestination(WidgetNavigation.consume()) }
+		}
+		.onReceive(NotificationCenter.default.publisher(for: WidgetNavigation.requested)) { _ in
+			openDestination(WidgetNavigation.consume())
+		}
+		.sheet(isPresented: $isLogging) {
+			PhoneLogSmokeView { event in
+				NotificationCenter.default.post(name: Notification.Name("Ciggy.widgetLogSaved"), object: event)
+			}
+				.presentationDetents([.medium, .large])
+				.presentationDragIndicator(.visible)
+		}
+	}
+
+	private func openDestination(_ destination: String?) {
+		switch destination {
+		case "log": selectedTab = 0; isLogging = true
+		case "reports": selectedTab = 1
+		case "goals": selectedTab = 2
+		case "today": selectedTab = 0
+		default: break
+		}
 	}
 }
 #else

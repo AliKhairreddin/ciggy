@@ -10,6 +10,10 @@
 		02B80AB4300719880066F68A /* ciggy Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 02B80AB3300719880066F68A /* ciggy Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		02DAFDCE30072286004A708B /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 02DAFDCD30072286004A708B /* CiggyShared */; };
 		A1C000010000000000000003 /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 02DAFDCD30072286004A708B /* CiggyShared */; };
+		C16A1100000000000000000B /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = C16A1100000000000000000A /* CiggyShared */; };
+		C16A1100000000000000000C /* CiggyWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C16A11000000000000000002 /* CiggyWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C16A11000000000000000029 /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = C16A11000000000000000028 /* CiggyShared */; };
+		C16A1100000000000000002A /* CiggyWatchWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C16A11000000000000000020 /* CiggyWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +52,8 @@
 			remoteGlobalIDString = 02B80AB2300719880066F68A;
 			remoteInfo = "ciggy Watch App";
 		};
+		C16A1100000000000000000E = {isa = PBXContainerItemProxy; containerPortal = 02B80A88300719870066F68A; proxyType = 1; remoteGlobalIDString = C16A11000000000000000001; remoteInfo = CiggyWidgets; };
+		C16A1100000000000000002C = {isa = PBXContainerItemProxy; containerPortal = 02B80A88300719870066F68A; proxyType = 1; remoteGlobalIDString = C16A1100000000000000001F; remoteInfo = CiggyWatchWidgets; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -62,6 +68,8 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C16A1100000000000000000D /* Embed App Extensions */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (C16A1100000000000000000C /* CiggyWidgets.appex in Embed App Extensions */, ); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
+		C16A1100000000000000002B /* Embed App Extensions */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (C16A1100000000000000002A /* CiggyWatchWidgets.appex in Embed App Extensions */, ); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -71,6 +79,8 @@
 		02B80AB3300719880066F68A /* ciggy Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ciggy Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		02B80AC2300719890066F68A /* ciggy Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ciggy Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		02B80ACC300719890066F68A /* ciggy Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ciggy Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C16A11000000000000000002 /* CiggyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CiggyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C16A11000000000000000020 /* CiggyWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CiggyWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -114,6 +124,8 @@
 			path = ../watchOS;
 			sourceTree = "<group>";
 		};
+		C16A11000000000000000003 /* CiggyWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; path = ../iOSWidgets; sourceTree = "<group>"; };
+		C16A11000000000000000021 /* CiggyWatchWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; path = ../watchOSWidgets; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -161,12 +173,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C16A11000000000000000005 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C16A1100000000000000000B /* CiggyShared in Frameworks */, ); runOnlyForDeploymentPostprocessing = 0; };
+		C16A11000000000000000023 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C16A11000000000000000029 /* CiggyShared in Frameworks */, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		02B80A87300719870066F68A = {
 			isa = PBXGroup;
 			children = (
+				C16A11000000000000000021 /* CiggyWatchWidgets */,
+				C16A11000000000000000003 /* CiggyWidgets */,
 				02B80A92300719870066F68A /* ciggy */,
 				A1C000010000000000000001 /* iOS */,
 				02B80AA0300719880066F68A /* ciggyTests */,
@@ -182,6 +198,8 @@
 		02B80A91300719870066F68A /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				C16A11000000000000000020 /* CiggyWatchWidgets.appex */,
+				C16A11000000000000000002 /* CiggyWidgets.appex */,
 				02B80A90300719870066F68A /* ciggy.app */,
 				02B80A9D300719880066F68A /* ciggyTests.xctest */,
 				02B80AA7300719880066F68A /* ciggyUITests.xctest */,
@@ -199,6 +217,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 02B80ADA300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy" */;
 			buildPhases = (
+				C16A1100000000000000000D /* Embed App Extensions */,
 				02B80A8C300719870066F68A /* Sources */,
 				02B80A8D300719870066F68A /* Frameworks */,
 				02B80A8E300719870066F68A /* Resources */,
@@ -207,6 +226,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				C16A1100000000000000000F /* Widget extension */,
 				02B80AB6300719880066F68A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
@@ -271,6 +291,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 02B80AD6300719890066F68A /* Build configuration list for PBXNativeTarget "ciggy Watch App" */;
 			buildPhases = (
+				C16A1100000000000000002B /* Embed App Extensions */,
 				02B80AAF300719880066F68A /* Sources */,
 				02B80AB0300719880066F68A /* Frameworks */,
 				02B80AB1300719880066F68A /* Resources */,
@@ -278,6 +299,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				C16A1100000000000000002D /* Widget extension */,
 			);
 			fileSystemSynchronizedGroups = (
 				02B80AB7300719880066F68A /* ciggy Watch App */,
@@ -337,6 +359,26 @@
 			productReference = 02B80ACC300719890066F68A /* ciggy Watch AppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		C16A11000000000000000001 /* CiggyWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C16A11000000000000000007;
+			buildPhases = (C16A11000000000000000004, C16A11000000000000000005, C16A11000000000000000006, );
+			buildRules = (); dependencies = ();
+			fileSystemSynchronizedGroups = (C16A11000000000000000003, );
+			name = CiggyWidgets; packageProductDependencies = (C16A1100000000000000000A, );
+			productName = CiggyWidgets; productReference = C16A11000000000000000002;
+			productType = "com.apple.product-type.app-extension";
+		};
+		C16A1100000000000000001F /* CiggyWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C16A11000000000000000025;
+			buildPhases = (C16A11000000000000000022, C16A11000000000000000023, C16A11000000000000000024, );
+			buildRules = (); dependencies = ();
+			fileSystemSynchronizedGroups = (C16A11000000000000000021, );
+			name = CiggyWatchWidgets; packageProductDependencies = (C16A11000000000000000028, );
+			productName = CiggyWatchWidgets; productReference = C16A11000000000000000020;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -388,6 +430,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				C16A1100000000000000001F /* CiggyWatchWidgets */,
+				C16A11000000000000000001 /* CiggyWidgets */,
 				02B80A8F300719870066F68A /* ciggy */,
 				02B80A9C300719880066F68A /* ciggyTests */,
 				02B80AA6300719880066F68A /* ciggyUITests */,
@@ -441,6 +485,8 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C16A11000000000000000006 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C16A11000000000000000024 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -486,6 +532,8 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C16A11000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C16A11000000000000000022 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -514,6 +562,8 @@
 			target = 02B80AB2300719880066F68A /* ciggy Watch App */;
 			targetProxy = 02B80ACD300719890066F68A /* PBXContainerItemProxy */;
 		};
+		C16A1100000000000000000F = {isa = PBXTargetDependency; target = C16A11000000000000000001; targetProxy = C16A1100000000000000000E; };
+		C16A1100000000000000002D = {isa = PBXTargetDependency; target = C16A1100000000000000001F; targetProxy = C16A1100000000000000002C; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -636,6 +686,7 @@
 		02B80AD7300719890066F68A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				INFOPLIST_FILE = ../Configuration/Watch-Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "ciggy Watch App/ciggy_Watch_App.entitlements";
@@ -672,6 +723,7 @@
 		02B80AD8300719890066F68A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				INFOPLIST_FILE = ../Configuration/Watch-Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "ciggy Watch App/ciggy_Watch_App.entitlements";
@@ -709,6 +761,8 @@
 		02B80ADB300719890066F68A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
+				INFOPLIST_FILE = ../Configuration/iOS-Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
@@ -745,6 +799,8 @@
 		02B80ADC300719890066F68A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
+				INFOPLIST_FILE = ../Configuration/iOS-Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
@@ -963,6 +1019,78 @@
 			};
 			name = Release;
 		};
+		C16A11000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy.widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C16A11000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy.widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		C16A11000000000000000026 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy.watchkitapp.widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = watchos; SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		C16A11000000000000000027 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "That-Canadian-Software-Services.ciggy.watchkitapp.widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = watchos; SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1029,6 +1157,8 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		C16A11000000000000000007 = {isa = XCConfigurationList; buildConfigurations = (C16A11000000000000000008, C16A11000000000000000009, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		C16A11000000000000000025 = {isa = XCConfigurationList; buildConfigurations = (C16A11000000000000000026, C16A11000000000000000027, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -1043,6 +1173,8 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = CiggyShared;
 		};
+		C16A1100000000000000000A /* CiggyShared */ = {isa = XCSwiftPackageProductDependency; productName = CiggyShared; };
+		C16A11000000000000000028 /* CiggyShared */ = {isa = XCSwiftPackageProductDependency; productName = CiggyShared; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 02B80A88300719870066F68A /* Project object */;
