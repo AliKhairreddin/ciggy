@@ -12,6 +12,7 @@ struct SettingsView: View {
 	@StateObject private var viewModel = SettingsViewModel()
 	@State private var isSaving = false
 	@State private var didSave = false
+	@State private var roastPreviewIndex = Int.random(in: 0..<DailyRoastCopy.previews.count)
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
@@ -91,21 +92,44 @@ struct SettingsView: View {
 
 	private var notificationCard: some View {
 		CiggyPanel {
-			Toggle(isOn: $viewModel.notificationsEnabled) {
-				HStack(spacing: 12) {
-					Image(systemName: "bell.badge.fill")
-						.foregroundStyle(CiggyTheme.sunlight)
-					VStack(alignment: .leading, spacing: 2) {
-						Text("Detection summaries")
-							.font(.headline)
-							.foregroundStyle(palette.primaryText)
-						Text("Notify me after Watch history is checked")
-							.font(.caption)
-							.foregroundStyle(palette.secondaryText)
+			VStack(alignment: .leading, spacing: 14) {
+				Toggle(isOn: $viewModel.notificationsEnabled) {
+					HStack(spacing: 12) {
+						Image(systemName: "bell.badge.fill")
+							.foregroundStyle(CiggyTheme.sunlight)
+						VStack(alignment: .leading, spacing: 2) {
+							Text("Daily roasts & summaries")
+								.font(.headline)
+								.foregroundStyle(palette.primaryText)
+							Text("Sarcastic milestones. Honest counts.")
+								.font(.caption)
+								.foregroundStyle(palette.secondaryText)
+						}
 					}
 				}
+				.tint(CiggyTheme.ember)
+				.accessibilityIdentifier("notifications-toggle")
+
+				Text("\"10 cigarettes today. Your lungs would like to unsubscribe.\"")
+					.font(.subheadline)
+					.foregroundStyle(palette.primaryText)
+				Text("110 rotating messages for daily milestones, reaching or exceeding your limit, cutting down, and smoke-free days. Watch logs count once they sync to iPhone. Includes Watch history summaries.")
+					.font(.caption)
+					.foregroundStyle(palette.secondaryText)
+				Button("Preview a roast") {
+					let previews = DailyRoastCopy.previews
+					NotificationManager.scheduleDailyRoast(previews[roastPreviewIndex], preview: true)
+					roastPreviewIndex = (roastPreviewIndex + 1) % previews.count
+				}
+				.font(.subheadline.weight(.bold))
+				.disabled(settings.settings.notificationsEnabled == false || viewModel.notificationsEnabled == false)
+				.accessibilityIdentifier("preview-daily-roast")
+				if settings.settings.notificationsEnabled == false {
+					Text("Enable and save notifications to try a preview.")
+						.font(.caption2)
+						.foregroundStyle(palette.secondaryText)
+				}
 			}
-			.tint(CiggyTheme.ember)
 		}
 	}
 

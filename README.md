@@ -85,6 +85,18 @@ See [the motion test guide](docs/motion-testing.md) for sensor details, physical
 
 Outgoing event/review mutations and incoming messages received before repositories are ready now persist across app restarts. Live sync acknowledges receipt, while physical devices also use durable WatchConnectivity transfers.
 
+## Daily roasts and achievements
+
+Enable **Daily roasts & summaries** in iPhone Settings and save to allow local notifications. The catalog has 110 distinct messages across 11 scenarios: the first cigarette, 5/10/15/20 cigarettes, higher counts, reaching a custom daily limit, exceeding that limit, staying below it, cutting down from the previous day, and a day with zero logged cigarettes. Each scenario cycles through all ten messages before repeating, with rotation saved across launches.
+
+Manual iPhone logs and received Watch events trigger daily milestones at 1 and every multiple of 5, plus the daily limit and the first count above it. Bursts of synced events are combined into one alert with the current count. iPhone owns these milestone notifications so the Watch's copy of the same event cannot generate a second roast. Normal system notification routing can show iPhone notifications on its paired Watch.
+
+Positive achievements review yesterday's completed day when the iPhone next opens or receives events. They use logged history, require tracking to have started before that day, and are delivered at most once per day. They do not assume an empty fresh install proves a smoke-free day. Notifications stay off until enabled; old milestones do not replay on launch, when notifications are enabled, or after correcting a count. **Preview a roast** cycles through the full catalog using labeled sample notifications without changing smoking history.
+
+## Widgets and Dynamic Island
+
+Ciggy includes five widget choices — Today, Daily Budget, Since Last Log, Your Week, and Quick Log — for Home Screen, Lock Screen, and Watch complications/Smart Stack. It also includes three iOS controls and an optional Live Activity for the Lock Screen and Dynamic Island. See [the widget guide](docs/widgets-and-live-activities.md) for sizes, setup, update behavior, and signing requirements.
+
 ## Development
 
 With an Xcode developer toolchain selected, run `swift test` to execute the deterministic motion-session, motion-debounce, persistence, and fresh-install metric tests. The package also exposes separate `CiggyiOS` and `CiggyWatch` products for platform builds.

@@ -30,7 +30,10 @@ struct CiggyiOSApp: App {
 					}
 				}
 				.onChange(of: scenePhase) { _, phase in
-					if phase == .active { ConnectivityManager.shared.resumeSync() }
+					if phase == .active {
+						ConnectivityManager.shared.resumeSync()
+						appCoordinator.refreshNotifications()
+					}
 				}
 		}
 	}
@@ -41,6 +44,15 @@ struct CiggyiOSApp: App {
 final class IOSAppCoordinator: ObservableObject {
 	private var cancellables = Set<AnyCancellable>()
 	private var hasStarted = false
+	private var notificationsEnabled = false
+	private let roastPlanner = DailyRoastPlanner()
+	private let notificationRefresh = PassthroughSubject<Void, Never>()
+	private var dailyLimit = 10
+	private var lastNotificationCount = 0
+
+	func refreshNotifications() {
+		notificationRefresh.send(())
+	}
 
 	func start(
 		repository: EventRepository,
@@ -49,6 +61,36 @@ final class IOSAppCoordinator: ObservableObject {
 	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		NotificationManager.configurePresentation()
+		// Existing history is a baseline, not a reason to alert on every launch.
+		lastNotificationCount = repository.dailyCount(on: Date())
+		_ = roastPlanner.next(count: lastNotificationCount, dailyLimit: settings.settings.dailyLimit, enabled: false)
+
+		// Coalesce historical batches and live/queued sync into one current-count roast.
+		// iPhone owns these alerts; the system can route them to its paired Watch.
+		repository.$events
+			.handleEvents(receiveOutput: { @MainActor [weak self] events in
+				guard let self else { return }
+				let now = Date()
+				let count = events.filter { Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
+				// Undo cancels a queued alert immediately, before the debounce window.
+				if count < self.lastNotificationCount { NotificationManager.cancelPendingDailyRoasts() }
+				self.lastNotificationCount = count
+			})
+			.combineLatest(notificationRefresh.prepend(()))
+			.debounce(for: .seconds(2), scheduler: RunLoop.main)
+			.sink { @MainActor [weak self] events, _ in
+				let now = Date()
+				let count = events.filter { Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
+				guard let self else { return }
+				if let roast = self.roastPlanner.next(count: count, dailyLimit: self.dailyLimit, enabled: self.notificationsEnabled, at: now) {
+					NotificationManager.scheduleDailyRoast(roast)
+				}
+				if let recap = self.roastPlanner.recap(events: events, dailyLimit: self.dailyLimit, enabled: self.notificationsEnabled, at: now) {
+					NotificationManager.scheduleDailyRoast(recap, recap: true)
+				}
+			}
+			.store(in: &cancellables)
 
 		ConnectivityManager.shared.incomingEvent
 			.sink { @MainActor event in
@@ -78,7 +120,21 @@ final class IOSAppCoordinator: ObservableObject {
 
 		settings.$settings
 			.removeDuplicates()
-			.sink { @MainActor sharedSettings in
+			.sink { @MainActor [weak self] sharedSettings in
+				let shouldRequest = sharedSettings.notificationsEnabled && self?.notificationsEnabled == false
+				self?.notificationsEnabled = sharedSettings.notificationsEnabled
+				self?.dailyLimit = sharedSettings.dailyLimit
+				if sharedSettings.notificationsEnabled == false {
+					NotificationManager.cancelPendingDailyRoasts()
+				}
+				if shouldRequest {
+					Task { @MainActor in
+						let granted = await NotificationManager.requestAuthorization()
+						if granted == false, settings.settings.notificationsEnabled {
+							settings.settings.notificationsEnabled = false
+						}
+					}
+				}
 				ConnectivityManager.shared.send(settings: sharedSettings)
 			}
 			.store(in: &cancellables)

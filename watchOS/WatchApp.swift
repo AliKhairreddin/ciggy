@@ -80,6 +80,7 @@ final class WatchAppCoordinator: ObservableObject {
 	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		NotificationManager.configurePresentation()
 		self.repository = repository
 		settingsStore = settings
 		self.reviewStore = reviewStore

@@ -112,10 +112,10 @@ struct WatchSettingsView: View {
 		watchCard {
 			Toggle(isOn: notificationsBinding) {
 				VStack(alignment: .leading, spacing: 2) {
-					Label("Detection summaries", systemImage: "bell.badge.fill")
+					Label("Roasts & summaries", systemImage: "bell.badge.fill")
 						.font(.system(size: 11, weight: .bold))
 						.foregroundStyle(palette.primaryText)
-					Text("Notify after history is checked")
+					Text("Daily roasts on iPhone + Watch history")
 						.font(.system(size: 9))
 						.foregroundStyle(palette.secondaryText)
 				}
