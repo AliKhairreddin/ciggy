@@ -15,6 +15,7 @@ public struct CiggyMascot: View {
 			let time = animated && !reduceMotion && isVisible && scenePhase == .active ? timeline.date.timeIntervalSinceReferenceDate : 0
 			Canvas { context, size in
 				let scale = min(size.width, size.height) / 200
+				context.translateBy(x: (size.width - 200 * scale) / 2, y: (size.height - 200 * scale) / 2)
 				context.scaleBy(x: scale, y: scale)
 				let bob = sin(time * 1.8) * 2.5
 				let wave = sin(time * 1.4) * 4
@@ -47,6 +48,19 @@ public struct CiggyMascot: View {
 				body.addLine(to: CGPoint(x: 91, y: 149)); body.addQuadCurve(to: CGPoint(x: 62, y: 127), control: CGPoint(x: 62, y: 156))
 				body.closeSubpath()
 				context.fill(body, with: .color(CiggyTheme.paper))
+				// A paper seam and scalloped ash cap make the silhouette read as a cigarette.
+				var paperDetail = context
+				paperDetail.clip(to: body)
+				var seam = Path()
+				seam.move(to: CGPoint(x: 91, y: 129)); seam.addLine(to: CGPoint(x: 135, y: 70))
+				paperDetail.stroke(seam, with: .color(CiggyTheme.peach.opacity(0.35)), lineWidth: 4)
+				var ash = Path()
+				ash.addLines([CGPoint(x: 112, y: 56), CGPoint(x: 116, y: 48), CGPoint(x: 145, y: 58), CGPoint(x: 148, y: 76), CGPoint(x: 138, y: 82), CGPoint(x: 137, y: 76), CGPoint(x: 129, y: 75), CGPoint(x: 126, y: 67), CGPoint(x: 119, y: 66)])
+				ash.closeSubpath()
+				paperDetail.fill(ash, with: .color(CiggyTheme.ink.opacity(0.8)))
+				for point in [CGPoint(x: 120, y: 58), CGPoint(x: 130, y: 64), CGPoint(x: 139, y: 72)] {
+					paperDetail.fill(Path(ellipseIn: CGRect(x: point.x, y: point.y, width: 3, height: 2)), with: .color(CiggyTheme.peach))
+				}
 				context.stroke(body, with: .color(CiggyTheme.ink), style: StrokeStyle(lineWidth: 3, lineJoin: .round))
 				var filter = Path()
 				filter.move(to: CGPoint(x: 62, y: 127)); filter.addLine(to: CGPoint(x: 75, y: 109)); filter.addLine(to: CGPoint(x: 104, y: 131))
@@ -60,7 +74,8 @@ public struct CiggyMascot: View {
 				for x in [101.0, 117.0] {
 					context.fill(Path(ellipseIn: CGRect(x: x, y: x == 101 ? 89 : 80, width: 4, height: blink ? 2 : 8)), with: .color(CiggyTheme.ink))
 				}
-				curve(CGPoint(x: 104, y: 103), CGPoint(x: 122, y: 92), CGPoint(x: 117, y: 108), CGPoint(x: 126, y: 102), width: 2.5)
+				// Facial ink stays dark on the cream body, including in Dark appearance.
+				curve(CGPoint(x: 104, y: 103), CGPoint(x: 122, y: 92), CGPoint(x: 117, y: 108), CGPoint(x: 126, y: 102), color: CiggyTheme.ink, width: 2.5)
 				context.fill(Path(ellipseIn: CGRect(x: 95, y: 100, width: 7, height: 4)), with: .color(CiggyTheme.peach))
 				// Four-point doodle stars.
 				for (x, y, r) in [(42.0, 48.0, 9.0), (161.0, 139.0, 7.0), (80.0, 32.0, 5.0)] {
@@ -89,6 +104,7 @@ public struct CiggyBackdrop: View {
 				for y in stride(from: CGFloat(0), through: size.height, by: 28) { grid.move(to: CGPoint(x: 0, y: y)); grid.addLine(to: CGPoint(x: size.width, y: y)) }
 				context.stroke(grid, with: .color(palette.primaryText.opacity(0.035)), lineWidth: 0.5)
 			}
+			CiggyPackWallpaper()
 			#if !os(watchOS)
 			Circle().fill(CiggyTheme.peach.opacity(0.20)).frame(width: 260, height: 260).blur(radius: 65).offset(x: 120, y: -80)
 			#endif
