@@ -96,6 +96,21 @@ public struct CiggyBackdrop: View {
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	public init() {}
 	public var body: some View {
+		#if os(watchOS)
+		ZStack(alignment: .top) {
+			palette.appBackground
+			LinearGradient(
+				colors: colorScheme == .dark
+					? [Color(red: 0.36, green: 0.20, blue: 0.20), CiggyTheme.ink, CiggyTheme.ink.opacity(0)]
+					: [Color(red: 0.58, green: 0.27, blue: 0.16), CiggyTheme.peach, CiggyTheme.paper.opacity(0)],
+				startPoint: .top,
+				endPoint: .bottom
+			)
+			.frame(height: 140)
+		}
+		.ignoresSafeArea()
+		.allowsHitTesting(false).accessibilityHidden(true)
+		#else
 		ZStack(alignment: .topTrailing) {
 			palette.appBackground
 			Canvas { context, size in
@@ -105,18 +120,11 @@ public struct CiggyBackdrop: View {
 				context.stroke(grid, with: .color(palette.primaryText.opacity(0.035)), lineWidth: 0.5)
 			}
 			CiggyPackWallpaper()
-			#if !os(watchOS)
 			Circle().fill(CiggyTheme.peach.opacity(0.20)).frame(width: 260, height: 260).blur(radius: 65).offset(x: 120, y: -80)
-			#endif
 		}
-		#if os(watchOS)
-		// watchOS keeps the system clock white, regardless of the app's content scheme.
-		.ignoresSafeArea(edges: [.horizontal, .bottom])
-		.background(CiggyTheme.ink.ignoresSafeArea())
-		#else
 		.ignoresSafeArea()
-		#endif
 		.allowsHitTesting(false).accessibilityHidden(true)
+		#endif
 	}
 }
 

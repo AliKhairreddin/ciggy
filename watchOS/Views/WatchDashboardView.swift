@@ -15,12 +15,11 @@ struct WatchDashboardView: View {
 	@State private var widgetDestination: String?
 
 	var body: some View {
-		ZStack {
-			CiggyBackdrop()
+		GeometryReader { geometry in
 			ScrollView {
-				VStack(spacing: 10) {
+				VStack(spacing: 8) {
 					profileHeader
-					todayRing
+					todayRing(size: min(106, max(76, geometry.size.height - 100)))
 					logButton
 					if let review = reviewStore.latestReview {
 						detectionReviewCard(review)
@@ -33,6 +32,8 @@ struct WatchDashboardView: View {
 				.padding(.bottom, 8)
 			}
 		}
+		.containerBackground(for: .navigation) { CiggyBackdrop() }
+		.toolbarForegroundStyle(palette.primaryText, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository) }
 		.onOpenURL { url in
 			guard url.scheme == "ciggy" else { return }
@@ -59,12 +60,8 @@ struct WatchDashboardView: View {
 
 	private var profileHeader: some View {
 		HStack(spacing: 7) {
-			NavigationLink(destination: WatchSettingsView()) {
-				CiggyProfileMark(size: 30)
-			}
-			.buttonStyle(.plain)
-			.accessibilityLabel("Open profile and settings")
-			Text("ciggy").font(.system(size: 20, weight: .black, design: .rounded)).tracking(-1).foregroundStyle(palette.primaryText)
+			CiggyBrandMark(size: 24)
+			Text("ciggy").font(.system(size: 18, weight: .black, design: .rounded)).tracking(-0.7).foregroundStyle(palette.primaryText)
 			Spacer()
 			Circle()
 				.fill(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
@@ -74,7 +71,7 @@ struct WatchDashboardView: View {
 				Image(systemName: "gearshape.fill")
 					.font(.system(size: 12, weight: .bold))
 					.foregroundStyle(palette.primaryText)
-					.frame(width: 30, height: 30)
+					.frame(width: 26, height: 26)
 					.background(palette.elevatedSurface, in: Circle())
 					.overlay(Circle().stroke(palette.border, lineWidth: 1))
 			}
@@ -85,30 +82,32 @@ struct WatchDashboardView: View {
 		.padding(.horizontal, 2)
 	}
 
-	private var todayRing: some View {
+	private func todayRing(size: CGFloat) -> some View {
 		ZStack {
 			Circle()
-				.stroke(palette.elevatedSurface, lineWidth: 11)
+				.stroke(palette.elevatedSurface, lineWidth: 8)
 			Circle()
 				.trim(from: 0, to: max(0.025, todayProgress))
 				.stroke(
 					todayProgress >= 1 ? CiggyTheme.emberGradient : CiggyTheme.brandGradient,
-					style: StrokeStyle(lineWidth: 11, lineCap: .round)
+					style: StrokeStyle(lineWidth: 8, lineCap: .round)
 				)
 				.rotationEffect(.degrees(-90))
-			CiggyMascot(animated: false).frame(width: 58, height: 58).offset(x: 43, y: 36)
 			VStack(spacing: -1) {
 				Text("\(viewModel.todayCount)")
 					.contentTransition(.numericText())
-					.font(.system(size: 38, weight: .black, design: .rounded))
+					.font(.system(size: 32, weight: .black, design: .rounded))
 					.foregroundStyle(palette.primaryText)
-				Text("TODAY · \(settings.settings.dailyLimit) LIMIT")
+				Text("TODAY")
 					.font(.system(size: 8, weight: .bold))
 					.tracking(0.6)
 					.foregroundStyle(palette.secondaryText)
+				Text("of \(settings.settings.dailyLimit) limit")
+					.font(.system(size: 8, weight: .medium))
+					.foregroundStyle(palette.secondaryText)
 			}
 		}
-		.frame(width: 126, height: 126)
+		.frame(width: size, height: size)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(todayAccessibilityLabel)
 	}
@@ -199,7 +198,7 @@ struct WatchDashboardView: View {
 				.font(.system(size: 14, weight: .bold))
 				.foregroundStyle(CiggyTheme.deepInk)
 				.frame(maxWidth: .infinity)
-				.padding(.vertical, 12)
+				.padding(.vertical, 10)
 				.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 		}
 		.buttonStyle(.plain)

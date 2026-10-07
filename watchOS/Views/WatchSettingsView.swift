@@ -14,30 +14,29 @@ struct WatchSettingsView: View {
 	@ObservedObject private var health = HealthKitManager.shared
 
 	var body: some View {
-		ZStack {
-			CiggyBackdrop()
-			ScrollView {
-				VStack(alignment: .leading, spacing: 10) {
-					header
-					watchCard { CiggyAppearanceSettings() }
-					detectionCard
-					goalCard
-					summaryNotificationCard
-					#if DEBUG
-					previewCard
-					#endif
-					diagnosticsCard
-					Text("Detection and goal settings sync to your paired iPhone. Appearance stays on this Watch.")
-						.font(.system(size: 9))
-						.foregroundStyle(palette.secondaryText)
-						.multilineTextAlignment(.center)
-						.frame(maxWidth: .infinity)
-						.padding(.horizontal, 5)
-				}
-				.padding(.horizontal, 4)
-				.padding(.bottom, 8)
+		ScrollView {
+			VStack(alignment: .leading, spacing: 10) {
+				header
+				watchCard { CiggyAppearanceSettings() }
+				detectionCard
+				goalCard
+				summaryNotificationCard
+				#if DEBUG
+				previewCard
+				#endif
+				diagnosticsCard
+				Text("Detection and goal settings sync to your paired iPhone. Appearance stays on this Watch.")
+					.font(.system(size: 9))
+					.foregroundStyle(palette.secondaryText)
+					.multilineTextAlignment(.center)
+					.frame(maxWidth: .infinity)
+					.padding(.horizontal, 5)
 			}
+			.padding(.horizontal, 4)
+			.padding(.bottom, 8)
 		}
+		.containerBackground(for: .navigation) { CiggyBackdrop() }
+		.toolbarForegroundStyle(palette.primaryText, for: .navigationBar)
 		.navigationTitle("Settings")
 		.navigationBarTitleDisplayMode(.inline)
 	}
