@@ -34,16 +34,24 @@ public struct UserSettings: Codable, Equatable, Sendable {
 public final class UserSettingsStore: ObservableObject {
 	@Published public var settings: UserSettings {
 		didSet {
-			settings.dailyLimit = UserSettings.clampedDailyLimit(settings.dailyLimit)
-			settings.sensitivity = UserSettings.clampedSensitivity(settings.sensitivity)
+			var normalized = settings
+			normalized.dailyLimit = UserSettings.clampedDailyLimit(settings.dailyLimit)
+			normalized.sensitivity = UserSettings.clampedSensitivity(settings.sensitivity)
+			// Mutating a member through @Published re-enters this observer.
+			// Normalize a local copy instead, and replace only invalid values.
+			if normalized != settings {
+				settings = normalized
+			}
 			save()
 		}
 	}
 
 	private let storageKey = "UserSettingsStore.settings.v1"
+	private let defaults: UserDefaults
 
-	public init() {
-		if let data = UserDefaults.standard.data(forKey: storageKey),
+	public init(defaults: UserDefaults = .standard) {
+		self.defaults = defaults
+		if let data = defaults.data(forKey: storageKey),
 		   let decoded = try? JSONDecoder().decode(UserSettings.self, from: data) {
 			self.settings = decoded
 		} else {
@@ -53,7 +61,7 @@ public final class UserSettingsStore: ObservableObject {
 
 	private func save() {
 		if let data = try? JSONEncoder().encode(settings) {
-			UserDefaults.standard.set(data, forKey: storageKey)
+			defaults.set(data, forKey: storageKey)
 		}
 	}
 }

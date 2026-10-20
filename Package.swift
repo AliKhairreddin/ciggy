@@ -16,7 +16,8 @@ let package = Package(
 	targets: [
 		.target(
 			name: "CiggyShared",
-			path: "Shared"
+			path: "Shared",
+			resources: [.process("Resources")]
 		),
 		.executableTarget(
 			name: "CiggyiOS",

@@ -1,0 +1,37 @@
+{
+  "fill": {
+    "solid": "extended-srgb:0.94118,0.67843,0.47059,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Siggy.png",
+          "name": "Siggy artwork"
+        }
+      ],
+      "name": "Siggy",
+      "position": {
+        "scale": 0.72,
+        "translation-in-points": [
+          -20,
+          0
+        ]
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.22
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.3
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

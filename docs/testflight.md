@@ -22,6 +22,8 @@ Export with `xcodebuild -exportArchive`, automatic signing, `method=app-store-co
 
 After upload, verify processing in App Store Connect → Ciggy → TestFlight. Add the processed build to an internal testing group for the account holder. External testers require a separate group and Apple's beta review; an upload alone does not mean testers can install it.
 
+If a successful upload does not appear, check the account holder's Apple processing email as well. Apple can reject a binary after the upload step. The initial build was rejected for missing iPhone HealthKit purpose strings; both app bundles now include read and write purpose descriptions because the shared library references HealthKit. Ciggy requests read access only and does not write Health data.
+
 ## Submission declarations
 
 Each executable bundle includes `PrivacyInfo.xcprivacy`. Xcode's synchronized source groups copy these files into the corresponding apps and extensions; the Swift package declares the app manifests as resources as well.
