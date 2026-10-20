@@ -32,6 +32,9 @@ public final class DetectionReviewStore: ObservableObject {
 		at updatedAt: Date = Date(),
 		mergeWithPending: Bool = true
 	) -> DetectionReview? {
+		guard [windowStart, windowEnd, updatedAt].allSatisfy({
+			$0.timeIntervalSince1970.isFinite && $0 >= .distantPast && $0 <= .distantFuture
+		}) else { return nil }
 		let sortedEvents = events.sorted { $0.timestamp < $1.timestamp }
 		guard sortedEvents.isEmpty == false else { return nil }
 		let eventIDs = sortedEvents.map(\.id)
@@ -49,7 +52,7 @@ public final class DetectionReviewStore: ObservableObject {
 			review.windowStart = min(review.windowStart, windowStart)
 			review.windowEnd = max(review.windowEnd, windowEnd)
 			review.updatedAt = updatedAt
-			review.revision += 1
+			if review.revision < Int.max { review.revision += 1 }
 			reviews[index] = review
 			sortAndSave()
 			return review
@@ -89,6 +92,7 @@ public final class DetectionReviewStore: ObservableObject {
 	/// Merges a remote revision without duplicating an at-least-once delivery.
 	@discardableResult
 	public func upsert(_ incoming: DetectionReview) -> Bool {
+		guard incoming.hasValidDates else { return false }
 		guard let index = reviews.firstIndex(where: { $0.id == incoming.id }) else {
 			reviews.append(incoming)
 			sortAndSave()
@@ -115,6 +119,7 @@ public final class DetectionReviewStore: ObservableObject {
 		correctedCount: Int?,
 		at date: Date
 	) -> DetectionReview? {
+		guard date.timeIntervalSince1970.isFinite, date >= .distantPast, date <= .distantFuture else { return nil }
 		guard let index = reviews.firstIndex(where: { $0.id == reviewID }),
 		      reviews[index].decision == .pending else { return nil }
 		var review = reviews[index]
@@ -122,7 +127,7 @@ public final class DetectionReviewStore: ObservableObject {
 		review.correctedCount = correctedCount
 		review.reviewedAt = date
 		review.updatedAt = date
-		review.revision += 1
+		if review.revision < Int.max { review.revision += 1 }
 		reviews[index] = review
 		sortAndSave()
 		return review
@@ -134,7 +139,7 @@ public final class DetectionReviewStore: ObservableObject {
 			reviews = []
 			return
 		}
-		reviews = decoded.sorted { $0.updatedAt < $1.updatedAt }
+		reviews = decoded.filter(\.hasValidDates).sorted { $0.updatedAt < $1.updatedAt }
 	}
 
 	private func sortAndSave() {
@@ -172,18 +177,20 @@ public enum DetectionReviewWorkflow {
 			correctedCount: correctedCount
 		) else { return }
 
-		if correctedCount < review.originalCount {
-			for eventID in review.eventIDs.suffix(review.originalCount - correctedCount) {
+		// The summary may have merged new detections while its adjustment sheet was open.
+		// Apply the decision to the latest persisted revision returned by the store.
+		if correctedCount < updated.originalCount {
+			for eventID in updated.eventIDs.suffix(updated.originalCount - correctedCount) {
 				repository.removeEvent(id: eventID)
 				ConnectivityManager.shared.sendDeletedEvent(id: eventID)
 			}
-		} else if correctedCount > review.originalCount {
-			let additionalCount = correctedCount - review.originalCount
-			let duration = max(60, review.windowEnd.timeIntervalSince(review.windowStart))
+		} else if correctedCount > updated.originalCount {
+			let additionalCount = correctedCount - updated.originalCount
+			let duration = max(0, updated.windowEnd.timeIntervalSince(updated.windowStart))
 			for index in 0..<additionalCount {
 				let fraction = Double(index + 1) / Double(additionalCount + 1)
 				let event = SmokingEvent(
-					timestamp: review.windowStart.addingTimeInterval(duration * fraction),
+					timestamp: updated.windowStart.addingTimeInterval(duration * fraction),
 					source: .manual,
 					notes: "Added while adjusting a Watch detection summary."
 				)

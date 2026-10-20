@@ -35,7 +35,3 @@ struct CiggyTodayControl: ControlWidget {
 		}.displayName("Ciggy Today").description("Open today's check-in.")
 	}
 }
-
-struct CiggyWidgetIntentsPackage: AppIntentsPackage {
-	static var includedPackages: [any AppIntentsPackage.Type] { [CiggySharedIntentsPackage.self] }
-}

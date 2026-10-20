@@ -80,6 +80,17 @@ final class MotionGestureEngineTests: XCTestCase {
         XCTAssertEqual(engine.phase, .seekingRest)
     }
 
+    func testAnOldMalformedDeliveryDoesNotCancelTheCurrentGesture() {
+        var engine = MotionGestureEngine()
+        var count = 0
+        for sample in MotionFixtures.cycle(start: start) {
+            if engine.record(sample) != nil { count += 1 }
+            XCTAssertNil(engine.record(.init(timestamp: start.addingTimeInterval(-1),
+                gravity: .init(x: .nan, y: 0, z: 0), userAcceleration: .init(x: 0, y: 0, z: 0), rotationRate: nil)))
+        }
+        XCTAssertEqual(count, 1)
+    }
+
     func testAccelerometerOnlySamplesInferRotationWithoutInventingGyroscope() {
         var engine = MotionGestureEngine()
         let samples = MotionFixtures.cycle(start: start).map {
@@ -87,6 +98,25 @@ final class MotionGestureEngineTests: XCTestCase {
                          rotationRate: nil, source: .recordedAccelerometer)
         }
         XCTAssertEqual(samples.compactMap { engine.record($0) }.count, 1)
+    }
+
+    func testLargeFiniteVectorsDoNotOverflowNormalization() throws {
+        let vector = MotionVector(x: 1e200, y: 1e200, z: 0)
+        XCTAssertTrue(vector.magnitude.isFinite)
+        XCTAssertEqual(try XCTUnwrap(vector.normalized).magnitude, 1, accuracy: 0.000_001)
+        XCTAssertNil(MotionVector(x: .greatestFiniteMagnitude, y: .greatestFiniteMagnitude, z: 0).normalized)
+    }
+
+    func testInvalidConfigurationFallsBackToFiniteUsableThresholds() {
+        var configuration = MotionGestureEngine.Configuration()
+        configuration.minimumRaiseAngle = .nan
+        configuration.minimumHoldSeconds = .infinity
+        configuration.maximumSampleGap = -.infinity
+        configuration.returnAngle = 3
+        var engine = MotionGestureEngine(configuration: configuration)
+        XCTAssertEqual(engine.configuration.minimumRaiseAngle, 0.45)
+        XCTAssertLessThan(engine.configuration.returnAngle, engine.configuration.minimumRaiseAngle)
+        XCTAssertEqual(MotionFixtures.cycle(start: start).compactMap { engine.record($0) }.count, 1)
     }
 }
 

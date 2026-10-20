@@ -25,8 +25,8 @@ public struct RecordedMotionAnalyzer: Codable, Sendable {
                 gravityTimeConstant: TimeInterval = 0.25,
                 gestureEngine: MotionGestureEngine = .init(),
                 fusionConfiguration: DetectionFusionEngine.Configuration = .init()) {
-        self.sampleInterval = max(0.02, sampleInterval)
-        self.gravityTimeConstant = max(0.05, gravityTimeConstant)
+        self.sampleInterval = sampleInterval.isFinite ? min(1, max(0.02, sampleInterval)) : 0.1
+        self.gravityTimeConstant = gravityTimeConstant.isFinite ? min(5, max(0.05, gravityTimeConstant)) : 0.25
         self.gestureEngine = gestureEngine
         fusionEngine = DetectionFusionEngine(configuration: fusionConfiguration)
         fusionEngine.updateSensitivity(sensitivity)
@@ -36,7 +36,15 @@ public struct RecordedMotionAnalyzer: Codable, Sendable {
 
     public mutating func record(_ sample: RecordedAccelerationSample) -> DetectionCandidate? {
         let acceleration = MotionVector(x: sample.x, y: sample.y, z: sample.z)
-        guard acceleration.isFinite, sample.timestamp.timeIntervalSince1970.isFinite else { return nil }
+        guard sample.timestamp.timeIntervalSince1970.isFinite else { return nil }
+        // Ignore old deliveries before they can interrupt the current stream.
+        if let lastSampleAt, sample.timestamp <= lastSampleAt { return nil }
+        guard acceleration.isFinite, acceleration.magnitude.isFinite, acceleration.magnitude > 0.01 else {
+            gravity = nil
+            gestureEngine.reset()
+            lastSampleAt = sample.timestamp
+            return nil
+        }
         let elapsed = lastSampleAt.map { sample.timestamp.timeIntervalSince($0) } ?? sampleInterval
         guard elapsed >= sampleInterval - 0.000_001 else { return nil }
         if elapsed > gestureEngine.configuration.maximumSampleGap {

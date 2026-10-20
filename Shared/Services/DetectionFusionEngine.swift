@@ -22,15 +22,26 @@ public struct DetectionFusionEngine: Codable, Sendable {
 			detectionCooldownSeconds: TimeInterval = 8 * 60,
 			heartRateContextSeconds: TimeInterval = 60
 		) {
-			self.minimumGestureCount = max(2, minimumGestureCount)
-			self.sessionWindowSeconds = max(30, sessionWindowSeconds)
-			self.minimumGestureSeparationSeconds = max(0, minimumGestureSeparationSeconds)
+			self.minimumGestureCount = min(100, max(2, minimumGestureCount))
+			self.sessionWindowSeconds = Self.finite(sessionWindowSeconds, fallback: 480, range: 30...3_600)
+			self.minimumGestureSeparationSeconds = Self.finite(minimumGestureSeparationSeconds, fallback: 6, range: 0...150)
 			self.maximumGestureSeparationSeconds = max(
 				self.minimumGestureSeparationSeconds,
-				maximumGestureSeparationSeconds
+				Self.finite(maximumGestureSeparationSeconds, fallback: 150, range: 1...3_600)
 			)
-			self.detectionCooldownSeconds = max(0, detectionCooldownSeconds)
-			self.heartRateContextSeconds = max(10, heartRateContextSeconds)
+			self.detectionCooldownSeconds = Self.finite(detectionCooldownSeconds, fallback: 480, range: 0...3_600)
+			self.heartRateContextSeconds = Self.finite(heartRateContextSeconds, fallback: 60, range: 10...600)
+		}
+
+		private static func finite(_ value: Double, fallback: Double, range: ClosedRange<Double>) -> Double {
+			min(range.upperBound, max(range.lowerBound, value.isFinite ? value : fallback))
+		}
+
+		fileprivate var validated: Self {
+			.init(minimumGestureCount: minimumGestureCount, sessionWindowSeconds: sessionWindowSeconds,
+			      minimumGestureSeparationSeconds: minimumGestureSeparationSeconds,
+			      maximumGestureSeparationSeconds: maximumGestureSeparationSeconds,
+			      detectionCooldownSeconds: detectionCooldownSeconds, heartRateContextSeconds: heartRateContextSeconds)
 		}
 	}
 
@@ -47,7 +58,7 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	private var lastCandidateAt: Date?
 
 	public init(configuration: Configuration = .init()) {
-		self.configuration = configuration
+		self.configuration = configuration.validated
 	}
 
 	/// Higher sensitivity asks for fewer repeated movements; it never changes
@@ -66,10 +77,14 @@ public struct DetectionFusionEngine: Codable, Sendable {
 
 	/// Stores optional physiological context. This method never emits a candidate.
 	public mutating func recordHeartRate(_ bpm: Double, at timestamp: Date) {
-		guard bpm.isFinite, bpm > 0 else { return }
+		guard bpm.isFinite, (1...300).contains(bpm), timestamp.timeIntervalSince1970.isFinite else { return }
+		configuration = configuration.validated
+		// Replayed samples must not grow memory or change the baseline weighting.
+		recentHeartRates.removeAll { $0.timestamp == timestamp }
 		recentHeartRates.append(.init(timestamp: timestamp, bpm: bpm))
 		recentHeartRates.sort { $0.timestamp < $1.timestamp }
-		trimHeartRates(relativeTo: timestamp)
+		trimHeartRates(relativeTo: recentHeartRates.last?.timestamp ?? timestamp)
+		if recentHeartRates.count > 600 { recentHeartRates.removeFirst(recentHeartRates.count - 600) }
 	}
 
 	/// Records a distinct hand-to-mouth gesture and emits once the motion pattern
@@ -77,14 +92,15 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	public mutating func recordGesture(at timestamp: Date) -> DetectionCandidate? {
 		guard timestamp.timeIntervalSince1970.isFinite,
 		      abs(timestamp.timeIntervalSince1970) < Double(Int64.max) / 1_000 else { return nil }
+		configuration = configuration.validated
 		if let lastCandidateAt,
-		   timestamp.timeIntervalSince(lastCandidateAt) < configuration.detectionCooldownSeconds {
+		   timestamp <= lastCandidateAt || timestamp.timeIntervalSince(lastCandidateAt) < configuration.detectionCooldownSeconds {
 			return nil
 		}
 
 		if let lastGesture = gestureTimestamps.last {
 			let separation = timestamp.timeIntervalSince(lastGesture)
-			guard separation >= configuration.minimumGestureSeparationSeconds else { return nil }
+			guard separation > 0, separation >= configuration.minimumGestureSeparationSeconds else { return nil }
 			if separation > configuration.maximumGestureSeparationSeconds {
 				gestureTimestamps.removeAll()
 			}
@@ -122,6 +138,20 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	public mutating func resetSession() {
 		gestureTimestamps.removeAll()
 		recentHeartRates.removeAll()
+	}
+
+	/// Refresh progress even when no new gesture is completed. Keeping a partial
+	/// count forever after the wrist stops moving makes monitoring look stuck.
+	public mutating func expireSession(at timestamp: Date) {
+		guard timestamp.timeIntervalSince1970.isFinite else { return }
+		configuration = configuration.validated
+		if let lastGesture = gestureTimestamps.last,
+		   timestamp.timeIntervalSince(lastGesture) > configuration.maximumGestureSeparationSeconds {
+			gestureTimestamps.removeAll()
+		} else {
+			gestureTimestamps.removeAll { timestamp.timeIntervalSince($0) > configuration.sessionWindowSeconds }
+		}
+		trimHeartRates(relativeTo: timestamp)
 	}
 
 	/// Reprocessing the same sensor window after termination must emit the same event

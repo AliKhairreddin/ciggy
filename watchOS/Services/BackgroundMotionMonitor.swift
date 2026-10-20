@@ -10,15 +10,22 @@ struct HistoricalMotionBatch: Sendable {
 	let processedFrom: Date
 	let processedThrough: Date
 	let analyzer: RecordedMotionAnalyzer
+	let latestSampleAt: Date?
+	let pendingRanges: [MotionHistoryRange]
+	let didExpireHistory: Bool
 }
 
 private struct MotionHistoryCheckpoint: Codable {
 	let processedThrough: Date
 	let analyzer: RecordedMotionAnalyzer
+	// Optional fields preserve checkpoints written before reconciliation existed.
+	let latestSampleAt: Date?
+	let pendingRanges: [MotionHistoryRange]?
+	let hasExpiredHistory: Bool?
 }
 
-/// Arms watchOS historical accelerometer capture and analyzes the recorded backlog when
-/// Ciggy next becomes active. `CMSensorRecorder` continues collecting while the app is
+/// Arms watchOS historical accelerometer capture and analyzes the recorded backlog during
+/// foreground use and scheduled background refresh. `CMSensorRecorder` keeps collecting while the app is
 /// suspended or terminated; analysis itself happens only when the app has runtime.
 @MainActor
 final class BackgroundMotionMonitor: ObservableObject {
@@ -28,6 +35,10 @@ final class BackgroundMotionMonitor: ObservableObject {
 	@Published private(set) var isCaptureArmed = false
 	@Published private(set) var isProcessingHistory = false
 	@Published private(set) var lastError: String?
+	@Published private(set) var lastHistorySampleAt: Date?
+	@Published private(set) var lastHistoryCheckedAt: Date?
+	@Published private(set) var hasPendingHistory = false
+	@Published private(set) var hasExpiredHistory = false
 
 	private let recorder = CMSensorRecorder()
 	private let userDefaults: UserDefaults
@@ -35,14 +46,27 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let checkpointKey = "BackgroundMotionMonitor.checkpoint.v2"
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
 	private let captureDuration: TimeInterval = 12 * 60 * 60
-	private let renewalInterval: TimeInterval = 10 * 60 * 60
+	// A refresh also analyzes the backlog. watchOS decides when it actually runs.
+	private let renewalInterval: TimeInterval = 30 * 60
 	private let availabilityDelay: TimeInterval = 3 * 60
 	private let retentionDuration: TimeInterval = 3 * 24 * 60 * 60
-	private let queryChunkDuration: TimeInterval = (12 * 60 * 60) - 1
+	private let queryChunkDuration: TimeInterval = 30 * 60
 
 	private init(userDefaults: UserDefaults = .standard) {
 		self.userDefaults = userDefaults
+		lastHistorySampleAt = checkpoint?.latestSampleAt
+		hasPendingHistory = checkpoint?.pendingRanges?.isEmpty == false
+		hasExpiredHistory = checkpoint?.hasExpiredHistory ?? false
 		refreshStatus()
+	}
+
+	var statusDetail: String {
+		if let lastError { return lastError }
+		if hasPendingHistory { return "Some motion history is unavailable. Ciggy retries it while watchOS retains the recording; recent available activity still updates." }
+		if hasExpiredHistory { return "Some older motion history expired before it could be checked, so past totals may be incomplete. Recent available activity still updates." }
+		if isCaptureAvailable == false { return "Automatic detection needs a physical Apple Watch with motion access." }
+		if isCaptureArmed == false { return "Open Ciggy and allow Motion & Fitness access to start background capture." }
+		return "Motion estimates can appear a few minutes later. Open Ciggy to check recorded activity; background updates depend on watchOS."
 	}
 
 	var statusText: String {
@@ -57,6 +81,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 			return "Awaiting permission"
 		case .authorized:
 			if isProcessingHistory { return "Checking history" }
+			if hasPendingHistory { return "Retrying history" }
 			return isCaptureArmed ? "Background armed" : "Open to re-arm"
 		@unknown default:
 			return isCaptureArmed ? "Background armed" : "Unavailable"
@@ -90,7 +115,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 
 	/// Reads samples old enough to be available from Core Motion and returns all probable
 	/// sessions. The caller persists the candidates before committing `processedThrough`.
-	func processAvailableHistory(sensitivity: Double) async -> HistoricalMotionBatch? {
+	func processAvailableHistory(sensitivity: Double, maximumProcessingTime: TimeInterval = 20) async -> HistoricalMotionBatch? {
 		refreshStatus()
 		guard isCaptureAvailable, isProcessingHistory == false else { return nil }
 		guard CMSensorRecorder.authorizationStatus() == .authorized else { return nil }
@@ -102,42 +127,67 @@ final class BackgroundMotionMonitor: ObservableObject {
 
 		isProcessingHistory = true
 		defer { isProcessingHistory = false }
+		lastHistoryCheckedAt = Date()
 		let queryChunkDuration = self.queryChunkDuration
 		var analyzer = checkpoint?.analyzer ?? RecordedMotionAnalyzer(sensitivity: sensitivity)
 		analyzer.updateSensitivity(sensitivity)
 		let initialAnalyzer = analyzer
-		let result = await Task.detached(priority: .utility) {
+		let pendingRanges = checkpoint?.pendingRanges ?? []
+		let processing = Task.detached(priority: .utility) {
 			HistoricalMotionProcessor.process(
 				from: start,
 				to: end,
 				analyzer: initialAnalyzer,
-				queryChunkDuration: queryChunkDuration
+				pendingRanges: pendingRanges,
+				sensitivity: sensitivity,
+				queryChunkDuration: queryChunkDuration,
+				maximumProcessingTime: maximumProcessingTime
 			)
-		}.value
+		}
+		let result = await withTaskCancellationHandler {
+			await processing.value
+		} onCancel: {
+			processing.cancel()
+		}
+		guard Task.isCancelled == false else { return nil }
 		return HistoricalMotionBatch(
 			candidates: result.candidates,
 			processedFrom: start,
-			processedThrough: end,
-			analyzer: result.analyzer
+			processedThrough: result.processedThrough,
+			analyzer: result.analyzer,
+			latestSampleAt: result.latestSampleAt,
+			pendingRanges: result.pendingRanges,
+			didExpireHistory: result.expiredRangeCount > 0 || storedCursor < start
 		)
 	}
 
 	func commit(_ batch: HistoricalMotionBatch) {
 		guard processedThrough.map({ batch.processedThrough >= $0 }) ?? true else { return }
-		let checkpoint = MotionHistoryCheckpoint(processedThrough: batch.processedThrough, analyzer: batch.analyzer)
+		let latestSample = [lastHistorySampleAt, batch.latestSampleAt].compactMap { $0 }.max()
+		let checkpoint = MotionHistoryCheckpoint(processedThrough: batch.processedThrough, analyzer: batch.analyzer,
+		                                        latestSampleAt: latestSample,
+		                                        pendingRanges: batch.pendingRanges,
+		                                        hasExpiredHistory: hasExpiredHistory || batch.didExpireHistory)
 		// Cursor and classifier state are one value: a relaunch must not lose a
 		// partial smoking session or the cooldown established in the previous batch.
 		guard let data = try? JSONEncoder().encode(checkpoint) else { return }
 		userDefaults.set(data, forKey: checkpointKey)
+		lastHistorySampleAt = checkpoint.latestSampleAt
+		hasPendingHistory = batch.pendingRanges.isEmpty == false
+		hasExpiredHistory = checkpoint.hasExpiredHistory ?? false
 	}
 
 	private var processedThrough: Date? {
-		checkpoint?.processedThrough ?? userDefaults.object(forKey: cursorKey) as? Date
+		guard let cursor = checkpoint?.processedThrough ?? userDefaults.object(forKey: cursorKey) as? Date,
+		      MotionHistoryProcessor.isSupportedDate(cursor) else { return nil }
+		return cursor
 	}
 
 	private var checkpoint: MotionHistoryCheckpoint? {
 		guard let data = userDefaults.data(forKey: checkpointKey) else { return nil }
-		return try? JSONDecoder().decode(MotionHistoryCheckpoint.self, from: data)
+		guard let checkpoint = try? JSONDecoder().decode(MotionHistoryCheckpoint.self, from: data),
+		      MotionHistoryProcessor.isSupportedDate(checkpoint.processedThrough) else { return nil }
+		return checkpoint
 	}
 
 	private func refreshStatus() {
@@ -162,43 +212,32 @@ final class BackgroundMotionMonitor: ObservableObject {
 }
 
 private enum HistoricalMotionProcessor {
-	struct Result: Sendable {
-		let candidates: [DetectionCandidate]
-		let analyzer: RecordedMotionAnalyzer
-	}
 	nonisolated static func process(
 		from start: Date,
 		to end: Date,
 		analyzer initialAnalyzer: RecordedMotionAnalyzer,
-		queryChunkDuration: TimeInterval
-	) -> Result {
+		pendingRanges: [MotionHistoryRange],
+		sensitivity: Double,
+		queryChunkDuration: TimeInterval,
+		maximumProcessingTime: TimeInterval
+	) -> MotionHistoryProcessor.Result {
 		let recorder = CMSensorRecorder()
-		var analyzer = initialAnalyzer
-		var candidates: [DetectionCandidate] = []
-		var queryStart = start
-
-		while queryStart < end {
-			let queryEnd = min(queryStart.addingTimeInterval(queryChunkDuration), end)
-			if let samples = recorder.accelerometerData(from: queryStart, to: queryEnd) {
+		let deadline = ProcessInfo.processInfo.systemUptime + maximumProcessingTime
+		return MotionHistoryProcessor.process(
+			from: start, to: end, analyzer: initialAnalyzer, pendingRanges: pendingRanges,
+			sensitivity: sensitivity, queryChunkDuration: queryChunkDuration,
+			query: { queryStart, queryEnd in
+				guard let samples = recorder.accelerometerData(from: queryStart, to: queryEnd) else { return nil }
 				var iterator = NSFastEnumerationIterator(samples)
-				while let sample = iterator.next() as? CMRecordedAccelerometerData {
+				return AnySequence { AnyIterator {
+					guard let sample = iterator.next() as? CMRecordedAccelerometerData else { return nil }
 					let acceleration = sample.acceleration
-					if let candidate = analyzer.record(
-						.init(
-							timestamp: sample.startDate,
-							x: acceleration.x,
-							y: acceleration.y,
-							z: acceleration.z
-						)
-					) {
-						candidates.append(candidate)
-					}
-				}
-			}
-			queryStart = queryEnd
-		}
-
-		return Result(candidates: candidates, analyzer: analyzer)
+					return RecordedAccelerationSample(timestamp: sample.startDate, x: acceleration.x,
+					                                  y: acceleration.y, z: acceleration.z)
+				} }
+			},
+			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline }
+		)
 	}
 }
 #endif

@@ -20,13 +20,13 @@ struct WatchDashboardView: View {
 				VStack(spacing: 8) {
 					profileHeader
 					todayRing(size: min(106, max(76, geometry.size.height - 100)))
-					logButton
 					if let review = reviewStore.latestReview {
 						detectionReviewCard(review)
 					}
 					motionStatus
 					syncStatus
 					weeklyLink
+					logButton
 				}
 				.padding(.horizontal, 4)
 				.padding(.bottom, 8)
@@ -68,7 +68,7 @@ struct WatchDashboardView: View {
 				.frame(width: 7, height: 7)
 				.shadow(color: isMotionMonitoring ? palette.mint : CiggyTheme.ember, radius: 4)
 			NavigationLink(destination: WatchSettingsView()) {
-				Image(systemName: "gearshape.fill")
+				Image(systemName: "person.crop.circle.fill")
 					.font(.system(size: 12, weight: .bold))
 					.foregroundStyle(palette.primaryText)
 					.frame(width: 26, height: 26)
@@ -76,7 +76,7 @@ struct WatchDashboardView: View {
 					.overlay(Circle().stroke(palette.border, lineWidth: 1))
 			}
 			.buttonStyle(.plain)
-			.accessibilityLabel("Settings")
+			.accessibilityLabel("Open profile and settings")
 			.accessibilityIdentifier("watch-settings-button")
 		}
 		.padding(.horizontal, 2)
@@ -110,6 +110,7 @@ struct WatchDashboardView: View {
 		.frame(width: size, height: size)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(todayAccessibilityLabel)
+		.accessibilityIdentifier("watch-today-count")
 	}
 
 	private func detectionReviewCard(_ review: DetectionReview) -> some View {
@@ -124,7 +125,10 @@ struct WatchDashboardView: View {
 					Text("\(review.displayCount) detected")
 						.font(.system(size: 14, weight: .black, design: .rounded))
 						.foregroundStyle(palette.primaryText)
-					Text(review.origin == .watchHistory ? "Last \(review.historyHours)h of Watch history" : "While monitoring motion")
+					Text(review.origin == .watchHistory ? "\(review.historyHours)h of Watch history" : "While monitoring motion")
+						.font(.system(size: 8))
+						.foregroundStyle(palette.secondaryText)
+					Text(review.windowEnd, format: .dateTime.month(.abbreviated).day().hour().minute())
 						.font(.system(size: 8))
 						.foregroundStyle(palette.secondaryText)
 				}
@@ -194,14 +198,14 @@ struct WatchDashboardView: View {
 
 	private var logButton: some View {
 		NavigationLink(destination: LogSmokeView()) {
-			Label("Log 1 cigarette", systemImage: "plus")
-				.font(.system(size: 14, weight: .bold))
-				.foregroundStyle(CiggyTheme.deepInk)
+			Label("Add missed cigarette", systemImage: "plus.circle")
+				.font(.system(size: 11))
+				.foregroundStyle(palette.secondaryText)
 				.frame(maxWidth: .infinity)
 				.padding(.vertical, 10)
-				.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 		}
 		.buttonStyle(.plain)
+		.accessibilityIdentifier("watch-log-button")
 	}
 
 	private var syncStatus: some View {
@@ -245,7 +249,7 @@ struct WatchDashboardView: View {
 		if backgroundMotion.isProcessingHistory {
 			return "Checking recorded background movement"
 		}
-		if viewModel.currentHeartRate > 0 {
+		if viewModel.currentHeartRate.isFinite, (1...300).contains(viewModel.currentHeartRate) {
 			let simulated = viewModel.isUsingSimulatedHeartRate ? " · demo" : ""
 			let background = backgroundMotion.isCaptureArmed ? " · background armed" : ""
 			return "\(Int(viewModel.currentHeartRate)) BPM\(simulated)\(background)"

@@ -17,19 +17,23 @@ public final class ConnectivityTransportStore {
 	private struct State: Codable {
 		var outgoing: [ConnectivityEnvelope] = []
 		var incoming: [ConnectivityEnvelope] = []
+		var latestSettings: ConnectivityEnvelope?
 	}
 	private var state: State
 	private let defaults: UserDefaults
 	private let key: String
 	public var outgoing: [ConnectivityEnvelope] { state.outgoing }
 	public var incoming: [ConnectivityEnvelope] { state.incoming }
+	public var latestSettings: ConnectivityEnvelope? { state.latestSettings }
 
 	public init(defaults: UserDefaults = .standard, key: String = "Ciggy.connectivity.transport.v1") {
 		self.defaults = defaults; self.key = key
 		state = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(State.self, from: $0) } ?? State()
 	}
 	public func enqueue(_ envelope: ConnectivityEnvelope) {
-		guard state.outgoing.contains(where: { $0.id == envelope.id }) == false else { return }
+		guard state.outgoing.contains(where: {
+			$0.id == envelope.id || ($0.type == envelope.type && $0.data == envelope.data)
+		}) == false else { return }
 		state.outgoing.append(envelope); save()
 	}
 	public func acknowledge(id: UUID) {
@@ -41,6 +45,16 @@ public final class ConnectivityTransportStore {
 	}
 	public func didDeliver(id: UUID) {
 		state.incoming.removeAll { $0.id == id }; save()
+	}
+	/// Application context is last-write-wins, but must survive a pre-activation exit.
+	public func replaceSettings(_ envelope: ConnectivityEnvelope) {
+		guard envelope.type == "settings" else { return }
+		state.latestSettings = envelope
+		save()
+	}
+	public func clearSettings() {
+		state.latestSettings = nil
+		save()
 	}
 	private func save() {
 		if let data = try? JSONEncoder().encode(state) { defaults.set(data, forKey: key) }

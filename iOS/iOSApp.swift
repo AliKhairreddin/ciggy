@@ -5,41 +5,58 @@ import CiggyShared
 #if os(iOS)
 @main
 struct CiggyiOSApp: App {
+	@UIApplicationDelegateAdaptor private var appDelegate: IOSAppDelegate
 	@Environment(\.scenePhase) private var scenePhase
-	@StateObject private var repository = EventRepository()
-	@StateObject private var settingsStore = UserSettingsStore()
-	@StateObject private var reviewStore = DetectionReviewStore()
-	@StateObject private var appCoordinator = IOSAppCoordinator()
+	@StateObject private var runtime = IOSAppRuntime.shared
 	@StateObject private var liveActivity = LiveActivityManager()
 
 	var body: some Scene {
 		WindowGroup {
 			RootTabView()
-				.environmentObject(repository)
-				.environmentObject(settingsStore)
-				.environmentObject(reviewStore)
+				.environmentObject(runtime.repository)
+				.environmentObject(runtime.settingsStore)
+				.environmentObject(runtime.reviewStore)
 				.environmentObject(liveActivity)
 				.onAppear {
-					liveActivity.bind(repository: repository, settings: settingsStore)
-					appCoordinator.start(
-						repository: repository,
-						settings: settingsStore,
-						reviewStore: reviewStore
-					)
-					// Apply sensitivity to detection algorithm if used on iOS later
+					liveActivity.bind(repository: runtime.repository, settings: runtime.settingsStore)
+					runtime.start()
+					runtime.coordinator.refreshNotifications()
 					// Seed a baseline for money-saved estimate if not set
 					if UserDefaults.standard.integer(forKey: "baselineCigsPerDay") == 0 {
-						UserDefaults.standard.set(settingsStore.settings.dailyLimit, forKey: "baselineCigsPerDay")
+						UserDefaults.standard.set(runtime.settingsStore.settings.dailyLimit, forKey: "baselineCigsPerDay")
 					}
 				}
 				.onChange(of: scenePhase) { _, phase in
 					if phase == .active {
 						ConnectivityManager.shared.resumeSync()
-						appCoordinator.refreshNotifications()
+						runtime.coordinator.refreshNotifications()
 						liveActivity.refresh()
 					}
 				}
 		}
+	}
+}
+
+/// WatchConnectivity can launch the companion without creating a visible scene.
+/// Bind repositories once for both background delivery and foreground presentation.
+@MainActor
+final class IOSAppRuntime: ObservableObject {
+	static let shared = IOSAppRuntime()
+	let repository = EventRepository()
+	let settingsStore = UserSettingsStore()
+	let reviewStore = DetectionReviewStore()
+	let coordinator = IOSAppCoordinator()
+
+	func start() {
+		coordinator.start(repository: repository, settings: settingsStore, reviewStore: reviewStore)
+	}
+}
+
+@MainActor
+final class IOSAppDelegate: NSObject, UIApplicationDelegate {
+	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+		IOSAppRuntime.shared.start()
+		return true
 	}
 }
 
@@ -54,9 +71,26 @@ final class IOSAppCoordinator: ObservableObject {
 	private let notificationRefresh = PassthroughSubject<Void, Never>()
 	private var dailyLimit = 10
 	private var lastNotificationCount = 0
+	private weak var settingsStore: UserSettingsStore?
+	private var isRequestingNotificationAuthorization = false
 
 	func refreshNotifications() {
+		requestNotificationAuthorizationIfActive()
 		notificationRefresh.send(())
+	}
+
+	private func requestNotificationAuthorizationIfActive() {
+		guard notificationsEnabled, isRequestingNotificationAuthorization == false,
+		      UIApplication.shared.applicationState == .active, let settingsStore else { return }
+		isRequestingNotificationAuthorization = true
+		Task { @MainActor [weak self] in
+			let granted = await NotificationManager.requestAuthorization()
+			guard let self else { return }
+			self.isRequestingNotificationAuthorization = false
+			if granted == false, settingsStore.settings.notificationsEnabled {
+				settingsStore.settings.notificationsEnabled = false
+			}
+		}
 	}
 
 	func start(
@@ -66,6 +100,7 @@ final class IOSAppCoordinator: ObservableObject {
 	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		settingsStore = settings
 		widgetSync.bind(repository: repository, settings: settings)
 		NotificationManager.configurePresentation()
 		// Existing history is a baseline, not a reason to alert on every launch.
@@ -78,7 +113,7 @@ final class IOSAppCoordinator: ObservableObject {
 			.handleEvents(receiveOutput: { @MainActor [weak self] events in
 				guard let self else { return }
 				let now = Date()
-				let count = events.filter { Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
+				let count = events.filter { $0.timestamp <= now && Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
 				// Undo cancels a queued alert immediately, before the debounce window.
 				if count < self.lastNotificationCount { NotificationManager.cancelPendingDailyRoasts() }
 				self.lastNotificationCount = count
@@ -87,7 +122,7 @@ final class IOSAppCoordinator: ObservableObject {
 			.debounce(for: .seconds(2), scheduler: RunLoop.main)
 			.sink { @MainActor [weak self] events, _ in
 				let now = Date()
-				let count = events.filter { Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
+				let count = events.filter { $0.timestamp <= now && Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
 				guard let self else { return }
 				if let roast = self.roastPlanner.next(count: count, dailyLimit: self.dailyLimit, enabled: self.notificationsEnabled, at: now) {
 					NotificationManager.scheduleDailyRoast(roast)
@@ -127,20 +162,12 @@ final class IOSAppCoordinator: ObservableObject {
 		settings.$settings
 			.removeDuplicates()
 			.sink { @MainActor [weak self] sharedSettings in
-				let shouldRequest = sharedSettings.notificationsEnabled && self?.notificationsEnabled == false
 				self?.notificationsEnabled = sharedSettings.notificationsEnabled
 				self?.dailyLimit = sharedSettings.dailyLimit
 				if sharedSettings.notificationsEnabled == false {
 					NotificationManager.cancelPendingDailyRoasts()
 				}
-				if shouldRequest {
-					Task { @MainActor in
-						let granted = await NotificationManager.requestAuthorization()
-						if granted == false, settings.settings.notificationsEnabled {
-							settings.settings.notificationsEnabled = false
-						}
-					}
-				}
+				self?.requestNotificationAuthorizationIfActive()
 				ConnectivityManager.shared.send(settings: sharedSettings)
 			}
 			.store(in: &cancellables)
@@ -148,15 +175,16 @@ final class IOSAppCoordinator: ObservableObject {
 	}
 }
 
-/// Root TabView with Dashboard, Reports, Goals, Settings
+/// Primary destinations. Settings is available from the dashboard profile.
 struct RootTabView: View {
 	@Environment(\.scenePhase) private var scenePhase
 	@State private var selectedTab = 0
+	@State private var todayPath = NavigationPath()
 	@State private var isLogging = false
 
 	var body: some View {
 		TabView(selection: $selectedTab) {
-			NavigationStack { DashboardView() }
+			NavigationStack(path: $todayPath) { DashboardView() }
 				.tabItem { Label("Today", systemImage: "circle.grid.2x2.fill") }
 				.tag(0)
 
@@ -167,10 +195,6 @@ struct RootTabView: View {
 			NavigationStack { GoalsView() }
 				.tabItem { Label("Goals", systemImage: "target") }
 				.tag(2)
-
-			NavigationStack { SettingsView() }
-				.tabItem { Label("Settings", systemImage: "gearshape.fill") }
-				.tag(3)
 		}
 		.tint(CiggyTheme.ember)
 		.ciggyAppearance()
@@ -196,10 +220,10 @@ struct RootTabView: View {
 
 	private func openDestination(_ destination: String?) {
 		switch destination {
-		case "log": selectedTab = 0; isLogging = true
+		case "log": todayPath = NavigationPath(); selectedTab = 0; isLogging = true
 		case "reports": selectedTab = 1
 		case "goals": selectedTab = 2
-		case "today": selectedTab = 0
+		case "today": todayPath = NavigationPath(); selectedTab = 0
 		default: break
 		}
 	}

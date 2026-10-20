@@ -17,15 +17,17 @@ public struct DayCount: Identifiable, Hashable, Sendable {
 public enum ChartHelpers {
 	/// Groups events per day over the last N days ending today
 	public static func dayCounts(for events: [SmokingEvent], lastNDays: Int = 7) -> [DayCount] {
+		guard lastNDays > 0 else { return [] }
 		let calendar = Calendar.current
-		let today = Date().startOfDayInCurrentCalendar
+		let now = Date()
+		let today = now.startOfDayInCurrentCalendar
 		var buckets: [Date: Int] = [:]
 		for i in 0..<lastNDays {
 			if let date = calendar.date(byAdding: .day, value: -i, to: today) {
 				buckets[date] = 0
 			}
 		}
-		for e in events {
+		for e in events where e.timestamp <= now {
 			let d = e.timestamp.startOfDayInCurrentCalendar
 			if buckets[d] != nil { buckets[d, default: 0] += 1 }
 		}

@@ -25,7 +25,7 @@ The concept is feasible on Apple Watch hardware, but accuracy depends on sensor 
 
 The current codebase already has the main software building blocks:
 
-- A watchOS app that starts motion, HealthKit, and event detection.
+- A watchOS app that starts motion, optional HealthKit context, and event detection, with explicit sensor and background status.
 - An iOS companion app with dashboard, reports, goals, and settings screens.
 - Shared models and repositories for smoking events.
 - WatchConnectivity-based event forwarding from watchOS to iOS.
@@ -42,30 +42,15 @@ The prototype never substitutes generated heart-rate data on a physical device. 
 
 Automatic collection uses two complementary paths. While Ciggy is visible, it processes live device motion and any heart-rate samples that watchOS saves. On a physical Apple Watch, it also arms `CMSensorRecorder` for up to 12 hours of historical 50 Hz accelerometer capture that continues while Ciggy is suspended or terminated. When Ciggy next opens, it retrieves samples that are old enough to be available, downsamples them for efficient analysis, automatically logs probable smoking sessions, and creates one history summary on both devices. Historical analysis preserves its classifier and cursor together across app launches; live monitoring does not discard an unprocessed backlog, and history does not duplicate previously logged or corrected automatic sessions.
 
-The app requests a best-effort background refresh after 10 hours to renew the 12-hour recording window, and every foreground launch re-arms it. watchOS can delay background refresh tasks, so this design substantially extends monitoring but cannot promise gap-free, indefinite collection. Newly recorded samples can take up to three minutes to become retrievable, history is retained for up to three days, and `CMSensorRecorder` is unavailable in Simulator. Automatic detections are included immediately and stay visibly reviewable; users can correct the count without answering a prompt each time. Real-device calibration is still required before treating assisted detection as dependable.
+The app requests a best-effort background refresh after 30 minutes to analyze saved motion and renew the 12-hour recording window. Foreground monitoring also checks history every minute, and every foreground launch re-arms capture. A background-only launch initializes the same event stores and sync handlers as a visible launch. watchOS can delay background refresh tasks, so this design substantially extends monitoring but cannot promise gap-free, indefinite collection. Newly recorded samples can take up to three minutes to become retrievable, history is retained for up to three days, and `CMSensorRecorder` is unavailable in Simulator. Automatic detections are included immediately and stay visibly reviewable; users can correct the count without answering a prompt each time. Real-device calibration is still required before treating assisted detection as dependable.
 
-## Recommended implementation path
+## Tracking experience
 
-1. **Manual-first MVP**
-   - Keep manual watch logging fast and prominent.
-   - Make iOS reports and goals useful before relying on automation.
-   - Add clear privacy messaging for HealthKit and motion data.
+The iPhone bottom bar contains **Today**, **Reports**, and **Goals**. Open Settings through the profile icon at the top right of Today; the Watch also uses its header profile icon. Manual entry remains available as a small **Add missed cigarette** action, and automatic detections remain reviewable with **Accurate** and **Adjust count**.
 
-2. **Assisted detection**
-   - Use the regularity of repeated hand-to-mouth motion to create probable smoking events.
-   - Keep heart rate as optional supporting context rather than a requirement.
-   - Group automatic events into a passive history summary.
-   - Make feedback optional and actionable with **Accurate** or **Adjust count**.
+Detection is an estimate from wrist motion, not a measurement of the object in the hand. Normal sensitivity needs five completed raise/hold/return cycles within eight minutes. The watch must be on the moving hand. Short foreground interruptions preserve completed cycles, but live sensors do not run indefinitely while the app is suspended. Saved accelerometer history can catch up later; permission, source availability and watchOS scheduling affect when counts appear.
 
-3. **Personal calibration**
-   - Let users record a short calibration period.
-   - Adjust gesture count, orientation, timing, and dominant-hand thresholds based on their baseline.
-   - Add quiet hours and known false-positive contexts.
-
-4. **Validation and safety**
-   - Measure precision, recall, false positives, and false negatives with real users.
-   - Avoid medical claims unless supported by formal validation.
-   - Keep export/delete controls clear for privacy compliance.
+Synthetic tests exercise full assumed smoking, spoon/fork eating, drinking, resting, opposite-wrist and interrupted-data scenarios through both live-motion and historical-acceleration pipelines. They are deterministic software stress tests, **not training data or proof of real-world accuracy**. Identical wrist traces cannot be distinguished by labeling them differently. See [the motion test guide](docs/motion-testing.md) for the reproducible large-sweep command and measured results, and [the reliability validation record](docs/reliability-validation.md) for this update's checks.
 
 ## Technical risks
 
@@ -74,10 +59,6 @@ The app requests a best-effort background refresh after 10 hours to renew the 12
 - Battery drain from continuous motion sensing.
 - HealthKit authorization and availability differences across devices.
 - Privacy expectations around sensitive behavioral and health-adjacent data.
-
-## Bottom line
-
-This is possible in hardware and software terms, and it is a worthwhile idea if positioned as a supportive habit-tracking app rather than a perfect detector. The best next step is to calibrate the passive assisted-detection flow with real users and improve the detector from optional accuracy and count-correction feedback.
 
 ## Motion APIs and live Watch testing
 

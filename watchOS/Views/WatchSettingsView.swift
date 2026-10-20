@@ -182,7 +182,10 @@ struct WatchSettingsView: View {
 					color: CiggyTheme.lavender
 				)
 
-				Text("Background movement is checked when Ciggy wakes. Heart rate remains optional context.")
+				Text(backgroundMotion.statusDetail)
+					.font(.system(size: 9))
+					.foregroundStyle(palette.secondaryText)
+				Text("Motion is an estimate. Wear this Watch on the hand you smoke with. Counts can appear later; open Ciggy to check recent movement. Heart rate is optional.")
 					.font(.system(size: 9))
 					.foregroundStyle(palette.secondaryText)
 			}
@@ -266,7 +269,7 @@ struct WatchSettingsView: View {
 	}
 
 	private var heartRateDetail: String {
-		guard health.currentHeartRate > 0 else { return "Optional" }
+		guard health.currentHeartRate.isFinite, (1...300).contains(health.currentHeartRate) else { return "Optional" }
 		let suffix = health.isUsingSimulatedData ? " demo" : " BPM"
 		return "\(Int(health.currentHeartRate))\(suffix)"
 	}

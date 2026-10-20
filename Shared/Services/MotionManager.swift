@@ -29,6 +29,8 @@ public final class MotionManager: ObservableObject {
     private var gestureEngine = MotionGestureEngine()
     private var generation = UUID()
     private var startupTimeout: Task<Void, Never>?
+    private var sampleWatchdog: Task<Void, Never>?
+    private var lastReceivedSampleUptime: TimeInterval?
     private var lastPublishedAt: Date?
     private let logger = Logger(subsystem: "com.ciggy.motion", category: "Sensors")
     #if os(iOS) || os(watchOS)
@@ -67,6 +69,7 @@ public final class MotionManager: ObservableObject {
         gestureEngine.reset()
         observedGestureCount = 0
         lastPublishedAt = nil
+        lastReceivedSampleUptime = nil
         latestSample = nil
         lastError = nil
         hasGyroscope = motionManager.isGyroAvailable
@@ -102,6 +105,17 @@ public final class MotionManager: ObservableObject {
                   self.generation == currentGeneration, self.status == .starting else { return }
             self.fail("No motion samples arrived. Check Motion & Fitness access and reopen Ciggy.")
         }
+        sampleWatchdog = Task { @MainActor [weak self] in
+            while Task.isCancelled == false {
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                guard let self, self.generation == currentGeneration else { return }
+                if self.status == .running, let last = self.lastReceivedSampleUptime,
+                   ProcessInfo.processInfo.systemUptime - last > 5 {
+                    self.fail("Motion updates paused. Reopen Ciggy to restart detection.")
+                    return
+                }
+            }
+        }
         #else
         status = .unavailable
         lastError = "Live detection requires an iPhone or Apple Watch."
@@ -112,6 +126,9 @@ public final class MotionManager: ObservableObject {
         generation = UUID()
         startupTimeout?.cancel()
         startupTimeout = nil
+        sampleWatchdog?.cancel()
+        sampleWatchdog = nil
+        lastReceivedSampleUptime = nil
         #if os(iOS) || os(watchOS)
         motionManager.stopDeviceMotionUpdates()
         #endif
@@ -135,7 +152,13 @@ public final class MotionManager: ObservableObject {
     }
 
     private func process(_ sample: MotionSample, pitch: Double, roll: Double) {
-        guard sample.isValid else { return }
+        guard sample.isValid else {
+            // Bad sensor values cannot bridge two halves of a raise/return cycle.
+            _ = gestureEngine.record(sample)
+            gesturePhase = gestureEngine.phase
+            return
+        }
+        lastReceivedSampleUptime = ProcessInfo.processInfo.systemUptime
         if isMonitoring == false {
             startupTimeout?.cancel()
             startupTimeout = nil
@@ -152,8 +175,8 @@ public final class MotionManager: ObservableObject {
         }
         // Publish UI diagnostics at 5 Hz while keeping detection at 30 Hz.
         if lastPublishedAt.map({ sample.timestamp.timeIntervalSince($0) >= 0.2 }) ?? true {
-            latestPitch = pitch
-            latestRoll = roll
+            latestPitch = pitch.isFinite ? pitch : 0
+            latestRoll = roll.isFinite ? roll : 0
             latestSample = sample
             gesturePhase = gestureEngine.phase
             lastPublishedAt = sample.timestamp

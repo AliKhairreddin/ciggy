@@ -3,6 +3,21 @@ import XCTest
 
 @MainActor
 final class MotionRecordingStoreTests: XCTestCase {
+    func testImportRejectsInconsistentMetadataAndUnboundedRecordingSpan() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = MotionRecordingStore(directory: directory)
+        let start = Date()
+        var recording = MotionRecording(label: .other, startedAt: start)
+        recording.samples = MotionFixtures.cycle(start: start)
+        recording.endedAt = start
+        XCTAssertThrowsError(try store.importRecording(data: JSONEncoder().encode(recording)))
+        recording.endedAt = nil
+        recording.samples.append(MotionFixtures.sample(start: start, seconds: 700, angle: 0))
+        XCTAssertThrowsError(try store.importRecording(data: JSONEncoder().encode(recording)))
+        XCTAssertNil(store.latestRecordingURL)
+    }
+
     func testOptInRecordingCanBeReplayedWithSubsecondSensorTimestamps() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

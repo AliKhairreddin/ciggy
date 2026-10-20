@@ -36,6 +36,17 @@ public final class DetectionAlgorithm: ObservableObject {
 	}
 
 	private func bind() {
+		motion.$latestSample
+			.compactMap { $0?.timestamp }
+			.sink { [weak self] timestamp in
+				Task { @MainActor [weak self] in
+					guard let self else { return }
+					self.engine.expireSession(at: timestamp)
+					self.sessionGestureCount = self.engine.observedGestureCount
+				}
+			}
+			.store(in: &cancellables)
+
 		health.heartRatePublisher
 			.sink { [weak self] reading in
 				Task { @MainActor [weak self] in

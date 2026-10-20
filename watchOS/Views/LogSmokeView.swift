@@ -8,6 +8,7 @@ struct LogSmokeView: View {
 	@Environment(\.dismiss) private var dismiss
 	@EnvironmentObject private var repository: EventRepository
 	@State private var notes = ""
+	@State private var didSave = false
 
 	var body: some View {
 		ScrollView {
@@ -41,6 +42,8 @@ struct LogSmokeView: View {
 						.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
 				}
 				.buttonStyle(.plain)
+				.disabled(didSave)
+				.accessibilityIdentifier("save-watch-log")
 			}
 			.padding(.horizontal, 4)
 			.padding(.bottom, 8)
@@ -52,12 +55,15 @@ struct LogSmokeView: View {
 	}
 
 	private func save() {
+		guard !didSave else { return }
+		didSave = true
 		let currentHeartRate = HealthKitManager.shared.currentHeartRate
+		let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 		let event = SmokingEvent(
 			timestamp: Date(),
 			source: .manual,
-			heartRate: currentHeartRate > 0 ? currentHeartRate : nil,
-			notes: notes.isEmpty ? nil : notes
+			heartRate: currentHeartRate.isFinite && (1...300).contains(currentHeartRate) ? currentHeartRate : nil,
+			notes: trimmedNotes.isEmpty ? nil : trimmedNotes
 		)
 		repository.addEvent(event)
 		ConnectivityManager.shared.send(event: event)

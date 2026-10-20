@@ -32,6 +32,10 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	private override init() {
 		super.init()
+		if let settings = transportStore.latestSettings {
+			latestSettingsPayload = ["type": settings.type, "data": settings.data]
+			settingsSyncNeedsRetry = true
+		}
 		pendingRecordingPaths = UserDefaults.standard.stringArray(forKey: recordingTransfersKey) ?? []
 		session?.delegate = self
 		session?.activate()
@@ -54,7 +58,10 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	}
 
 	public func send(settings: UserSettings) {
-		latestSettingsPayload = encodedPayload(type: "settings", value: settings)
+		guard let payload = encodedPayload(type: "settings", value: settings),
+		      let data = payload["data"] as? Data else { return }
+		latestSettingsPayload = payload
+		transportStore.replaceSettings(.init(type: "settings", data: data))
 		settingsSyncNeedsRetry = true
 		flushLatestSettings()
 	}
@@ -71,6 +78,22 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		flushLatestSettings()
 		flushPendingDurablePayloads()
 		flushRecordingTransfers()
+	}
+
+	/// A WatchConnectivity background task must remain alive until activation and
+	/// queued delegate delivery finish, rather than completing before the inbox saves.
+	public func drainPendingBackgroundTransfers() async {
+		guard let session else { return }
+		let deadline = ProcessInfo.processInfo.systemUptime + 20
+		repeat {
+			await Task.yield()
+			flushIncoming()
+			if session.activationState == .activated, session.hasContentPending == false {
+				resumeSync()
+				return
+			}
+			do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+		} while Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline
 	}
 
 	/// Explicit export only; raw wrist recordings are never uploaded automatically.
@@ -112,6 +135,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			settingsSyncNeedsRetry = false
 		} catch {
 			settingsSyncNeedsRetry = true
+			lastSyncError = error.localizedDescription
 		}
 	}
 
@@ -184,7 +208,14 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		case "detectionReview":
 			if let value = try? decoder.decode(DetectionReview.self, from: data) { incomingReview.send(value) }
 		case "settings":
-			if let value = try? decoder.decode(UserSettings.self, from: data) { incomingSettings.send(value) }
+			if let value = try? decoder.decode(UserSettings.self, from: data) {
+				// Receiving the counterpart's settings supersedes any local snapshot.
+				// Never replay an older local value after relaunch or re-pairing.
+				latestSettingsPayload = nil
+				settingsSyncNeedsRetry = false
+				transportStore.clearSettings()
+				incomingSettings.send(value)
+			}
 		default: break
 		}
 	}
@@ -218,6 +249,7 @@ extension ConnectivityManager: WCSessionDelegate {
 	) {
 		Task { @MainActor [weak self] in
 			self?.refreshSessionState()
+			if let error { self?.lastSyncError = error.localizedDescription }
 			guard activationState == .activated else { return }
 			self?.flushLatestSettings()
 			self?.flushPendingDurablePayloads()
@@ -345,6 +377,7 @@ public final class ConnectivityManager: ObservableObject {
 	public func send(settings: UserSettings) {}
 	public func activateIncomingDelivery() {}
 	public func resumeSync() {}
+	public func drainPendingBackgroundTransfers() async {}
 	public func sendMotionRecording(at url: URL) {}
 }
 #endif

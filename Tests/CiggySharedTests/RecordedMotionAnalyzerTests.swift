@@ -52,6 +52,28 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         XCTAssertNil(analyzer.record(.init(timestamp: start.addingTimeInterval(-1), x: 1, y: 0, z: 0)))
     }
 
+    func testMalformedSampleBreaksInterruptedCycleButLaterSessionRecovers() {
+        var analyzer = RecordedMotionAnalyzer()
+        let stream = samples(cycles: 5)
+        var detected: [DetectionCandidate] = []
+        for sample in stream {
+            let seconds = sample.timestamp.timeIntervalSince(start)
+            let input = abs(seconds - 4) < 0.001
+                ? RecordedAccelerationSample(timestamp: sample.timestamp, x: .nan, y: 0, z: 0) : sample
+            if let candidate = analyzer.record(input) { detected.append(candidate) }
+        }
+        XCTAssertTrue(detected.isEmpty, "Four intact cycles cannot become a five-cycle session")
+        let recovered = samples(cycles: 5, offset: 300).compactMap { analyzer.record($0) }
+        XCTAssertEqual(recovered.count, 1)
+    }
+
+    func testNonFiniteFilterParametersUseWorkingDefaults() {
+        var analyzer = RecordedMotionAnalyzer(sampleInterval: .infinity, gravityTimeConstant: .nan)
+        XCTAssertEqual(analyzer.sampleInterval, 0.1)
+        XCTAssertEqual(analyzer.gravityTimeConstant, 0.25)
+        XCTAssertEqual(samples(cycles: 5).compactMap { analyzer.record($0) }.count, 1)
+    }
+
     private func samples(cycles: Int, offset: Double = 0) -> [RecordedAccelerationSample] {
         (0..<(cycles * 1_000)).map { index in
             let seconds = Double(index) * 0.02

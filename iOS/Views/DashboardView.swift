@@ -3,6 +3,10 @@ import Charts
 import CiggyShared
 import SwiftUI
 
+enum DashboardDestination: Hashable {
+	case settings
+}
+
 struct DashboardView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
@@ -15,20 +19,19 @@ struct DashboardView: View {
 	@State private var isLogging = false
 	@State private var lastLoggedEvent: SmokingEvent?
 	@State private var loggingNotes = ""
-	@State private var hasInlineDraft = false
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
 	var body: some View {
 		CiggyAdaptiveScreen {
 			profileHeader
-			if hasInlineDraft { inlineLoggingCard }
 			logConfirmation
 			todayHero
 			quickMetrics
-			LiveActivityCard()
 			detectionExperience
+			LiveActivityCard()
 			weeklyChart
+			todaysTimeline
 		} overview: { mode in
 			profileHeader
 			if mode.isFolded {
@@ -40,8 +43,7 @@ struct DashboardView: View {
 				quickMetrics
 			}
 		} controls: { mode in
-			if mode.isFolded || hasInlineDraft {
-				inlineLoggingCard
+			if mode.isFolded {
 				logConfirmation
 				quickMetrics
 			} else {
@@ -52,6 +54,11 @@ struct DashboardView: View {
 			LiveActivityCard()
 		}
 		.toolbar(.hidden, for: .navigationBar)
+		.navigationDestination(for: DashboardDestination.self) { destination in
+			switch destination {
+			case .settings: SettingsView(showsNavigationBar: true)
+			}
+		}
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
 		.onReceive(NotificationCenter.default.publisher(for: Notification.Name("Ciggy.widgetLogSaved"))) { notification in
 			lastLoggedEvent = notification.object as? SmokingEvent
@@ -119,26 +126,6 @@ struct DashboardView: View {
 		}
 	}
 
-	private var inlineLoggingCard: some View {
-		CiggyPanel {
-			VStack(alignment: .leading, spacing: 14) {
-				PhoneLogSmokeForm(notes: Binding(
-					get: { loggingNotes },
-					set: { loggingNotes = $0; hasInlineDraft = true }
-				), didSave: lastLoggedEvent != nil) {
-					guard lastLoggedEvent == nil else { return }
-					hasInlineDraft = false
-					lastLoggedEvent = PhoneSmokingLog.save(notes: loggingNotes, repository: repository)
-					loggingNotes = ""
-				}
-				if lastLoggedEvent != nil {
-					Button("Start another check-in") { lastLoggedEvent = nil }
-						.font(.subheadline.weight(.bold))
-				}
-			}
-		}
-	}
-
 	private var todaysTimeline: some View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 14) {
@@ -175,8 +162,9 @@ struct DashboardView: View {
 			Text("ciggy").font(.system(size: 33, weight: .black, design: .rounded)).tracking(-2)
 				.foregroundStyle(palette.primaryText)
 			Spacer()
-			NavigationLink(destination: SettingsView(showsNavigationBar: true)) { CiggyProfileMark(size: 44) }
+			NavigationLink(value: DashboardDestination.settings) { CiggyProfileMark(size: 44) }
 				.buttonStyle(.plain).accessibilityLabel("Open profile and settings")
+				.accessibilityIdentifier("phone-profile-button")
 		}
 	}
 
@@ -208,15 +196,6 @@ struct DashboardView: View {
 						.padding(.horizontal, 12).padding(.vertical, 9).ciggyGlass(in: Capsule(), interactive: true)
 				}.buttonStyle(.plain).accessibilityLabel("Edit daily limit, currently \(settings.settings.dailyLimit)")
 			}
-			Button { isLogging = true } label: {
-				HStack {
-					Image(systemName: "plus").font(.title3.weight(.semibold))
-					Text("Log a cigarette").font(.headline)
-					Spacer()
-					Image(systemName: "arrow.up.right").font(.subheadline.weight(.bold))
-				}.padding(17).frame(maxWidth: .infinity)
-					.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
-			}.buttonStyle(.plain).accessibilityIdentifier("phone-log-button")
 		}
 		.foregroundStyle(palette.primaryText)
 		.padding(22)
@@ -311,12 +290,22 @@ struct DashboardView: View {
 		}
 	}
 
-	@ViewBuilder
 	private var detectionExperience: some View {
-		if let review = reviewStore.latestReview {
-			detectionReviewCard(review)
-		} else {
-			detectionReadyCard
+		VStack(alignment: .leading, spacing: 2) {
+			if let review = reviewStore.latestReview {
+				detectionReviewCard(review)
+			} else {
+				detectionReadyCard
+			}
+			Button { isLogging = true } label: {
+				Label("Add missed cigarette", systemImage: "plus.circle")
+					.font(.subheadline)
+					.frame(minHeight: 44)
+			}
+			.buttonStyle(.plain)
+			.foregroundStyle(palette.secondaryText)
+			.accessibilityHint("Manually add one cigarette if detection missed it")
+			.accessibilityIdentifier("phone-log-button")
 		}
 	}
 
@@ -386,7 +375,9 @@ struct DashboardView: View {
 					Spacer(minLength: 0)
 				}
 				CiggyStatusPill(syncStatusTitle, systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath", color: connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.ember)
-				Text("Your Watch gathers possible cigarettes into a quiet summary. You can adjust it whenever you like.")
+				Text("Wear your Watch on the hand you smoke with. Ciggy looks for repeated gestures; detection can miss cigarettes or mistake other movements. Review and adjust your total when needed.")
+					.font(.caption).foregroundStyle(palette.secondaryText)
+				Text("Background counts can arrive later. Open Ciggy on your Watch to check recent movement, then allow both devices to sync.")
 					.font(.caption).foregroundStyle(palette.secondaryText)
 			}
 		}
@@ -394,9 +385,11 @@ struct DashboardView: View {
 
 	private func reviewSummaryText(_ review: DetectionReview) -> String {
 		if review.origin == .watchHistory {
-			return "Found in the last \(review.historyHours) \(review.historyHours == 1 ? "hour" : "hours") of Watch history."
+			let start = review.windowStart.formatted(date: .abbreviated, time: .shortened)
+			let end = review.windowEnd.formatted(date: .abbreviated, time: .shortened)
+			return "Watch history: \(start) – \(end)."
 		}
-		return "Noticed by your Watch while motion monitoring was active."
+		return "Noticed by your Watch on \(review.windowEnd.formatted(date: .abbreviated, time: .shortened))."
 	}
 
 	private func reviewDecisionText(_ review: DetectionReview) -> String {
@@ -457,6 +450,7 @@ struct DashboardView_Previews: PreviewProvider {
 				.environmentObject(EventRepository())
 				.environmentObject(UserSettingsStore())
 				.environmentObject(DetectionReviewStore())
+				.environmentObject(LiveActivityManager())
 		}
 	}
 }

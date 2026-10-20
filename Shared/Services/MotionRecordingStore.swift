@@ -34,7 +34,7 @@ public final class MotionRecordingStore: ObservableObject {
 
     public init(directory: URL? = nil) {
         usesDefaultDirectory = directory == nil
-        self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        self.directory = directory ?? Self.storageDirectory
             .appendingPathComponent("CiggyMotionRecordings", isDirectory: true)
         latestRecordingURL = (try? FileManager.default.contentsOfDirectory(at: self.directory,
             includingPropertiesForKeys: [.contentModificationDateKey]))?
@@ -57,8 +57,13 @@ public final class MotionRecordingStore: ObservableObject {
     }
 
     private nonisolated static var incomingDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        storageDirectory
             .appendingPathComponent("CiggyMotionInbox", isDirectory: true)
+    }
+
+    private nonisolated static var storageDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
     }
 
     public func recoverIncomingRecordings(from inboxDirectory: URL? = nil) {
@@ -125,8 +130,20 @@ public final class MotionRecordingStore: ObservableObject {
         guard data.count <= 10 * 1_024 * 1_024 else { throw RecordingError.invalidRecording }
         let imported = try JSONDecoder().decode(MotionRecording.self, from: data)
         guard imported.formatVersion == 1, imported.samples.isEmpty == false,
-              imported.samples.count <= maximumSamples, imported.samples.allSatisfy(\.isValid) else {
+              imported.samples.count <= maximumSamples, imported.samples.allSatisfy(\.isValid),
+              imported.startedAt.timeIntervalSince1970.isFinite,
+              imported.startedAt >= .distantPast, imported.startedAt <= .distantFuture,
+              let first = imported.samples.first, let last = imported.samples.last,
+              first.timestamp >= imported.startedAt.addingTimeInterval(-1),
+              last.timestamp <= imported.startedAt.addingTimeInterval(601),
+              last.timestamp.timeIntervalSince(first.timestamp) <= 601 else {
             throw RecordingError.invalidRecording
+        }
+        if let endedAt = imported.endedAt {
+            guard endedAt.timeIntervalSince1970.isFinite, endedAt >= last.timestamp,
+                  endedAt.timeIntervalSince(imported.startedAt) <= 601 else {
+                throw RecordingError.invalidRecording
+            }
         }
         for index in 1..<imported.samples.count where imported.samples[index].timestamp <= imported.samples[index - 1].timestamp {
             throw RecordingError.invalidRecording

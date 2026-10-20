@@ -38,7 +38,7 @@ struct PhoneLogSmokeView: View {
 		dismiss()
 	}
 }
-/// Shared by the sheet and the lower half of the foldable display.
+/// Manual fallback opened deliberately from the dashboard or a widget.
 struct PhoneLogSmokeForm: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@FocusState private var isEditingNotes: Bool

@@ -48,7 +48,6 @@ struct CiggyAdaptiveScreen<Compact: View, Overview: View, Controls: View>: View 
 					}
 				}
 			}
-			.accessibilityIdentifier("layout-\(plan.mode.rawValue)")
 		}
 	}
 

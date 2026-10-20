@@ -8,11 +8,12 @@ public struct MotionVector: Codable, Equatable, Sendable {
     public init(x: Double, y: Double, z: Double) {
         self.x = x; self.y = y; self.z = z
     }
-    public var magnitude: Double { sqrt(x * x + y * y + z * z) }
+    public var magnitude: Double { hypot(hypot(x, y), z) }
     public var isFinite: Bool { x.isFinite && y.isFinite && z.isFinite }
     public var normalized: Self? {
-        guard isFinite, magnitude > 0.01 else { return nil }
-        return .init(x: x / magnitude, y: y / magnitude, z: z / magnitude)
+        let length = magnitude
+        guard isFinite, length.isFinite, length > 0.01 else { return nil }
+        return .init(x: x / length, y: y / length, z: z / length)
     }
     public func angle(to other: Self) -> Double {
         guard let a = normalized, let b = other.normalized else { return .pi }
@@ -41,6 +42,7 @@ public struct MotionSample: Codable, Equatable, Sendable {
     }
     public var isValid: Bool {
         timestamp.timeIntervalSince1970.isFinite && gravity.normalized != nil &&
-        userAcceleration.isFinite && (rotationRate?.isFinite ?? true)
+        userAcceleration.isFinite && userAcceleration.magnitude.isFinite &&
+        (rotationRate.map { $0.isFinite && $0.magnitude.isFinite } ?? true)
     }
 }

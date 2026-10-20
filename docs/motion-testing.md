@@ -6,11 +6,50 @@ Ciggy samples `CMDeviceMotion` at a requested 30 Hz on the Watch. Every sample i
 
 The gesture engine learns a resting gravity direction, then requires a raise of about 26 degrees, a steady hold of at least 0.7 seconds, and a return toward the original pose. Both wrist orientations work without hardcoded pitch/roll signs. A static pose, brief flick, missing return, excessive movement during the hold, or a gap in sensor samples cannot complete a gesture. The defaults are prototype thresholds; they need validation against real wrist recordings.
 
-Completed gestures feed the smoking-session engine. Normal sensitivity requires five gestures, separated by at least six seconds, within eight minutes, with no inter-gesture gap longer than 2.5 minutes. Low/high sensitivity requires seven/four gestures. One candidate creates one automatic cigarette event and starts an eight-minute cooldown. Heart-rate samples are optional context and never required. Eating and drinking can have similar motion; the code cannot infer the object in the hand from wrist sensors alone.
+Completed gestures feed the smoking-session engine. Normal sensitivity requires five gestures, separated by at least six seconds, within eight minutes, with no inter-gesture gap longer than 2.5 minutes. Low/high sensitivity requires seven/four gestures. One candidate creates one automatic cigarette event and starts an eight-minute cooldown. Completed gestures survive a brief foreground/background transition; incomplete individual gestures do not. Live sample updates expire partial counts after the inter-gesture/session window, so diagnostics do not keep displaying stale progress. Reapplying sensitivity does not erase completed gestures. Heart-rate samples are optional context and never required; replayed context is deduplicated and capped to bound memory. Eating and drinking can have similar motion; the code cannot infer the object in the hand from wrist sensors alone.
 
-`CMSensorRecorder` supplies a separate 50 Hz accelerometer-only background recording. Ciggy processes that history at 10 Hz, estimates gravity and angular movement, and does not invent historical gyroscope measurements. It saves the analyzer and cursor together between batches so a partial session or cooldown survives a relaunch. Historical analysis no longer skips a backlog when live monitoring ends. Stable candidate IDs make replay idempotent, and a retained record of automatic-session times prevents the lower-fidelity history path from restoring a corrected foreground session.
+`CMSensorRecorder` supplies a separate 50 Hz accelerometer-only background recording. Ciggy processes that history at 10 Hz, estimates gravity and angular movement, and does not invent historical gyroscope measurements. It saves the analyzer and cursor together between batches so a partial session or cooldown survives a relaunch. Missing source query results stay in persisted pending intervals while later history can advance. Retries replay those intervals with neighboring eight-minute context; unresolved intervals expire only when they fall outside the provider's three-day retention and leave a persistent indication that past totals may be incomplete. A nil query is not a successful zero-cigarette result. Historical analysis runs on foreground entry and every 60 seconds while open. Best-effort Watch refresh is requested every 30 minutes to renew capture, analyze, save and synchronize. Stable candidate IDs and retained automatic-session times prevent replay duplicates and keep a corrected session from being restored by the other detection path.
 
 Apple permits up to 12 hours of recording per request, retains history for up to three days, and can delay sample availability by three minutes. Background refresh renewal remains best-effort; open Ciggy regularly to renew recording. Continuous live gyroscope collection while suspended is not part of this implementation. See Apple's [sensor recorder documentation](https://developer.apple.com/documentation/coremotion/cmsensorrecorder/recordaccelerometer(forduration:)) and [history retrieval documentation](https://developer.apple.com/documentation/coremotion/cmsensorrecorder/accelerometerdata(from:to:)).
+
+## Why one cigarette may not appear
+
+The app recognizes a motion pattern; it does not directly sense smoke or a cigarette. Detection requires the Watch on the moving hand, valid motion permission, recorded sensor coverage, a brief stable pose to learn the wrist baseline, and enough complete raise/hold/return cycles. Five puffs whose wrist tilt is too small, whose hold is brief, or whose hand never returns toward the original resting pose may produce fewer than five accepted cycles. A cigarette smoked on the other hand can produce no usable signal at all. Eating slowly or taking repeated sips can produce the same pattern and a false cigarette candidate. Lighting, tapping ash and stubbing out are not unique wrist signatures.
+
+The background path is delayed and lower fidelity. A sleeping Watch does not supply live gyroscope samples to this app; accelerometer history must become available and be processed. Lack of a phone event can also be transport lag. Debug in this order: sensor coverage/status, completed cycle count, session count/candidate, saved event, then companion sync. Do not lower thresholds until every hand movement becomes a cigarette to hide a coverage or transport problem.
+
+## Deterministic synthetic session sweep
+
+`SyntheticMotionSimulationTests` is a reproducible procedural regression and stress suite. It constructs complete sessions from initial object handling, rest, raising, steady holding, lowering, inter-action pauses, final handling and rest. It varies wrist orientation and mirror, movement duration, angle, hold duration, pause duration, number of repetitions, and small smooth sensor noise. The same 10 Hz trace passes through the live gesture/fusion pipeline and the accelerometer-only filtering/fusion pipeline. All samples are generated and consumed locally in memory; they are never inserted into the user's history.
+
+Eight scenario families cover smoking-like motions (5–10 repetitions), spoon/fork meals (8–16), drinking (1–7 sips), stationary wrists, smoking with the other hand, repeated sensor blackouts, and deliberately ambiguous hand-to-mouth motions. The parameter ranges are **explicit engineering assumptions, not measured behavioral distributions or validated motion capture**. This sweep reports how this implementation behaves on those assumptions. It is not training, and increasing the trace count does not establish real-world precision, recall, or reliable separation of smoking from eating/drinking.
+
+The ambiguous family intentionally uses a trace that can represent all three activities. A regression test requires identical candidates for identical signals regardless of the intended object label. That limitation cannot be solved by generating more invented examples. Improvements to recognition need representative labeled real wrist recordings, including the user's normal rest positions, both wrist sides, hard negative activities and missing coverage. A small opt-in personal recording can expose a missed-motion bug, but it is not a population accuracy validation.
+
+The default test run sweeps 800 sessions. Run a large, deterministic local sweep with:
+
+```sh
+CIGGY_SIMULATION_SESSIONS=250000 DEVELOPER_DIR=/Applications/dev/Xcode.app/Contents/Developer swift test -c release --filter SyntheticMotionSimulationTests.testSyntheticSessionSweep
+```
+
+The suite prints session, sample and candidate totals by scenario for each pipeline. It asserts no duplicate event IDs, no double logging within these short sessions, no candidates from motionless/opposite-wrist traces or interrupted cycles, and recovery across 100 sequential sessions with checkpoint restoration. Separate regression tests cover invalid vectors, nonfinite configuration, duplicate/backward sample delivery, invalid samples during a gesture, stale progress, repeated settings application, bounded heart-rate context and checkpoint identity.
+
+### Recorded run: October 20, 2026
+
+The final-source release sweep completed **250,000 full session traces**, with **303,614,390 generated samples through each pipeline** (607,228,780 combined sample deliveries), in 567.961 seconds excluding compilation. The selected sweep test passed with zero failures, duplicate IDs or safety-invariant failures. Each row contains 31,250 invented scenarios; candidate totals are **not accuracy estimates**. These totals replace the earlier 120,000-session prefix run; overlapping seeds are not counted again.
+
+| Intended synthetic scenario | Generated samples | Live candidates | Recorded candidates |
+| --- | ---: | ---: | ---: |
+| Smoking-like | 47,023,999 | 21,777 | 22,715 |
+| Spoon meal | 38,646,224 | 29,862 | 30,545 |
+| Fork meal | 41,376,199 | 26,262 | 28,340 |
+| Drinking | 22,826,841 | 9,541 | 9,831 |
+| Stationary | 33,298,218 | 0 | 0 |
+| Smoking with the opposite hand, Watch wrist stationary | 33,293,534 | 0 | 0 |
+| Sensor interruption during every cycle | 47,008,927 | 0 | 0 |
+| Deliberately ambiguous repeated hand-to-mouth | 40,140,448 | 31,250 | 31,250 |
+
+The modeled meals triggered many false smoking candidates, and some smoking-like traces did not reach the threshold. This demonstrates why these results cannot justify claiming reliable activity recognition. Thresholds were not tuned to make invented labels look accurate. The shipped fixes address dropped progress, source coverage, synchronization, invalid inputs and duplicate handling; automatic counts remain estimates that can be corrected.
 
 ## Install later with Xcode
 
@@ -20,7 +59,7 @@ Apple permits up to 12 hours of recording per request, retains history for up to
 4. Run the `ciggy` scheme on the paired iPhone. It embeds the Watch app. Then run `ciggy Watch App` on the Watch if it has not already installed.
 5. Allow Motion & Fitness access on Watch. Heart-rate read permission is optional. Ciggy does not require a server key, paid motion API, or additional Core Motion entitlement.
 
-A signed physical-device build needs a valid Apple Account session and development profiles. An unsigned `.app` cannot be imported onto a Watch. At the time this change was validated, Xcode rejected its saved account login and the paired Watch was disconnected. Installation was deferred at the user's request.
+A signed physical-device build needs a valid Apple Account session and development profiles. An unsigned `.app` cannot be imported onto a Watch. A simulator launch or successful archive alone does not verify physical-device motion detection.
 
 ## First live test
 

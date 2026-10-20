@@ -42,6 +42,7 @@ public extension SmokingEvent {
 
 	/// Mock events for previews/testing
 	static func mock(count: Int = 12, startDaysAgo: Int = 7) -> [SmokingEvent] {
+		guard count > 0 else { return [] }
 		let calendar = Calendar.current
 		let now = Date()
 		return (0..<count).map { idx in

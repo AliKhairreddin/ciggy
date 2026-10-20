@@ -14,7 +14,7 @@ public struct UserSettings: Codable, Equatable, Sendable {
 		sensitivity: Double = 0.5,
 		notificationsEnabled: Bool = false
 	) {
-		self.quitDate = quitDate
+		self.quitDate = Self.validQuitDate(quitDate)
 		self.dailyLimit = Self.clampedDailyLimit(dailyLimit)
 		self.sensitivity = Self.clampedSensitivity(sensitivity)
 		self.notificationsEnabled = notificationsEnabled
@@ -25,7 +25,23 @@ public struct UserSettings: Codable, Equatable, Sendable {
 	}
 
 	public static func clampedSensitivity(_ value: Double) -> Double {
-		max(0, min(1, value))
+		value.isFinite ? max(0, min(1, value)) : 0.5
+	}
+
+	static func validQuitDate(_ date: Date?) -> Date? {
+		guard let date, date.timeIntervalSince1970.isFinite,
+		      date >= .distantPast, date <= .distantFuture else { return nil }
+		return date
+	}
+
+	public init(from decoder: Decoder) throws {
+		let values = try decoder.container(keyedBy: CodingKeys.self)
+		self.init(
+			quitDate: try values.decodeIfPresent(Date.self, forKey: .quitDate),
+			dailyLimit: try values.decode(Int.self, forKey: .dailyLimit),
+			sensitivity: try values.decode(Double.self, forKey: .sensitivity),
+			notificationsEnabled: try values.decode(Bool.self, forKey: .notificationsEnabled)
+		)
 	}
 }
 
@@ -35,6 +51,7 @@ public final class UserSettingsStore: ObservableObject {
 	@Published public var settings: UserSettings {
 		didSet {
 			var normalized = settings
+			normalized.quitDate = UserSettings.validQuitDate(settings.quitDate)
 			normalized.dailyLimit = UserSettings.clampedDailyLimit(settings.dailyLimit)
 			normalized.sensitivity = UserSettings.clampedSensitivity(settings.sensitivity)
 			// Mutating a member through @Published re-enters this observer.

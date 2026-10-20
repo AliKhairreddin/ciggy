@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C16A11000000000000000030 /* OpenCiggyScreenIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16A11000000000000000031 /* OpenCiggyScreenIntent.swift */; };
 		02B80AB4300719880066F68A /* ciggy Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 02B80AB3300719880066F68A /* ciggy Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		02DAFDCE30072286004A708B /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 02DAFDCD30072286004A708B /* CiggyShared */; };
 		A1C000010000000000000003 /* CiggyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 02DAFDCD30072286004A708B /* CiggyShared */; };
@@ -73,6 +74,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C16A11000000000000000031 /* OpenCiggyScreenIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../iOS/Services/OpenCiggyScreenIntent.swift; sourceTree = SOURCE_ROOT; };
 		02B80A90300719870066F68A /* ciggy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ciggy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		02B80A9D300719880066F68A /* ciggyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ciggyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		02B80AA7300719880066F68A /* ciggyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ciggyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -532,7 +534,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C16A11000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C16A11000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C16A11000000000000000030 /* OpenCiggyScreenIntent.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };
 		C16A11000000000000000022 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
@@ -691,7 +693,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "ciggy Watch App/ciggy_Watch_App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -728,7 +730,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "ciggy Watch App/ciggy_Watch_App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -766,7 +768,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -804,7 +806,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -840,7 +842,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -863,7 +865,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -886,7 +888,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -908,7 +910,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -932,7 +934,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -955,7 +957,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -978,7 +980,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -1000,7 +1002,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -1024,7 +1026,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
-				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 2;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
@@ -1042,7 +1044,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
-				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 2;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
@@ -1060,7 +1062,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
-				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 2;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";
@@ -1078,7 +1080,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
-				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 2;
+				CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = B3DG722MJP; GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ../Configuration/Widgets-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Ciggy Widgets";

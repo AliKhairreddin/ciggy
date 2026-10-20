@@ -20,6 +20,27 @@ public struct MotionGestureEngine: Codable, Sendable {
         public var maximumSampleGap: TimeInterval = 1
         public var gestureCooldown: TimeInterval = 4
         public init() {}
+
+        fileprivate var validated: Self {
+            func finite(_ value: Double, _ fallback: Double, _ range: ClosedRange<Double>) -> Double {
+                min(range.upperBound, max(range.lowerBound, value.isFinite ? value : fallback))
+            }
+            var result = self
+            result.minimumRaiseAngle = finite(minimumRaiseAngle, 0.45, 0.05...Double.pi)
+            result.returnAngle = finite(returnAngle, 0.25, 0...(result.minimumRaiseAngle * 0.9))
+            result.minimumRestSeconds = finite(minimumRestSeconds, 0.6, 0.1...10)
+            result.minimumHoldSeconds = finite(minimumHoldSeconds, 0.7, 0.1...10)
+            result.maximumHoldSeconds = finite(maximumHoldSeconds, 12, result.minimumHoldSeconds...60)
+            result.maximumRaiseSeconds = finite(maximumRaiseSeconds, 5, 0.1...30)
+            result.maximumCycleSeconds = finite(maximumCycleSeconds, 20, result.maximumHoldSeconds...120)
+            result.minimumReturnSeconds = finite(minimumReturnSeconds, 0.25, 0.1...10)
+            result.minimumRotationRate = finite(minimumRotationRate, 0.2, 0...10)
+            result.maximumHoldRotationRate = finite(maximumHoldRotationRate, 0.8, 0...10)
+            result.maximumHoldAcceleration = finite(maximumHoldAcceleration, 0.3, 0...5)
+            result.maximumSampleGap = finite(maximumSampleGap, 1, 0.05...5)
+            result.gestureCooldown = finite(gestureCooldown, 4, 0...60)
+            return result
+        }
     }
 
     public let configuration: Configuration
@@ -34,9 +55,10 @@ public struct MotionGestureEngine: Codable, Sendable {
     private var observedRotation = false
     private var hasValidHold = false
 
-    public init(configuration: Configuration = .init()) { self.configuration = configuration }
+    public init(configuration: Configuration = .init()) { self.configuration = configuration.validated }
 
     public mutating func record(_ sample: MotionSample) -> Date? {
+        if let previousSample, sample.timestamp <= previousSample.timestamp { return nil }
         guard sample.isValid else { resetCycle(); return nil }
         let previous = previousSample
         if let previous {

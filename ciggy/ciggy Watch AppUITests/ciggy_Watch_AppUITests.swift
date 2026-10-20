@@ -34,6 +34,34 @@ final class ciggy_Watch_AppUITests: XCTestCase {
     }
 
     @MainActor
+    func testSecondaryLoggingSavesOneEventAndSurvivesRelaunch() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let count = app.descendants(matching: .any)["watch-today-count"].firstMatch
+        XCTAssertTrue(count.waitForExistence(timeout: 15))
+        let initial = try XCTUnwrap(Int(count.label.split(separator: " ").first.map(String.init) ?? ""))
+        let log = app.buttons["watch-log-button"]
+        for _ in 0..<10 where !log.isHittable { app.swipeUp() }
+        XCTAssertTrue(log.isHittable)
+        XCTAssertTrue(log.label.contains("Add missed cigarette"))
+        log.tap()
+        let save = app.buttons["save-watch-log"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        for _ in 0..<5 where !save.isHittable { app.swipeUp() }
+        save.tap()
+        for _ in 0..<10 where !count.isHittable { app.swipeDown() }
+        XCTAssertEqual(Int(count.label.split(separator: " ").first.map(String.init) ?? ""), initial + 1)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(count.waitForExistence(timeout: 10))
+        XCTAssertEqual(Int(count.label.split(separator: " ").first.map(String.init) ?? ""), initial + 1)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Watch profile and saved count"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testWatchAppearancePersists() throws {
         let app = XCUIApplication()
         app.launch()

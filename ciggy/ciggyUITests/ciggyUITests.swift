@@ -9,11 +9,12 @@ import XCTest
 
 final class ciggyUITests: XCTestCase {
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
 
         // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
+        await MainActor.run { XCUIDevice.shared.orientation = .portrait }
 
         // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
@@ -38,7 +39,7 @@ final class ciggyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        app.tabBars.buttons["Settings"].tap()
+        openSettings(app)
         let previewButton = app.buttons["Preview 6 detected in 8 hours"]
         for _ in 0..<5 where previewButton.isHittable == false {
             app.swipeUp()
@@ -46,8 +47,10 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(previewButton.isHittable)
         previewButton.tap()
 
-        app.tabBars.buttons["Today"].tap()
-        XCTAssertTrue(app.staticTexts["6 cigarettes detected"].waitForExistence(timeout: 3))
+        closeSettings(app)
+        let detection = app.staticTexts["6 cigarettes detected"]
+        for _ in 0..<8 where !detection.isHittable { app.swipeUp() }
+        XCTAssertTrue(detection.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Accurate"].exists)
         XCTAssertTrue(app.buttons["Adjust count"].exists)
     }
@@ -61,10 +64,12 @@ final class ciggyUITests: XCTestCase {
         let initialLabel = count.label
         let initialCount = try XCTUnwrap(Int(initialLabel.split(separator: " ").first ?? ""))
 
-        app.buttons["phone-log-button"].tap()
+        openManualLog(app)
         XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 3))
         app.buttons["save-phone-log"].tap()
-        XCTAssertTrue(app.buttons["undo-phone-log"].waitForExistence(timeout: 3))
+        let undo = app.buttons["undo-phone-log"]
+        for _ in 0..<8 where !undo.isHittable { app.swipeDown() }
+        XCTAssertTrue(undo.waitForExistence(timeout: 3))
         XCTAssertEqual(count.label, "\(initialCount + 1) cigarettes today")
 
         app.buttons["undo-phone-log"].tap()
@@ -82,7 +87,7 @@ final class ciggyUITests: XCTestCase {
         let count = app.descendants(matching: .any)["today-count"].firstMatch
         XCTAssertTrue(count.waitForExistence(timeout: 5))
         let initialLabel = count.label
-        app.buttons["phone-log-button"].tap()
+        openManualLog(app)
         XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 3))
         app.buttons["Cancel"].tap()
         XCTAssertEqual(count.label, initialLabel)
@@ -117,7 +122,7 @@ final class ciggyUITests: XCTestCase {
         app.buttons[increasing ? "Decrease daily limit" : "Increase daily limit"].tap()
         for _ in 0..<6 where !save.isHittable { app.swipeUp() }
         save.tap()
-        app.tabBars.buttons["Settings"].tap()
+        openSettings(app)
         XCTAssertTrue(app.staticTexts["A little fine-tuning."].waitForExistence(timeout: 3))
         capture(app, name: "Settings")
     }
@@ -141,7 +146,7 @@ final class ciggyUITests: XCTestCase {
     func testAppearanceSwitchesImmediatelyAndPersists() throws {
         let app = XCUIApplication()
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettings(app)
         let appearance = app.segmentedControls["appearance-picker"]
         XCTAssertTrue(appearance.waitForExistence(timeout: 5))
         appearance.buttons["Cream"].tap()
@@ -150,23 +155,79 @@ final class ciggyUITests: XCTestCase {
 
         appearance.buttons["Dark"].tap()
         XCTAssertTrue(appearance.buttons["Dark"].isSelected)
-        app.tabBars.buttons["Today"].tap()
+        closeSettings(app)
         capture(app, name: "Dark Today")
         app.terminate()
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettings(app)
         XCTAssertTrue(appearance.waitForExistence(timeout: 5))
         XCTAssertTrue(appearance.buttons["Dark"].isSelected)
 
         appearance.buttons["Follow System"].tap()
         app.terminate()
         app.launch()
-        app.tabBars.buttons["Settings"].tap()
+        openSettings(app)
         XCTAssertTrue(appearance.waitForExistence(timeout: 5))
         XCTAssertTrue(appearance.buttons["Follow System"].isSelected)
         appearance.buttons["Cream"].tap()
-        app.tabBars.buttons["Today"].tap()
+        closeSettings(app)
         capture(app, name: "Cream Today")
+    }
+
+    @MainActor
+    func testProfileIsTheOnlySettingsEntryAndManualLogIsSecondary() {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertFalse(app.tabBars.buttons["Settings"].exists)
+        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        XCTAssertTrue(app.buttons["phone-profile-button"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Log a cigarette"].exists)
+        openSettings(app)
+        XCTAssertTrue(app.staticTexts["A little fine-tuning."].waitForExistence(timeout: 3))
+        closeSettings(app)
+        openManualLog(app)
+        XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 3))
+        app.buttons["Cancel"].tap()
+    }
+
+    @MainActor
+    func testTodayAndLogDeepLinksReturnFromProfile() throws {
+        let app = XCUIApplication()
+        app.launch()
+        openSettings(app)
+        app.open(try XCTUnwrap(URL(string: "ciggy://today")))
+        XCTAssertTrue(app.buttons["phone-profile-button"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Settings"].exists)
+        openSettings(app)
+        app.open(try XCTUnwrap(URL(string: "ciggy://log")))
+        XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["phone-profile-button"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Settings"].exists)
+    }
+
+    @MainActor
+    private func openSettings(_ app: XCUIApplication) {
+        app.tabBars.buttons["Today"].tap()
+        let profile = app.buttons["phone-profile-button"]
+        for _ in 0..<8 where !profile.isHittable { app.swipeDown() }
+        XCTAssertTrue(profile.waitForExistence(timeout: 5))
+        profile.tap()
+    }
+
+    @MainActor
+    private func closeSettings(_ app: XCUIApplication) {
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 3))
+        back.tap()
+    }
+
+    @MainActor
+    private func openManualLog(_ app: XCUIApplication) {
+        let log = app.buttons["phone-log-button"]
+        for _ in 0..<10 where !log.isHittable { app.swipeUp() }
+        XCTAssertTrue(log.isHittable)
+        log.tap()
     }
 
     @MainActor

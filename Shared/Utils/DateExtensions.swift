@@ -8,7 +8,9 @@ public extension Date {
 
 	/// Human-friendly relative time (e.g., "2h 15m ago")
 	func shortRelativeDescription(to reference: Date = Date()) -> String {
-		let seconds = max(0, Int(reference.timeIntervalSince(self)))
+		let interval = reference.timeIntervalSince(self)
+		guard interval.isFinite, abs(interval) < Double(Int.max / 2) else { return "Unknown time" }
+		let seconds = max(0, Int(interval))
 		if seconds < 60 { return "just now" }
 		let minutes = seconds / 60
 		if minutes < 60 { return "\(minutes)m ago" }

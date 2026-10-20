@@ -2,6 +2,7 @@
 import Foundation
 import Combine
 import CiggyShared
+import UIKit
 
 @MainActor
 final class DashboardViewModel: ObservableObject {
@@ -26,6 +27,18 @@ final class DashboardViewModel: ObservableObject {
 				self?.recompute(repository: repository, settings: settings)
 			}
 			.store(in: &cancellables)
+		// Recompute calendar totals even when no event changes at midnight or while
+		// the app is suspended. The timer also updates relative event descriptions.
+		Publishers.Merge3(
+			Timer.publish(every: 60, on: .main, in: .common).autoconnect().map { _ in () },
+			NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification).map { _ in () },
+			NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification).map { _ in () }
+		)
+			.receive(on: DispatchQueue.main)
+			.sink { [weak self] _ in
+				self?.recompute(repository: repository, settings: settings)
+			}
+			.store(in: &cancellables)
 		recompute(repository: repository, settings: settings)
 	}
 
@@ -36,14 +49,14 @@ final class DashboardViewModel: ObservableObject {
 		let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? startOfToday
 		let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? startOfToday
 
-		dailyCount = repository.events.filter { $0.timestamp >= startOfToday }.count
-		weeklyCount = repository.events.filter { $0.timestamp >= startOfWeek }.count
-		monthlyCount = repository.events.filter { $0.timestamp >= startOfMonth }.count
+		dailyCount = repository.events.filter { $0.timestamp >= startOfToday && $0.timestamp <= now }.count
+		weeklyCount = repository.events.filter { $0.timestamp >= startOfWeek && $0.timestamp <= now }.count
+		monthlyCount = repository.events.filter { $0.timestamp >= startOfMonth && $0.timestamp <= now }.count
 		streakDays = repository.streakSmokeFreeDays()
 		moneySaved = repository.estimatedMoneySaved()
 		let limit = max(1, settings.settings.dailyLimit)
 		todayProgress = min(1.0, Double(dailyCount) / Double(limit))
-		if let last = repository.events.last {
+		if let last = repository.events.last(where: { $0.timestamp <= now }) {
 			lastEventDescription = last.timestamp.shortRelativeDescription()
 		} else {
 			lastEventDescription = "No events yet"

@@ -8,33 +8,22 @@ import WatchKit
 struct CiggyWatchApp: App {
 	@WKApplicationDelegateAdaptor private var appDelegate: WatchAppDelegate
 	@Environment(\.scenePhase) private var scenePhase
-	@StateObject private var repository = EventRepository()
-	@StateObject private var settingsStore = UserSettingsStore()
-	@StateObject private var reviewStore = DetectionReviewStore()
-	@StateObject private var legacyCandidateStore = DetectionCandidateStore()
-	@StateObject private var watchCoordinator = WatchAppCoordinator()
+	@StateObject private var runtime = WatchAppRuntime.shared
 
 	var body: some Scene {
 		WindowGroup {
 			NavigationStack { WatchDashboardView() }
-				.environmentObject(repository)
-				.environmentObject(settingsStore)
-				.environmentObject(reviewStore)
-				.environmentObject(watchCoordinator)
-				.onAppear {
-					watchCoordinator.start(
-						repository: repository,
-						settings: settingsStore,
-						reviewStore: reviewStore,
-						legacyCandidateStore: legacyCandidateStore
-					)
-				}
+				.environmentObject(runtime.repository)
+				.environmentObject(runtime.settingsStore)
+				.environmentObject(runtime.reviewStore)
+				.environmentObject(runtime.coordinator)
+				.onAppear { runtime.start() }
 				.onChange(of: scenePhase) { _, phase in
 					switch phase {
 					case .active:
-						watchCoordinator.appDidBecomeActive()
+						runtime.coordinator.appDidBecomeActive()
 					case .background:
-						watchCoordinator.appDidEnterBackground()
+						runtime.coordinator.appDidEnterBackground()
 					case .inactive:
 						break
 					@unknown default:
@@ -48,14 +37,54 @@ struct CiggyWatchApp: App {
 }
 
 @MainActor
+final class WatchAppRuntime: ObservableObject {
+	static let shared = WatchAppRuntime()
+	let repository = EventRepository()
+	let settingsStore = UserSettingsStore()
+	let reviewStore = DetectionReviewStore()
+	let legacyCandidateStore = DetectionCandidateStore()
+	let coordinator = WatchAppCoordinator()
+
+	func start() {
+		coordinator.start(repository: repository, settings: settingsStore, reviewStore: reviewStore,
+		                  legacyCandidateStore: legacyCandidateStore)
+	}
+}
+
+@MainActor
 final class WatchAppDelegate: NSObject, WKApplicationDelegate {
+	private var runningTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+
 	func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
+		// Background launches do not necessarily construct the dashboard. Bind the
+		// same stores here before WatchConnectivity delivers queued events.
+		WatchAppRuntime.shared.start()
 		for task in backgroundTasks {
-			if task is WKApplicationRefreshBackgroundTask {
-				BackgroundMotionMonitor.shared.armRecording()
+			guard task is WKApplicationRefreshBackgroundTask || task is WKWatchConnectivityRefreshBackgroundTask else {
+				task.setTaskCompletedWithSnapshot(false)
+				continue
 			}
-			task.setTaskCompletedWithSnapshot(false)
+			let id = ObjectIdentifier(task)
+			runningTasks[id] = Task { @MainActor [weak self] in
+				if task is WKApplicationRefreshBackgroundTask {
+					BackgroundMotionMonitor.shared.armRecording()
+					await WatchAppRuntime.shared.coordinator.processHistory()
+				} else {
+					await ConnectivityManager.shared.drainPendingBackgroundTransfers()
+				}
+				self?.complete(task)
+			}
+			task.expirationHandler = { [weak self] in
+				Task { @MainActor [weak self] in self?.complete(task) }
+			}
 		}
+	}
+
+	private func complete(_ task: WKRefreshBackgroundTask) {
+		guard let work = runningTasks.removeValue(forKey: ObjectIdentifier(task)) else { return }
+		work.cancel()
+		task.expirationHandler = nil
+		task.setTaskCompletedWithSnapshot(false)
 	}
 }
 
@@ -67,6 +96,8 @@ final class WatchAppCoordinator: ObservableObject {
 	private var isForegroundMonitoring = false
 	private var hasRequestedHealthAuthorization = false
 	private var hasStartedDebugRecording = false
+	private var isRequestingNotificationAuthorization = false
+	private var historyRefresh: Task<Void, Never>?
 	private weak var repository: EventRepository?
 	private weak var settingsStore: UserSettingsStore?
 	private weak var reviewStore: DetectionReviewStore?
@@ -90,19 +121,9 @@ final class WatchAppCoordinator: ObservableObject {
 		settings.$settings
 			.removeDuplicates()
 			.sink { @MainActor [weak self] sharedSettings in
-				let shouldRequestNotifications = sharedSettings.notificationsEnabled && self?.notificationsEnabled == false
 				self?.notificationsEnabled = sharedSettings.notificationsEnabled
 				self?.detection.updateSensitivity(multiplier: sharedSettings.sensitivity)
-				if shouldRequestNotifications {
-					Task { @MainActor [weak self] in
-						let granted = await NotificationManager.requestAuthorization()
-						if granted == false, settings.settings.notificationsEnabled {
-							self?.notificationsEnabled = false
-							settings.settings.notificationsEnabled = false
-							ConnectivityManager.shared.send(settings: settings.settings)
-						}
-					}
-				}
+				self?.requestNotificationAuthorizationIfActive()
 			}
 			.store(in: &cancellables)
 
@@ -165,9 +186,10 @@ final class WatchAppCoordinator: ObservableObject {
 	}
 
 	func appDidBecomeActive() {
-		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
+		guard hasStarted else { return }
 		ConnectivityManager.shared.resumeSync()
 		BackgroundMotionMonitor.shared.armRecording()
+		requestNotificationAuthorizationIfActive()
 		#if DEBUG
 		// Opt-in launch argument enables a physical-watch test without coupling the
 		// sensor APIs to the UI being designed in the other chat.
@@ -179,46 +201,74 @@ final class WatchAppCoordinator: ObservableObject {
 			MotionRecordingStore.shared.start(label: .unlabelled)
 		}
 		#endif
+		// start() is idempotent while healthy and retries a failed sensor stream.
+		MotionManager.shared.start()
 		if isForegroundMonitoring == false {
 			isForegroundMonitoring = true
-			MotionManager.shared.start()
 			startHeartRateMonitoring()
 		}
 
+		guard historyRefresh == nil else { return }
+		historyRefresh = Task { @MainActor [weak self] in
+			while Task.isCancelled == false {
+				MotionManager.shared.start()
+				await self?.processHistory()
+				do { try await Task.sleep(for: .seconds(60)) } catch { break }
+			}
+		}
+	}
+
+	/// Used by both foreground catch-up and best-effort watchOS background refresh.
+	func processHistory() async {
+		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
 		let backgroundMotion = BackgroundMotionMonitor.shared
-		Task { @MainActor [weak self, weak repository, weak reviewStore] in
-			guard let self, let repository, let reviewStore else { return }
-			guard let batch = await backgroundMotion.processAvailableHistory(
-				sensitivity: settingsStore.settings.sensitivity
-			) else { return }
-			if let review = self.autoRecord(
+		guard let batch = await backgroundMotion.processAvailableHistory(
+			sensitivity: settingsStore.settings.sensitivity
+		), Task.isCancelled == false else { return }
+		if let review = autoRecord(
 				batch.candidates,
 				origin: .watchHistory,
 				windowStart: batch.processedFrom,
 				windowEnd: batch.processedThrough,
 				repository: repository,
 				reviewStore: reviewStore
-			), self.notificationsEnabled {
+			), notificationsEnabled {
 				NotificationManager.scheduleDetectionSummaryNotification(
 					reviewID: review.id,
-					count: batch.candidates.count,
-					historyHours: max(
-						1,
-						Int(ceil(batch.processedThrough.timeIntervalSince(batch.processedFrom) / 3_600))
-					)
+					count: review.eventIDs.count,
+				historyHours: review.historyHours
 				)
 			}
-			backgroundMotion.commit(batch)
-		}
+		backgroundMotion.commit(batch)
+		ConnectivityManager.shared.resumeSync()
 	}
 
 	func appDidEnterBackground() {
 		guard hasStarted else { return }
 		BackgroundMotionMonitor.shared.armRecording()
+		historyRefresh?.cancel()
+		historyRefresh = nil
 		MotionManager.shared.stop()
-		detection.resetSession()
+		// Preserve completed puffs across a short screen sleep. The fusion engine
+		// expires long gaps itself; an incomplete sensor gesture still resets.
 		HealthKitManager.shared.stopHeartRateStreaming()
 		isForegroundMonitoring = false
+	}
+
+	private func requestNotificationAuthorizationIfActive() {
+		guard notificationsEnabled, isRequestingNotificationAuthorization == false,
+		      WKApplication.shared().applicationState == .active, let settingsStore else { return }
+		isRequestingNotificationAuthorization = true
+		Task { @MainActor [weak self] in
+			let granted = await NotificationManager.requestAuthorization()
+			guard let self else { return }
+			self.isRequestingNotificationAuthorization = false
+			if granted == false, settingsStore.settings.notificationsEnabled {
+				self.notificationsEnabled = false
+				settingsStore.settings.notificationsEnabled = false
+				ConnectivityManager.shared.send(settings: settingsStore.settings)
+			}
+		}
 	}
 
 	private func startHeartRateMonitoring() {
@@ -244,20 +294,24 @@ final class WatchAppCoordinator: ObservableObject {
 		reviewStore: DetectionReviewStore
 	) -> DetectionReview? {
 		var newEvents: [SmokingEvent] = []
+		var reviewStart = windowStart
+		var reviewEnd = windowEnd
 		for candidate in candidates {
 			// Foreground and recorded motion observe the same wrist movement using
 			// different sensors. Do not double-log a session when history catches up.
-			if origin == .watchHistory, repository.hasRecordedAutomaticSession(near: candidate.gestureAt) { continue }
+			if repository.hasRecordedAutomaticSession(near: candidate.gestureAt) { continue }
 			let event = candidate.detectedEvent()
 			guard repository.addEvent(event) else { continue }
 			newEvents.append(event)
+			reviewStart = min(reviewStart, candidate.motionSessionStartedAt ?? candidate.gestureAt)
+			reviewEnd = max(reviewEnd, candidate.gestureAt)
 			ConnectivityManager.shared.send(event: event)
 		}
 		guard let review = reviewStore.record(
 			events: newEvents,
 			origin: origin,
-			windowStart: windowStart,
-			windowEnd: windowEnd
+			windowStart: reviewStart,
+			windowEnd: reviewEnd
 		) else { return nil }
 		ConnectivityManager.shared.send(review: review)
 		return review

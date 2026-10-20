@@ -31,12 +31,13 @@ final class WatchDashboardViewModel: ObservableObject {
 			.assign(to: &self.$isMotionMonitoring)
 
 		repository.$events
+			.combineLatest(Timer.publish(every: 30, on: .main, in: .common).autoconnect().prepend(Date()))
 			.receive(on: DispatchQueue.main)
-			.sink { [weak self] events in
+			.sink { [weak self] events, now in
 				guard let self else { return }
-				self.todayCount = events.filter { Calendar.current.isDateInToday($0.timestamp) }.count
+				self.todayCount = events.filter { Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
 				if let last = events.last {
-					self.timeSinceLast = last.timestamp.shortRelativeDescription()
+					self.timeSinceLast = last.timestamp.shortRelativeDescription(to: now)
 				} else {
 					self.timeSinceLast = "—"
 				}
