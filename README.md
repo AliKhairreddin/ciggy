@@ -101,6 +101,8 @@ Ciggy includes five widget choices — Today, Daily Budget, Since Last Log, Your
 
 With an Xcode developer toolchain selected, run `swift test` to execute the deterministic motion-session, motion-debounce, persistence, and fresh-install metric tests. The package also exposes separate `CiggyiOS` and `CiggyWatch` products for platform builds.
 
+See [TestFlight delivery](docs/testflight.md) for signing, archiving, and beta distribution, and the [privacy policy](docs/privacy.md) for the current data practices.
+
 ## iPhone and Watch simulator sync
 
 The iPhone and Watch apps have separate local stores. They synchronize automatic and manual events, event deletions, detection reviews, and feedback through WatchConnectivity rather than directly sharing simulator storage.

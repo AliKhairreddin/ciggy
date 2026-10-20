@@ -293,6 +293,10 @@ private struct PrivacyInfoView: View {
 						title: "No cloud upload",
 						body: "This prototype does not upload events, notes, settings, or detection reviews to a cloud service."
 					)
+					Link("Read the privacy policy",
+					     destination: URL(string: "https://github.com/AliKhairreddin/ciggy/blob/main/docs/privacy.md")!)
+						.font(.subheadline)
+						.foregroundStyle(palette.mint)
 				}
 				.padding(18)
 			}

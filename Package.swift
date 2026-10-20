@@ -21,12 +21,14 @@ let package = Package(
 		.executableTarget(
 			name: "CiggyiOS",
 			dependencies: ["CiggyShared"],
-			path: "iOS"
+			path: "iOS",
+			resources: [.copy("PrivacyInfo.xcprivacy")]
 		),
 		.executableTarget(
 			name: "CiggyWatch",
 			dependencies: ["CiggyShared"],
-			path: "watchOS"
+			path: "watchOS",
+			resources: [.copy("PrivacyInfo.xcprivacy")]
 		),
 		.testTarget(
 			name: "CiggySharedTests",
