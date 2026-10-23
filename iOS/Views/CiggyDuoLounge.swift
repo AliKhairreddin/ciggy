@@ -3,7 +3,7 @@ import AVFoundation
 import CiggyShared
 import SwiftUI
 
-/// Synthetic fold previews and ordinary phones never unlock the lounge.
+/// Geometry alone cannot unlock the lounge; a native hinge reading is required.
 struct CiggyDuoDeskGate<Desk: View, Normal: View>: View {
 	@Environment(\.ciggyDisplay) private var display
 	private let desk: Desk
