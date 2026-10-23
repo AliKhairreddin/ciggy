@@ -48,11 +48,29 @@ final class ciggyUITests: XCTestCase {
         previewButton.tap()
 
         closeSettings(app)
-        let detection = app.staticTexts["6 cigarettes detected"]
+        let detection = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "cigarettes detected today")).firstMatch
         for _ in 0..<8 where !detection.isHittable { app.swipeUp() }
         XCTAssertTrue(detection.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Accurate"].exists)
         XCTAssertTrue(app.buttons["Adjust count"].exists)
+    }
+
+    @MainActor
+    func testCalibrationRequiresExplicitConsentAndPairing() throws {
+        let app = XCUIApplication()
+        app.launch()
+        openSettings(app)
+        let calibration = app.buttons["calibration-settings-link"]
+        for _ in 0..<8 where !calibration.isHittable { app.swipeUp() }
+        XCTAssertTrue(calibration.isHittable)
+        calibration.tap()
+        let consent = app.switches["I agree to share my motion for calibration"]
+        for _ in 0..<8 where !consent.isHittable { app.swipeUp() }
+        XCTAssertTrue(consent.waitForExistence(timeout: 3))
+        XCTAssertEqual(consent.value as? String, "0")
+        let pair = app.buttons["Pair and start sharing"]
+        XCTAssertTrue(pair.exists)
+        XCTAssertFalse(pair.isEnabled, "An empty pairing or absent consent must never start sharing.")
     }
 
     @MainActor

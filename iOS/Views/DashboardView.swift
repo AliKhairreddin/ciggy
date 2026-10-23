@@ -15,6 +15,7 @@ struct DashboardView: View {
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@StateObject private var viewModel = DashboardViewModel()
 	@ObservedObject private var connectivity = ConnectivityManager.shared
+	@ObservedObject private var tracking = TrackingStatusStore.shared
 	@State private var reviewToAdjust: DetectionReview?
 	@State private var isLogging = false
 	@State private var lastLoggedEvent: SmokingEvent?
@@ -74,6 +75,7 @@ struct DashboardView: View {
 			}
 		}
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
+		.refreshable { ConnectivityManager.shared.requestHistoryRefresh() }
 		.onReceive(NotificationCenter.default.publisher(for: Notification.Name("Ciggy.widgetLogSaved"))) { notification in
 			lastLoggedEvent = notification.object as? SmokingEvent
 		}
@@ -328,10 +330,55 @@ struct DashboardView: View {
 
 	@ViewBuilder
 	private var detectionStatus: some View {
-		if let review = reviewStore.latestReview {
-			detectionReviewCard(review)
-		} else {
+		trackingFreshnessCard
+		let todayReviews = reviewStore.reviews(on: Date())
+		if todayReviews.isEmpty {
 			detectionReadyCard
+		}
+		ForEach(todayReviews) { review in
+			detectionReviewCard(review)
+		}
+		let earlier = reviewStore.previousReviews(before: Date())
+		if earlier.isEmpty == false {
+			DisclosureGroup("Earlier days") {
+				ForEach(earlier) { review in
+					detectionReviewCard(review)
+				}
+			}
+			.font(.subheadline.weight(.semibold))
+			.tint(palette.secondaryText)
+			.accessibilityIdentifier("earlier-detection-reviews")
+		}
+	}
+
+	private var trackingFreshnessCard: some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 10) {
+				Label(tracking.status?.title() ?? "Waiting for Watch tracking status", systemImage: "applewatch.radiowaves.left.and.right")
+					.font(.subheadline.weight(.bold))
+					.foregroundStyle(palette.primaryText)
+				Text(tracking.status?.detail() ?? "Your saved count is shown above. Ciggy requests recent motion from your paired Watch; today's total may still be incomplete until it responds.")
+					.font(.caption)
+					.foregroundStyle(palette.secondaryText)
+				Button {
+					ConnectivityManager.shared.requestHistoryRefresh()
+				} label: {
+					Label("Check Watch", systemImage: "arrow.clockwise")
+						.font(.subheadline.weight(.semibold))
+						.frame(minHeight: 44)
+				}
+				.buttonStyle(.plain)
+				.foregroundStyle(palette.mint)
+				.disabled(!HistoryRefreshPolicy.shouldRequest(at: Date(), lastRequestedAt: connectivity.lastHistoryRefreshRequestedAt))
+				.accessibilityIdentifier("check-watch-history")
+				if let requested = connectivity.lastHistoryRefreshRequestedAt,
+				   Date().timeIntervalSince(requested) < 60,
+				   tracking.status?.historyCheckedAt.map({ $0 < requested }) ?? true {
+					Text("Check requested. Your Watch can respond in the background when watchOS allows.")
+						.font(.caption)
+						.foregroundStyle(palette.secondaryText)
+				}
+			}
 		}
 	}
 
@@ -357,7 +404,7 @@ struct DashboardView: View {
 						.frame(width: 44, height: 44)
 						.background(CiggyTheme.brandGradient, in: Circle())
 					VStack(alignment: .leading, spacing: 4) {
-						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected")
+						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 							.font(.headline)
 							.foregroundStyle(palette.primaryText)
 						Text(reviewSummaryText(review))
@@ -368,7 +415,7 @@ struct DashboardView: View {
 				}
 
 				if review.decision == .pending {
-					Text("Already included in your total. Only respond if you want to teach Ciggy.")
+					Text("These detections are already included in your count. Confirm or correct this summary whenever you want.")
 						.font(.caption)
 						.foregroundStyle(palette.secondaryText)
 					HStack(spacing: 10) {
@@ -415,19 +462,19 @@ struct DashboardView: View {
 				CiggyStatusPill(syncStatusTitle, systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath", color: connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.ember)
 				Text("Wear your Watch on the hand you smoke with. Ciggy looks for repeated gestures; detection can miss cigarettes or mistake other movements. Review and adjust your total when needed.")
 					.font(.caption).foregroundStyle(palette.secondaryText)
-				Text("Background counts can arrive later. Open Ciggy on your Watch to check recent movement, then allow both devices to sync.")
+				Text("Today's count updates as recorded Watch motion is checked. The tracking status above shows how recent the available data is.")
 					.font(.caption).foregroundStyle(palette.secondaryText)
 			}
 		}
 	}
 
 	private func reviewSummaryText(_ review: DetectionReview) -> String {
-		if review.origin == .watchHistory {
-			let start = review.windowStart.formatted(date: .abbreviated, time: .shortened)
-			let end = review.windowEnd.formatted(date: .abbreviated, time: .shortened)
-			return "Watch history: \(start) – \(end)."
+		let calendar = Calendar.current
+		let day = calendar.isDateInToday(review.windowEnd) ? "Today" : review.windowEnd.formatted(date: .abbreviated, time: .omitted)
+		if calendar.isDate(review.windowStart, inSameDayAs: review.windowEnd) {
+			return "\(day) · \(review.windowStart.formatted(date: .omitted, time: .shortened)) – \(review.windowEnd.formatted(date: .omitted, time: .shortened))"
 		}
-		return "Noticed by your Watch on \(review.windowEnd.formatted(date: .abbreviated, time: .shortened))."
+		return "Earlier summary: \(review.windowStart.formatted(date: .abbreviated, time: .shortened)) – \(review.windowEnd.formatted(date: .abbreviated, time: .shortened))"
 	}
 
 	private func reviewDecisionText(_ review: DetectionReview) -> String {
@@ -513,7 +560,7 @@ private struct DetectionCountAdjustmentView: View {
 				CiggyBackdrop()
 				ScrollView {
 					VStack(spacing: 22) {
-						Text("How many were actually smoked?")
+						Text("How many cigarettes in this summary?")
 							.font(.title2.weight(.black))
 							.foregroundStyle(palette.primaryText)
 							.multilineTextAlignment(.center)
@@ -530,7 +577,7 @@ private struct DetectionCountAdjustmentView: View {
 						.padding()
 						.background(palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-						Text("This updates the total on iPhone and Apple Watch. Event times remain estimates from the detected window.")
+						Text("Corrects these detections on iPhone and Apple Watch, not your entire daily total. Times stay within this summary's date and window.")
 							.font(.caption)
 							.foregroundStyle(palette.secondaryText)
 							.multilineTextAlignment(.center)

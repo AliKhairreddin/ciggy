@@ -21,6 +21,13 @@ struct WatchSettingsView: View {
 				detectionCard
 				goalCard
 				summaryNotificationCard
+				watchCard {
+					VStack(alignment: .leading, spacing: 4) {
+						Label("Motion calibration", systemImage: "waveform.path").font(.system(size: 11, weight: .bold))
+						Text(settingsStore.settings.calibrationEnabledAt == nil ? "Sharing off. Pair and opt in from iPhone Settings to contribute recordings." : "Sharing enabled from iPhone. Recorded motion goes to the private dashboard via iPhone Wi-Fi; gaps and delays can occur.")
+							.font(.system(size: 9)).foregroundStyle(palette.secondaryText)
+					}
+				}
 				#if DEBUG
 				previewCard
 				#endif
@@ -186,6 +193,9 @@ struct WatchSettingsView: View {
 					.font(.system(size: 9))
 					.foregroundStyle(palette.secondaryText)
 				Text("Motion is an estimate. Wear this Watch on the hand you smoke with. Counts can appear later; open Ciggy to check recent movement. Heart rate is optional.")
+					.font(.system(size: 9))
+					.foregroundStyle(palette.secondaryText)
+				Text("For more background opportunities, keep a Ciggy complication on your active Watch face. Opening the iPhone also requests a motion check.")
 					.font(.system(size: 9))
 					.foregroundStyle(palette.secondaryText)
 			}

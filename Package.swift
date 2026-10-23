@@ -11,7 +11,8 @@ let package = Package(
 	products: [
 		.library(name: "CiggyShared", targets: ["CiggyShared"]),
 		.executable(name: "CiggyiOS", targets: ["CiggyiOS"]),
-		.executable(name: "CiggyWatch", targets: ["CiggyWatch"])
+		.executable(name: "CiggyWatch", targets: ["CiggyWatch"]),
+		.executable(name: "CiggyMotionBenchmark", targets: ["CiggyMotionBenchmark"])
 	],
 	targets: [
 		.target(
@@ -30,6 +31,11 @@ let package = Package(
 			dependencies: ["CiggyShared"],
 			path: "watchOS",
 			resources: [.copy("PrivacyInfo.xcprivacy")]
+		),
+		.executableTarget(
+			name: "CiggyMotionBenchmark",
+			dependencies: ["CiggyShared"],
+			path: "Tools/MotionBenchmark/Swift"
 		),
 		.testTarget(
 			name: "CiggySharedTests",

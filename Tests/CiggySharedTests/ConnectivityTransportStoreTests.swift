@@ -3,6 +3,26 @@ import XCTest
 
 @MainActor
 final class ConnectivityTransportStoreTests: XCTestCase {
+    func testRepeatedChecksAndStatusCoalesceWithoutDroppingEventMutations() {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = ConnectivityTransportStore(defaults: defaults)
+        let event = ConnectivityEnvelope(type: "event", data: Data("cigarette".utf8))
+        store.enqueue(event)
+        for number in 0..<100 {
+            store.enqueueLatest(.init(type: "historyRefreshRequest", data: Data("request \(number)".utf8)))
+            store.enqueueLatest(.init(type: "trackingStatus", data: Data("status \(number)".utf8)))
+        }
+        let reloaded = ConnectivityTransportStore(defaults: defaults)
+        XCTAssertEqual(reloaded.outgoing.count, 3)
+        XCTAssertEqual(reloaded.outgoing.first, event)
+        XCTAssertEqual(reloaded.outgoing.last?.data, Data("status 99".utf8))
+        store.enqueueLatest(.init(type: "eventDeletion", data: Data("a".utf8)))
+        store.enqueueLatest(.init(type: "eventDeletion", data: Data("b".utf8)))
+        XCTAssertEqual(store.outgoing.filter { $0.type == "eventDeletion" }.count, 2)
+    }
+
     func testRepeatedSendOfSameMutationCoalescesUntilAcknowledged() {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!

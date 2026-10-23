@@ -61,6 +61,13 @@ struct SettingsView: View {
 	private var settingsControls: some View {
 		detectionCard
 		notificationCard
+		CiggyPanel {
+			NavigationLink(destination: CalibrationSettingsView()) {
+				Label("Private motion calibration", systemImage: "waveform.path")
+					.font(.headline).foregroundStyle(palette.primaryText)
+			}
+			.accessibilityIdentifier("calibration-settings-link")
+		}
 		#if DEBUG
 		detectionPreviewCard
 		#endif

@@ -66,12 +66,16 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 			}
 			let id = ObjectIdentifier(task)
 			runningTasks[id] = Task { @MainActor [weak self] in
+				BackgroundMotionMonitor.shared.armRecording()
 				if task is WKApplicationRefreshBackgroundTask {
-					BackgroundMotionMonitor.shared.armRecording()
-					await WatchAppRuntime.shared.coordinator.processHistory()
+					BackgroundMotionMonitor.shared.backgroundRefreshDidBegin()
 				} else {
-					await ConnectivityManager.shared.drainPendingBackgroundTransfers()
+					await ConnectivityManager.shared.drainPendingBackgroundTransfers(maximumWait: 1)
 				}
+				guard Task.isCancelled == false else { return }
+				// Every legitimate wake is useful: a phone sync can renew capture
+				// and check recent movement without opening the Watch interface.
+				await WatchAppRuntime.shared.coordinator.refreshTracking()
 				self?.complete(task)
 			}
 			task.expirationHandler = { [weak self] in
@@ -98,6 +102,10 @@ final class WatchAppCoordinator: ObservableObject {
 	private var hasStartedDebugRecording = false
 	private var isRequestingNotificationAuthorization = false
 	private var historyRefresh: Task<Void, Never>?
+	private var companionRefresh: Task<Void, Never>?
+	private var trackingRefresh: Task<Void, Never>?
+	private let lastRefreshRequestKey = "Ciggy.lastHandledHistoryRefreshRequest.v1"
+	private let lastRefreshRequestAtKey = "Ciggy.lastHandledHistoryRefreshAt.v1"
 	private weak var repository: EventRepository?
 	private weak var settingsStore: UserSettingsStore?
 	private weak var reviewStore: DetectionReviewStore?
@@ -124,6 +132,9 @@ final class WatchAppCoordinator: ObservableObject {
 				self?.notificationsEnabled = sharedSettings.notificationsEnabled
 				self?.detection.updateSensitivity(multiplier: sharedSettings.sensitivity)
 				self?.requestNotificationAuthorizationIfActive()
+				if sharedSettings.calibrationEnabledAt == nil {
+					Task { @MainActor in await BackgroundCalibrationCollector.shared.collect(enabledAt: nil) }
+				}
 			}
 			.store(in: &cancellables)
 
@@ -138,6 +149,7 @@ final class WatchAppCoordinator: ObservableObject {
 		ConnectivityManager.shared.incomingEvent
 			.sink { @MainActor event in
 				repository.addEvent(event)
+				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
 			}
 			.store(in: &cancellables)
 
@@ -150,6 +162,22 @@ final class WatchAppCoordinator: ObservableObject {
 		ConnectivityManager.shared.incomingReview
 			.sink { @MainActor review in
 				reviewStore.upsert(review)
+				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
+			}
+			.store(in: &cancellables)
+
+		ConnectivityManager.shared.incomingHistoryRefreshRequest
+			.sink { @MainActor [weak self] request in
+				guard let self, UserDefaults.standard.string(forKey: self.lastRefreshRequestKey) != request.id.uuidString else { return }
+				if let handledAt = UserDefaults.standard.object(forKey: self.lastRefreshRequestAtKey) as? Date,
+				   request.requestedAt <= handledAt { return }
+				UserDefaults.standard.set(request.id.uuidString, forKey: self.lastRefreshRequestKey)
+				UserDefaults.standard.set(request.requestedAt, forKey: self.lastRefreshRequestAtKey)
+				guard self.companionRefresh == nil else { return }
+				self.companionRefresh = Task { @MainActor [weak self] in
+					await self?.refreshTracking()
+					self?.companionRefresh = nil
+				}
 			}
 			.store(in: &cancellables)
 
@@ -166,6 +194,7 @@ final class WatchAppCoordinator: ObservableObject {
 			}
 			.store(in: &cancellables)
 
+		reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
 		let legacyCandidates = legacyCandidateStore.pendingCandidates
 		ConnectivityManager.shared.activateIncomingDelivery()
 		if let first = legacyCandidates.first, let last = legacyCandidates.last {
@@ -212,10 +241,32 @@ final class WatchAppCoordinator: ObservableObject {
 		historyRefresh = Task { @MainActor [weak self] in
 			while Task.isCancelled == false {
 				MotionManager.shared.start()
-				await self?.processHistory()
+				await self?.refreshTracking()
 				do { try await Task.sleep(for: .seconds(60)) } catch { break }
 			}
 		}
+	}
+
+	func refreshTracking() async {
+		guard hasStarted else { return }
+		if let trackingRefresh { await trackingRefresh.value; return }
+		let work = Task { @MainActor [weak self] in
+			BackgroundMotionMonitor.shared.armRecording()
+			await self?.processHistory()
+			guard Task.isCancelled == false else { return }
+			await BackgroundCalibrationCollector.shared.collect(
+				enabledAt: self?.settingsStore?.settings.calibrationEnabledAt,
+				maximumProcessingTime: WKApplication.shared().applicationState == .active ? 6 : 1
+			)
+			ConnectivityManager.shared.resumeSync()
+		}
+		trackingRefresh = work
+		await withTaskCancellationHandler {
+			await work.value
+		} onCancel: {
+			work.cancel()
+		}
+		trackingRefresh = nil
 	}
 
 	/// Used by both foreground catch-up and best-effort watchOS background refresh.
@@ -223,22 +274,19 @@ final class WatchAppCoordinator: ObservableObject {
 		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
 		let backgroundMotion = BackgroundMotionMonitor.shared
 		guard let batch = await backgroundMotion.processAvailableHistory(
-			sensitivity: settingsStore.settings.sensitivity
+			sensitivity: settingsStore.settings.sensitivity,
+			maximumProcessingTime: WKApplication.shared().applicationState == .active ? 20 : 4
 		), Task.isCancelled == false else { return }
-		if let review = autoRecord(
-				batch.candidates,
-				origin: .watchHistory,
-				windowStart: batch.processedFrom,
-				windowEnd: batch.processedThrough,
-				repository: repository,
-				reviewStore: reviewStore
-			), notificationsEnabled {
-				NotificationManager.scheduleDetectionSummaryNotification(
-					reviewID: review.id,
-					count: review.eventIDs.count,
-				historyHours: review.historyHours
-				)
-			}
+		let reviews = autoRecord(
+			batch.candidates, origin: .watchHistory,
+			windowStart: batch.processedFrom, windowEnd: batch.processedThrough,
+			repository: repository, reviewStore: reviewStore
+		)
+		if notificationsEnabled, let review = reviews.last(where: { Calendar.current.isDate($0.windowEnd, inSameDayAs: Date()) }) {
+			NotificationManager.scheduleDetectionSummaryNotification(
+				reviewID: review.id, count: review.eventIDs.count, historyHours: review.historyHours
+			)
+		}
 		backgroundMotion.commit(batch)
 		ConnectivityManager.shared.resumeSync()
 	}
@@ -292,7 +340,7 @@ final class WatchAppCoordinator: ObservableObject {
 		windowEnd: Date,
 		repository: EventRepository,
 		reviewStore: DetectionReviewStore
-	) -> DetectionReview? {
+	) -> [DetectionReview] {
 		var newEvents: [SmokingEvent] = []
 		var reviewStart = windowStart
 		var reviewEnd = windowEnd
@@ -307,14 +355,11 @@ final class WatchAppCoordinator: ObservableObject {
 			reviewEnd = max(reviewEnd, candidate.gestureAt)
 			ConnectivityManager.shared.send(event: event)
 		}
-		guard let review = reviewStore.record(
-			events: newEvents,
-			origin: origin,
-			windowStart: reviewStart,
-			windowEnd: reviewEnd
-		) else { return nil }
-		ConnectivityManager.shared.send(review: review)
-		return review
+		let reviews = reviewStore.recordDaily(
+			events: newEvents, origin: origin, windowStart: reviewStart, windowEnd: reviewEnd
+		)
+		reviews.forEach { ConnectivityManager.shared.send(review: $0) }
+		return reviews
 	}
 }
 #else

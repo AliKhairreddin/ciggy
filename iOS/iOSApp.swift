@@ -29,7 +29,9 @@ struct CiggyiOSApp: App {
 				.onChange(of: scenePhase) { _, phase in
 					if phase == .active {
 						ConnectivityManager.shared.resumeSync()
+						CalibrationUploadManager.shared.flush()
 						runtime.coordinator.refreshNotifications()
+						ConnectivityManager.shared.requestHistoryRefresh()
 						liveActivity.refresh()
 					}
 				}
@@ -57,6 +59,13 @@ final class IOSAppDelegate: NSObject, UIApplicationDelegate {
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
 		IOSAppRuntime.shared.start()
 		return true
+	}
+
+	func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+	                 completionHandler: @escaping () -> Void) {
+		guard identifier == CalibrationUploadManager.sessionIdentifier else { completionHandler(); return }
+		CalibrationUploadManager.shared.restoreBackgroundSession(completion: completionHandler)
+		IOSAppRuntime.shared.start()
 	}
 }
 
@@ -100,6 +109,7 @@ final class IOSAppCoordinator: ObservableObject {
 	) {
 		guard hasStarted == false else { return }
 		hasStarted = true
+		CalibrationUploadManager.shared.bind(settings: settings)
 		settingsStore = settings
 		widgetSync.bind(repository: repository, settings: settings)
 		NotificationManager.configurePresentation()
@@ -136,6 +146,7 @@ final class IOSAppCoordinator: ObservableObject {
 		ConnectivityManager.shared.incomingEvent
 			.sink { @MainActor event in
 				repository.addEvent(event)
+				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
 			}
 			.store(in: &cancellables)
 
@@ -148,6 +159,7 @@ final class IOSAppCoordinator: ObservableObject {
 		ConnectivityManager.shared.incomingReview
 			.sink { @MainActor review in
 				reviewStore.upsert(review)
+				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
 			}
 			.store(in: &cancellables)
 
@@ -171,7 +183,9 @@ final class IOSAppCoordinator: ObservableObject {
 				ConnectivityManager.shared.send(settings: sharedSettings)
 			}
 			.store(in: &cancellables)
+		reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
 		ConnectivityManager.shared.activateIncomingDelivery()
+		if UIApplication.shared.applicationState == .active { ConnectivityManager.shared.requestHistoryRefresh() }
 	}
 }
 

@@ -3,21 +3,29 @@ import Combine
 
 /// User-configurable settings for detection and goals
 public struct UserSettings: Codable, Equatable, Sendable {
+	private enum CodingKeys: String, CodingKey {
+		case quitDate, dailyLimit, sensitivity, notificationsEnabled, calibrationEnabledAt
+		case calibrationConsentReferenceTime
+	}
 	public var quitDate: Date?
 	public var dailyLimit: Int
 	public var sensitivity: Double // 0.0 (low) ... 1.0 (high)
 	public var notificationsEnabled: Bool
+	/// Explicit opt-in on iPhone; no raw history before this instant is shared.
+	public var calibrationEnabledAt: Date?
 
 	public init(
 		quitDate: Date? = nil,
 		dailyLimit: Int = 10,
 		sensitivity: Double = 0.5,
-		notificationsEnabled: Bool = false
+		notificationsEnabled: Bool = false,
+		calibrationEnabledAt: Date? = nil
 	) {
 		self.quitDate = Self.validQuitDate(quitDate)
 		self.dailyLimit = Self.clampedDailyLimit(dailyLimit)
 		self.sensitivity = Self.clampedSensitivity(sensitivity)
 		self.notificationsEnabled = notificationsEnabled
+		self.calibrationEnabledAt = Self.validQuitDate(calibrationEnabledAt)
 	}
 
 	public static func clampedDailyLimit(_ value: Int) -> Int {
@@ -36,12 +44,32 @@ public struct UserSettings: Codable, Equatable, Sendable {
 
 	public init(from decoder: Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
+		let consent: Date?
+		if let referenceTime = try values.decodeIfPresent(Double.self, forKey: .calibrationConsentReferenceTime) {
+			consent = Date(timeIntervalSinceReferenceDate: referenceTime)
+		} else {
+			consent = try values.decodeIfPresent(Date.self, forKey: .calibrationEnabledAt)
+		}
 		self.init(
 			quitDate: try values.decodeIfPresent(Date.self, forKey: .quitDate),
 			dailyLimit: try values.decode(Int.self, forKey: .dailyLimit),
 			sensitivity: try values.decode(Double.self, forKey: .sensitivity),
-			notificationsEnabled: try values.decode(Bool.self, forKey: .notificationsEnabled)
+			notificationsEnabled: try values.decode(Bool.self, forKey: .notificationsEnabled),
+			calibrationEnabledAt: consent
 		)
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var values = encoder.container(keyedBy: CodingKeys.self)
+		try values.encodeIfPresent(quitDate, forKey: .quitDate)
+		try values.encode(dailyLimit, forKey: .dailyLimit)
+		try values.encode(sensitivity, forKey: .sensitivity)
+		try values.encode(notificationsEnabled, forKey: .notificationsEnabled)
+		// WatchConnectivity's legacy ISO dates lose fractions of a second. Keep
+		// this consent boundary exact regardless of the enclosing date strategy.
+		// Older app versions safely ignore the new key.
+		try values.encodeIfPresent(calibrationEnabledAt?.timeIntervalSinceReferenceDate,
+		                           forKey: .calibrationConsentReferenceTime)
 	}
 }
 
@@ -52,6 +80,7 @@ public final class UserSettingsStore: ObservableObject {
 		didSet {
 			var normalized = settings
 			normalized.quitDate = UserSettings.validQuitDate(settings.quitDate)
+			normalized.calibrationEnabledAt = UserSettings.validQuitDate(settings.calibrationEnabledAt)
 			normalized.dailyLimit = UserSettings.clampedDailyLimit(settings.dailyLimit)
 			normalized.sensitivity = UserSettings.clampedSensitivity(settings.sensitivity)
 			// Mutating a member through @Published re-enters this observer.

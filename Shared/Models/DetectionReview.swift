@@ -6,7 +6,7 @@ public enum DetectionReviewOrigin: String, Codable, Equatable, Sendable {
 	case watchHistory
 }
 
-/// A summary remains passive until the user chooses to teach the detector.
+/// A summary remains passive until the user chooses to review its count.
 public enum DetectionReviewDecision: String, Codable, Equatable, Sendable {
 	case pending
 	case accurate
@@ -26,6 +26,10 @@ public struct DetectionReview: Identifiable, Codable, Equatable, Sendable {
 	public var updatedAt: Date
 	/// Monotonic merge key used when WatchConnectivity delivers updates at least once.
 	public var revision: Int
+	/// Calendar day covered by a new summary. Legacy summaries did not store a day.
+	public var dayStart: Date?
+	/// Identifies a legacy summary replaced by deterministic day-scoped summaries.
+	public var parentReviewID: UUID?
 
 	public init(
 		id: UUID = UUID(),
@@ -37,7 +41,9 @@ public struct DetectionReview: Identifiable, Codable, Equatable, Sendable {
 		correctedCount: Int? = nil,
 		reviewedAt: Date? = nil,
 		updatedAt: Date = Date(),
-		revision: Int = 1
+		revision: Int = 1,
+		dayStart: Date? = nil,
+		parentReviewID: UUID? = nil
 	) {
 		self.id = id
 		self.eventIDs = Self.unique(eventIDs)
@@ -49,6 +55,8 @@ public struct DetectionReview: Identifiable, Codable, Equatable, Sendable {
 		self.reviewedAt = reviewedAt
 		self.updatedAt = updatedAt
 		self.revision = max(1, revision)
+		self.dayStart = dayStart
+		self.parentReviewID = parentReviewID
 	}
 
 	public var originalCount: Int { eventIDs.count }
@@ -64,7 +72,9 @@ public struct DetectionReview: Identifiable, Codable, Equatable, Sendable {
 	var hasValidDates: Bool {
 		[windowStart, windowEnd, updatedAt].allSatisfy {
 			$0.timeIntervalSince1970.isFinite && $0 >= .distantPast && $0 <= .distantFuture
-		} && (reviewedAt.map { $0.timeIntervalSince1970.isFinite && $0 >= .distantPast && $0 <= .distantFuture } ?? true)
+		} && [reviewedAt, dayStart].compactMap { $0 }.allSatisfy {
+			$0.timeIntervalSince1970.isFinite && $0 >= .distantPast && $0 <= .distantFuture
+		}
 	}
 
 	/// Decode through the initializer so received and saved reviews have the same invariants.
@@ -80,7 +90,9 @@ public struct DetectionReview: Identifiable, Codable, Equatable, Sendable {
 			correctedCount: try values.decodeIfPresent(Int.self, forKey: .correctedCount),
 			reviewedAt: try values.decodeIfPresent(Date.self, forKey: .reviewedAt),
 			updatedAt: try values.decode(Date.self, forKey: .updatedAt),
-			revision: try values.decode(Int.self, forKey: .revision)
+			revision: try values.decode(Int.self, forKey: .revision),
+			dayStart: try values.decodeIfPresent(Date.self, forKey: .dayStart),
+			parentReviewID: try values.decodeIfPresent(UUID.self, forKey: .parentReviewID)
 		)
 	}
 

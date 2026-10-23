@@ -12,10 +12,12 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	public let incomingDeletedEventID = PassthroughSubject<UUID, Never>()
 	public let incomingReview = PassthroughSubject<DetectionReview, Never>()
 	public let incomingSettings = CurrentValueSubject<UserSettings?, Never>(nil)
+	public let incomingHistoryRefreshRequest = PassthroughSubject<HistoryRefreshRequest, Never>()
 	@Published public private(set) var isActivated = false
 	@Published public private(set) var isReachable = false
 	@Published public private(set) var isCounterpartAppInstalled = false
 	@Published public private(set) var lastSyncError: String?
+	@Published public private(set) var lastHistoryRefreshRequestedAt: Date?
 
 	/// Reachability means both companion apps are currently running and can use
 	/// an immediate message. Durable transfers still work when this is false.
@@ -29,9 +31,11 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private var liveTransfers: Set<UUID> = []
 	private let recordingTransfersKey = "Ciggy.connectivity.recordingTransfers.v1"
 	private var pendingRecordingPaths: [String] = []
+	private let refreshRequestedKey = "Ciggy.connectivity.historyRefreshRequestedAt.v1"
 
 	private override init() {
 		super.init()
+		lastHistoryRefreshRequestedAt = UserDefaults.standard.object(forKey: refreshRequestedKey) as? Date
 		if let settings = transportStore.latestSettings {
 			latestSettingsPayload = ["type": settings.type, "data": settings.data]
 			settingsSyncNeedsRetry = true
@@ -66,6 +70,24 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		flushLatestSettings()
 	}
 
+	/// Requests a bounded history check without requiring a visible Watch app.
+	/// A durable transfer gives watchOS a background delivery opportunity; it is
+	/// not a promise that the Watch wakes immediately.
+	public func requestHistoryRefresh() {
+		let now = Date()
+		guard HistoryRefreshPolicy.shouldRequest(at: now, lastRequestedAt: lastHistoryRefreshRequestedAt) else { return }
+		lastHistoryRefreshRequestedAt = now
+		UserDefaults.standard.set(now, forKey: refreshRequestedKey)
+		guard let payload = encodedPayload(type: "historyRefreshRequest", value: HistoryRefreshRequest(requestedAt: now)) else { return }
+		queueLatest(payload)
+	}
+
+	public func send(trackingStatus: TrackingStatus) {
+		guard trackingStatus.hasValidDates,
+		      let data = try? trackingStatus.transferData() else { return }
+		queueLatest(["type": "trackingStatus", "data": data])
+	}
+
 	/// Call after repositories subscribe, including after a background-only launch.
 	public func activateIncomingDelivery() {
 		isIncomingDeliveryReady = true
@@ -82,9 +104,9 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	/// A WatchConnectivity background task must remain alive until activation and
 	/// queued delegate delivery finish, rather than completing before the inbox saves.
-	public func drainPendingBackgroundTransfers() async {
+	public func drainPendingBackgroundTransfers(maximumWait: TimeInterval = 2) async {
 		guard let session else { return }
-		let deadline = ProcessInfo.processInfo.systemUptime + 20
+		let deadline = ProcessInfo.processInfo.systemUptime + max(0, min(20, maximumWait))
 		repeat {
 			await Task.yield()
 			flushIncoming()
@@ -104,6 +126,29 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 		}
 		flushRecordingTransfers()
+	}
+
+	/// Opting out cancels only calibration files, preserving ordinary event sync.
+	public func cancelMotionRecordings(in directory: URL) {
+		let prefix = directory.standardizedFileURL.path + "/"
+		pendingRecordingPaths.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(prefix) }
+		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
+		for transfer in session?.outstandingFileTransfers ?? [] {
+			let original = transfer.file.metadata?["recordingPath"] as? String ?? transfer.file.fileURL.path
+			if URL(fileURLWithPath: original).standardizedFileURL.path.hasPrefix(prefix) { transfer.cancel() }
+		}
+	}
+
+	public func cancelMotionRecordingTransfers(in directory: URL) { cancelMotionRecordings(in: directory) }
+
+	public func cancelMotionRecordingTransfer(at url: URL) {
+		let path = url.standardizedFileURL.path
+		pendingRecordingPaths.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path == path }
+		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
+		for transfer in session?.outstandingFileTransfers ?? [] {
+			let original = transfer.file.metadata?["recordingPath"] as? String ?? transfer.file.fileURL.path
+			if URL(fileURLWithPath: original).standardizedFileURL.path == path { transfer.cancel() }
+		}
 	}
 
 	private func flushRecordingTransfers() {
@@ -162,6 +207,17 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		flushPendingDurablePayloads()
 	}
 
+	private func queueLatest(_ payload: [String: Any]) {
+		guard let type = payload["type"] as? String, let data = payload["data"] as? Data else { return }
+		// Coalesce the system queue too, not just our persisted outbox. These
+		// superseded status/control messages must not consume tomorrow's wake budget.
+		for transfer in session?.outstandingUserInfoTransfers ?? [] where transfer.userInfo["type"] as? String == type {
+			transfer.cancel()
+		}
+		transportStore.enqueueLatest(.init(type: type, data: data))
+		flushPendingDurablePayloads()
+	}
+
 	private func flushPendingDurablePayloads() {
 		guard let session, session.activationState == .activated else { return }
 		let outstandingIDs = Set(session.outstandingUserInfoTransfers.compactMap {
@@ -207,6 +263,15 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			if let value = try? decoder.decode(UUID.self, from: data) { incomingDeletedEventID.send(value) }
 		case "detectionReview":
 			if let value = try? decoder.decode(DetectionReview.self, from: data) { incomingReview.send(value) }
+		case "historyRefreshRequest":
+			if let request = try? decoder.decode(HistoryRefreshRequest.self, from: data),
+			   MotionHistoryProcessor.isSupportedDate(request.requestedAt) {
+				incomingHistoryRefreshRequest.send(request)
+			}
+		case "trackingStatus":
+			if let value = try? TrackingStatus.fromTransfer(data) {
+				TrackingStatusStore.shared.receive(value)
+			}
 		case "settings":
 			if let value = try? decoder.decode(UserSettings.self, from: data) {
 				// Receiving the counterpart's settings supersedes any local snapshot.
@@ -363,10 +428,12 @@ public final class ConnectivityManager: ObservableObject {
 	public let incomingDeletedEventID = PassthroughSubject<UUID, Never>()
 	public let incomingReview = PassthroughSubject<DetectionReview, Never>()
 	public let incomingSettings = CurrentValueSubject<UserSettings?, Never>(nil)
+	public let incomingHistoryRefreshRequest = PassthroughSubject<HistoryRefreshRequest, Never>()
 	@Published public private(set) var isActivated = false
 	@Published public private(set) var isReachable = false
 	@Published public private(set) var isCounterpartAppInstalled = false
 	@Published public private(set) var lastSyncError: String?
+	@Published public private(set) var lastHistoryRefreshRequestedAt: Date?
 	public var isLiveSyncAvailable: Bool { false }
 
 	private init() {}
@@ -375,9 +442,14 @@ public final class ConnectivityManager: ObservableObject {
 	public func sendDeletedEvent(id: UUID) {}
 	public func send(review: DetectionReview) {}
 	public func send(settings: UserSettings) {}
+	public func requestHistoryRefresh() {}
+	public func send(trackingStatus: TrackingStatus) {}
 	public func activateIncomingDelivery() {}
 	public func resumeSync() {}
-	public func drainPendingBackgroundTransfers() async {}
+	public func drainPendingBackgroundTransfers(maximumWait: TimeInterval = 2) async {}
 	public func sendMotionRecording(at url: URL) {}
+	public func cancelMotionRecordings(in directory: URL) {}
+	public func cancelMotionRecordingTransfers(in directory: URL) {}
+	public func cancelMotionRecordingTransfer(at url: URL) {}
 }
 #endif

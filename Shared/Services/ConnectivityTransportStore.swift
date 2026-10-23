@@ -36,6 +36,16 @@ public final class ConnectivityTransportStore {
 		}) == false else { return }
 		state.outgoing.append(envelope); save()
 	}
+	/// Only replace ephemeral control/status messages. Event mutations keep their full queue.
+	public func enqueueLatest(_ envelope: ConnectivityEnvelope) {
+		guard ["historyRefreshRequest", "trackingStatus"].contains(envelope.type) else {
+			enqueue(envelope)
+			return
+		}
+		state.outgoing.removeAll { $0.type == envelope.type }
+		state.outgoing.append(envelope)
+		save()
+	}
 	public func acknowledge(id: UUID) {
 		state.outgoing.removeAll { $0.id == id }; save()
 	}

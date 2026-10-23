@@ -9,8 +9,8 @@ public struct MotionRecording: Codable, Sendable {
     public var samples: [MotionSample]
     public var endedAt: Date?
     public let formatVersion: Int
-    public init(label: Label, startedAt: Date = Date()) {
-        id = UUID(); self.startedAt = startedAt; self.label = label
+    public init(id: UUID = UUID(), label: Label, startedAt: Date = Date()) {
+        self.id = id; self.startedAt = startedAt; self.label = label
         samples = []; formatVersion = 1
     }
 }
@@ -121,6 +121,17 @@ public final class MotionRecordingStore: ObservableObject {
             try FileManager.default.removeItem(at: Self.incomingDirectory)
         }
         latestRecordingURL = nil
+    }
+
+    public func savedRecordingURLs() -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+    }
+
+    public func removeRecording(at url: URL) throws {
+        guard url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL else { return }
+        try FileManager.default.removeItem(at: url)
+        if latestRecordingURL == url { latestRecordingURL = nil }
     }
 
     /// Called after WatchConnectivity has copied a file out of its temporary inbox.

@@ -132,4 +132,130 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertTrue(result.pendingRanges.isEmpty)
         XCTAssertEqual(result.expiredRangeCount, 1)
     }
+
+    func testRecentPassQueriesBoundedRecentHistoryBeforeDaysOfBacklog() {
+        let end = start.addingTimeInterval(2 * 86_400)
+        var queried: [MotionHistoryRange] = []
+        let recent = MotionHistoryProcessor.processRecent(
+            from: start, to: end, sensitivity: 0.5,
+            query: { lower, upper in
+                queried.append(.init(start: lower, end: upper))
+                return AnySequence([])
+            }
+        )
+        XCTAssertEqual(recent.requestedFrom, end.addingTimeInterval(-45 * 60))
+        XCTAssertEqual(queried.first?.start, end.addingTimeInterval(-53 * 60))
+        XCTAssertEqual(queried.last?.end, end)
+        XCTAssertEqual(queried.count, 4)
+        XCTAssertTrue(queried.allSatisfy { $0.end.timeIntervalSince($0.start) <= 15 * 60 })
+        XCTAssertTrue(recent.isComplete)
+    }
+
+    func testRecentPassReconstructsSessionAcrossWindowBoundaryAndReplaysStableID() throws {
+        let end = start.addingTimeInterval(3_600)
+        // The first three complete cycles precede the recent-window boundary;
+        // looking at only the recent window would miss this cigarette.
+        let stream = recordedSession(offset: 850)
+        let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
+            AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+        }
+        let first = MotionHistoryProcessor.processRecent(from: start, to: end, sensitivity: 0.5, query: query)
+        let replay = MotionHistoryProcessor.processRecent(from: start, to: end, sensitivity: 0.5, query: query)
+        let movedWindow = MotionHistoryProcessor.processRecent(
+            from: start, to: end.addingTimeInterval(60), sensitivity: 0.5, query: query
+        )
+        let candidate = try XCTUnwrap(first.candidates.first)
+        XCTAssertEqual(first.candidates.count, 1)
+        XCTAssertLessThan(try XCTUnwrap(candidate.motionSessionStartedAt), first.requestedFrom)
+        XCTAssertGreaterThan(candidate.gestureAt, first.requestedFrom)
+        XCTAssertEqual(first.candidates, replay.candidates)
+        // Once the full session is outside a sliding window it is excluded, not
+        // moved to a new time or synthesized as a new cigarette.
+        XCTAssertTrue(movedWindow.candidates.isEmpty)
+        XCTAssertTrue(first.isComplete)
+    }
+
+    func testRecentPassDoesNotDiscardOlderChronologicalEvents() {
+        let end = start.addingTimeInterval(3_600)
+        let stream = recordedSession(offset: 100) + recordedSession(offset: 1_100)
+        let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
+            AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+        }
+        let recent = MotionHistoryProcessor.processRecent(from: start, to: end, sensitivity: 0.5, query: query)
+        var chronologicalQueries: [MotionHistoryRange] = []
+        let chronological = MotionHistoryProcessor.process(
+            from: start, to: end, analyzer: .init(), pendingRanges: [], sensitivity: 0.5,
+            query: { lower, upper in
+                chronologicalQueries.append(.init(start: lower, end: upper))
+                return query(lower, upper)
+            }
+        )
+        XCTAssertEqual(recent.candidates.count, 1)
+        XCTAssertEqual(chronologicalQueries.first?.start, start)
+        XCTAssertEqual(chronological.candidates.count, 2)
+        XCTAssertEqual(recent.candidates.first?.id, chronological.candidates.last?.id)
+    }
+
+    func testRecentPassFiltersCandidatesFromPrecedingContext() {
+        let end = start.addingTimeInterval(3_600)
+        let stream = recordedSession(offset: 450)
+        let recent = MotionHistoryProcessor.processRecent(
+            from: start, to: end, sensitivity: 0.5,
+            query: { lower, upper in AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper }) }
+        )
+        XCTAssertTrue(recent.candidates.isEmpty)
+        XCTAssertTrue(recent.isComplete)
+    }
+
+    func testUnavailableRecentHistoryIsNotReportedAsCompleteZeroActivity() {
+        let end = start.addingTimeInterval(3_600)
+        let recent = MotionHistoryProcessor.processRecent(
+            from: start, to: end, sensitivity: 0.5, query: { _, _ in nil }
+        )
+        XCTAssertFalse(recent.isComplete)
+        XCTAssertFalse(recent.pendingRanges.isEmpty)
+        XCTAssertNil(recent.latestSampleAt)
+        XCTAssertEqual(recent.processedThrough, end)
+    }
+
+    func testRecentPassHonorsRuntimeBudgetWithoutSourceQueryOrCompleteClaim() {
+        var queryCount = 0
+        let recent = MotionHistoryProcessor.processRecent(
+            from: start, to: start.addingTimeInterval(3_600), sensitivity: 0.5,
+            query: { _, _ in queryCount += 1; return AnySequence([]) },
+            shouldContinue: { false }
+        )
+        XCTAssertEqual(queryCount, 0)
+        XCTAssertFalse(recent.isComplete)
+        XCTAssertTrue(recent.candidates.isEmpty)
+    }
+
+    func testRecentPassRejectsInvalidBoundsWithoutQueryingSource() {
+        var queryCount = 0
+        for (lower, upper) in [(Date(timeIntervalSince1970: .nan), start),
+                               (start, Date(timeIntervalSince1970: .infinity)),
+                               (start.addingTimeInterval(1), start)] {
+            let recent = MotionHistoryProcessor.processRecent(
+                from: lower, to: upper, sensitivity: 0.5,
+                query: { _, _ in queryCount += 1; return AnySequence([]) }
+            )
+            XCTAssertFalse(recent.isComplete)
+            XCTAssertTrue(MotionHistoryProcessor.isSupportedDate(recent.processedThrough))
+        }
+        XCTAssertEqual(queryCount, 0)
+    }
+
+    private func recordedSession(offset: Double) -> [RecordedAccelerationSample] {
+        (0..<5_000).map { index in
+            let seconds = Double(index) * 0.02
+            let local = seconds.truncatingRemainder(dividingBy: 20)
+            let angle: Double
+            if local < 2 { angle = 0 }
+            else if local < 3 { angle = local - 2 }
+            else if local < 5 { angle = 1 }
+            else if local < 6 { angle = 6 - local }
+            else { angle = 0 }
+            return .init(timestamp: start.addingTimeInterval(offset + seconds), x: sin(angle), y: 0, z: -cos(angle))
+        }
+    }
 }

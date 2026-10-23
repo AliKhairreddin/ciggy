@@ -10,6 +10,18 @@ public struct MotionHistoryRange: Codable, Equatable, Sendable {
 /// Streams recorded samples without loading hours of 50 Hz data into memory.
 /// Unavailable queries are retained for reconciliation while later history advances.
 public enum MotionHistoryProcessor {
+    /// A bounded replay for timely display. This is deliberately separate from
+    /// `Result`: its progress must never replace the chronological checkpoint,
+    /// otherwise an older, unprocessed backlog would be lost.
+    public struct RecentResult: Sendable {
+        public let candidates: [DetectionCandidate]
+        public let requestedFrom: Date
+        public let processedThrough: Date
+        public let latestSampleAt: Date?
+        public let pendingRanges: [MotionHistoryRange]
+        public let isComplete: Bool
+    }
+
     public struct Result: Sendable {
         public let candidates: [DetectionCandidate]
         public let analyzer: RecordedMotionAnalyzer
@@ -22,6 +34,43 @@ public enum MotionHistoryProcessor {
     /// Bounds used for both source queries and persisted cursor validation.
     public static func isSupportedDate(_ date: Date) -> Bool {
         date.timeIntervalSince1970.isFinite && date >= .distantPast && date <= .distantFuture
+    }
+
+    /// Checks recent activity before spending a limited background runtime on
+    /// older history. Replaying eight preceding minutes reconstructs a session
+    /// that straddles the recent-window boundary. Only candidates inside the
+    /// requested window are returned. A fresh analyzer keeps this pass independent
+    /// of the durable chronological cursor and makes unchanged source replays
+    /// reproducible; callers still deduplicate against saved automatic sessions.
+    public static func processRecent(
+        from start: Date,
+        to end: Date,
+        sensitivity: Double,
+        lookbackSeconds: TimeInterval = 45 * 60,
+        query: (Date, Date) -> AnySequence<RecordedAccelerationSample>?,
+        shouldContinue: () -> Bool = { true }
+    ) -> RecentResult {
+        guard isSupportedDate(start), isSupportedDate(end), start < end else {
+            let safeCursor = isSupportedDate(start) ? start : (isSupportedDate(end) ? end : Date(timeIntervalSince1970: 0))
+            return .init(candidates: [], requestedFrom: safeCursor, processedThrough: safeCursor,
+                         latestSampleAt: nil, pendingRanges: [], isComplete: start == end && isSupportedDate(start))
+        }
+        let lookback = lookbackSeconds.isFinite ? min(3 * 60 * 60, max(60, lookbackSeconds)) : 45 * 60
+        let requestedFrom = max(start, end.addingTimeInterval(-lookback))
+        let replayFrom = max(requestedFrom.addingTimeInterval(-8 * 60), end.addingTimeInterval(-3 * 24 * 60 * 60))
+        let replay = process(
+            from: replayFrom, to: end, analyzer: .init(sensitivity: sensitivity),
+            pendingRanges: [], sensitivity: sensitivity, queryChunkDuration: 15 * 60,
+            query: query, shouldContinue: shouldContinue
+        )
+        return .init(
+            candidates: replay.candidates.filter { $0.gestureAt >= requestedFrom && $0.gestureAt <= end },
+            requestedFrom: requestedFrom,
+            processedThrough: replay.processedThrough,
+            latestSampleAt: replay.latestSampleAt,
+            pendingRanges: replay.pendingRanges,
+            isComplete: replay.processedThrough >= end && replay.pendingRanges.isEmpty
+        )
     }
 
     public static func process(

@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 
 /// Persists and merges the passive detection summaries shown on iPhone and Apple Watch.
@@ -7,7 +8,32 @@ public final class DetectionReviewStore: ObservableObject {
 	@Published public private(set) var reviews: [DetectionReview] = []
 
 	public var latestReview: DetectionReview? {
-		reviews.max { $0.updatedAt < $1.updatedAt }
+		activeReviews.max { $0.updatedAt < $1.updatedAt }
+	}
+
+	/// Replaced legacy summaries remain saved for audit and delayed sync, but do
+	/// not compete with their day-scoped replacements in the interface.
+	private var activeReviews: [DetectionReview] {
+		let replaced = Set(reviews.compactMap(\.parentReviewID))
+		return reviews.filter { replaced.contains($0.id) == false }
+	}
+
+	public func reviews(on day: Date, calendar: Calendar = .current) -> [DetectionReview] {
+		activeReviews.filter { review in
+			if let dayStart = review.dayStart { return calendar.isDate(dayStart, inSameDayAs: day) }
+			return calendar.isDate(review.windowStart, inSameDayAs: day) &&
+				calendar.isDate(review.windowEnd, inSameDayAs: day)
+		}.sorted { $0.updatedAt > $1.updatedAt }
+	}
+
+	public func latestReview(on day: Date, calendar: Calendar = .current) -> DetectionReview? {
+		reviews(on: day, calendar: calendar).first
+	}
+
+	public func previousReviews(before day: Date, calendar: Calendar = .current) -> [DetectionReview] {
+		let today = calendar.startOfDay(for: day)
+		return activeReviews.filter { $0.windowStart < today }
+			.sorted { $0.windowEnd > $1.windowEnd }
 	}
 
 	private let userDefaults: UserDefaults
@@ -22,7 +48,7 @@ public final class DetectionReviewStore: ObservableObject {
 		load()
 	}
 
-	/// Records new automatic events and rolls nearby, unreviewed detections into one summary.
+	/// Compatibility convenience for callers recording events from a single day.
 	@discardableResult
 	public func record(
 		events: [SmokingEvent],
@@ -32,42 +58,97 @@ public final class DetectionReviewStore: ObservableObject {
 		at updatedAt: Date = Date(),
 		mergeWithPending: Bool = true
 	) -> DetectionReview? {
+		recordDaily(events: events, origin: origin, windowStart: windowStart,
+		            windowEnd: windowEnd, at: updatedAt, mergeWithPending: mergeWithPending).last
+	}
+
+	/// Partition by event day before merging. An old backlog can never turn today's
+	/// review into a multi-day count or change the date of a saved cigarette.
+	@discardableResult
+	public func recordDaily(
+		events: [SmokingEvent],
+		origin: DetectionReviewOrigin,
+		windowStart: Date,
+		windowEnd: Date,
+		at updatedAt: Date = Date(),
+		mergeWithPending: Bool = true,
+		calendar: Calendar = .current
+	) -> [DetectionReview] {
 		guard [windowStart, windowEnd, updatedAt].allSatisfy({
 			$0.timeIntervalSince1970.isFinite && $0 >= .distantPast && $0 <= .distantFuture
-		}) else { return nil }
-		let sortedEvents = events.sorted { $0.timestamp < $1.timestamp }
-		guard sortedEvents.isEmpty == false else { return nil }
-		let eventIDs = sortedEvents.map(\.id)
-
-		if mergeWithPending,
-		   let index = reviews.lastIndex(where: {
-			$0.decision == .pending &&
-			$0.origin == origin &&
-			windowStart <= $0.windowEnd.addingTimeInterval(8 * 60 * 60) &&
-			windowEnd >= $0.windowStart.addingTimeInterval(-8 * 60 * 60)
-		   }) {
-			var review = reviews[index]
-			var seen = Set(review.eventIDs)
-			review.eventIDs.append(contentsOf: eventIDs.filter { seen.insert($0).inserted })
-			review.windowStart = min(review.windowStart, windowStart)
-			review.windowEnd = max(review.windowEnd, windowEnd)
-			review.updatedAt = updatedAt
-			if review.revision < Int.max { review.revision += 1 }
-			reviews[index] = review
-			sortAndSave()
-			return review
+		}) else { return [] }
+		let validEvents = events.filter { $0.timestamp.timeIntervalSince1970.isFinite &&
+			$0.timestamp >= .distantPast && $0.timestamp <= .distantFuture }
+		let grouped = Dictionary(grouping: validEvents) { calendar.startOfDay(for: $0.timestamp) }
+		let replacedIDs = Set(reviews.compactMap(\.parentReviewID))
+		var result: [DetectionReview] = []
+		for day in grouped.keys.sorted() {
+			guard let dailyEvents = grouped[day]?.sorted(by: { $0.timestamp < $1.timestamp }),
+			      let first = dailyEvents.first, let last = dailyEvents.last,
+			      let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { continue }
+			let start = min(first.timestamp, max(day, min(windowStart, windowEnd)))
+			let end = max(last.timestamp, min(nextDay.addingTimeInterval(-0.001), max(windowStart, windowEnd)))
+			let ids = dailyEvents.map(\.id)
+			if mergeWithPending, let index = reviews.lastIndex(where: {
+				$0.decision == .pending && $0.origin == origin && $0.dayStart == day &&
+				replacedIDs.contains($0.id) == false
+			}) {
+				var review = reviews[index]
+				var seen = Set(review.eventIDs)
+				review.eventIDs.append(contentsOf: ids.filter { seen.insert($0).inserted })
+				review.windowStart = min(review.windowStart, start)
+				review.windowEnd = max(review.windowEnd, end)
+				review.updatedAt = updatedAt
+				if review.revision < Int.max { review.revision += 1 }
+				reviews[index] = review
+				result.append(review)
+			} else {
+				let review = DetectionReview(eventIDs: ids, origin: origin, windowStart: start,
+				                             windowEnd: end, updatedAt: updatedAt, dayStart: day)
+				reviews.append(review)
+				result.append(review)
+			}
 		}
+		if result.isEmpty == false { sortAndSave() }
+		return result
+	}
 
-		let review = DetectionReview(
-			eventIDs: eventIDs,
-			origin: origin,
-			windowStart: windowStart,
-			windowEnd: windowEnd,
-			updatedAt: updatedAt
-		)
-		reviews.append(review)
-		sortAndSave()
-		return review
+	/// Wait for every event before migrating an older summary: review messages can
+	/// arrive before their event messages. Both devices derive the same child IDs.
+	@discardableResult
+	public func normalizePendingReviews(events: [SmokingEvent], calendar: Calendar = .current) -> [DetectionReview] {
+		let byID = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+		var created: [DetectionReview] = []
+		for legacy in activeReviews where legacy.dayStart == nil && legacy.decision == .pending {
+			let resolved = legacy.eventIDs.compactMap { byID[$0] }
+			guard resolved.count == legacy.eventIDs.count, resolved.isEmpty == false else { continue }
+			let grouped = Dictionary(grouping: resolved) { calendar.startOfDay(for: $0.timestamp) }
+			for day in grouped.keys.sorted() {
+				guard let daily = grouped[day]?.sorted(by: { $0.timestamp < $1.timestamp }),
+				      let first = daily.first, let last = daily.last,
+				      let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { continue }
+				let ids = daily.map(\.id)
+				let child = DetectionReview(id: Self.dailyID(parent: legacy.id, eventIDs: ids),
+				                            eventIDs: ids, origin: legacy.origin,
+				                            windowStart: min(first.timestamp, max(day, legacy.windowStart)),
+				                            windowEnd: max(last.timestamp, min(nextDay.addingTimeInterval(-0.001), legacy.windowEnd)),
+				                            updatedAt: legacy.updatedAt, dayStart: day, parentReviewID: legacy.id)
+				guard reviews.contains(where: { $0.id == child.id }) == false else { continue }
+				reviews.append(child)
+				created.append(child)
+			}
+		}
+		if created.isEmpty == false { sortAndSave() }
+		return created
+	}
+
+	private static func dailyID(parent: UUID, eventIDs: [UUID]) -> UUID {
+		let key = "ciggy-daily-review-v1:\(parent.uuidString):" + eventIDs.map(\.uuidString).sorted().joined(separator: ":")
+		var bytes = Array(SHA256.hash(data: Data(key.utf8)).prefix(16))
+		bytes[6] = (bytes[6] & 0x0f) | 0x50
+		bytes[8] = (bytes[8] & 0x3f) | 0x80
+		return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+		                   bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
 	}
 
 	@discardableResult
@@ -120,7 +201,8 @@ public final class DetectionReviewStore: ObservableObject {
 		at date: Date
 	) -> DetectionReview? {
 		guard date.timeIntervalSince1970.isFinite, date >= .distantPast, date <= .distantFuture else { return nil }
-		guard let index = reviews.firstIndex(where: { $0.id == reviewID }),
+		guard activeReviews.contains(where: { $0.id == reviewID }),
+		      let index = reviews.firstIndex(where: { $0.id == reviewID }),
 		      reviews[index].decision == .pending else { return nil }
 		var review = reviews[index]
 		review.decision = decision
@@ -229,14 +311,14 @@ public enum DetectionReviewWorkflow {
 			repository.addEvent(event)
 			ConnectivityManager.shared.send(event: event)
 		}
-		guard let review = store.record(
+		let reviews = store.recordDaily(
 			events: events,
 			origin: .watchHistory,
 			windowStart: now.addingTimeInterval(-8 * 3_600),
 			windowEnd: now,
 			mergeWithPending: false
-		) else { return nil }
-		ConnectivityManager.shared.send(review: review)
-		return review
+		)
+		for review in reviews { ConnectivityManager.shared.send(review: review) }
+		return reviews.last
 	}
 }

@@ -8,11 +8,14 @@ struct WatchDashboardView: View {
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settings: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
+	@EnvironmentObject private var coordinator: WatchAppCoordinator
 	@StateObject private var viewModel = WatchDashboardViewModel()
 	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
+	@ObservedObject private var tracking = TrackingStatusStore.shared
 	@State private var reviewToAdjust: DetectionReview?
 	@State private var widgetDestination: String?
+	@State private var showsEarlierReviews = false
 
 	var body: some View {
 		GeometryReader { geometry in
@@ -20,11 +23,25 @@ struct WatchDashboardView: View {
 				VStack(spacing: 8) {
 					profileHeader
 					todayRing(size: min(106, max(76, geometry.size.height - 100)))
-					if let review = reviewStore.latestReview {
-						detectionReviewCard(review)
-					}
 					motionStatus
 					syncStatus
+					ForEach(reviewStore.reviews(on: Date())) { review in
+						detectionReviewCard(review)
+					}
+					let earlier = reviewStore.previousReviews(before: Date())
+					if earlier.isEmpty == false {
+						Button { showsEarlierReviews.toggle() } label: {
+							Label("Earlier days", systemImage: showsEarlierReviews ? "chevron.up" : "chevron.down")
+								.frame(maxWidth: .infinity, minHeight: 36)
+						}
+						.buttonStyle(.plain)
+						.font(.system(size: 11, weight: .semibold))
+						.foregroundStyle(palette.secondaryText)
+						.accessibilityIdentifier("earlier-watch-reviews")
+						if showsEarlierReviews {
+							ForEach(earlier) { review in detectionReviewCard(review) }
+						}
+					}
 					weeklyLink
 					logButton
 				}
@@ -35,6 +52,7 @@ struct WatchDashboardView: View {
 		.containerBackground(for: .navigation) { CiggyBackdrop() }
 		.toolbarForegroundStyle(palette.primaryText, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository) }
+		.refreshable { await coordinator.refreshTracking() }
 		.onOpenURL { url in
 			guard url.scheme == "ciggy" else { return }
 			if ["log", "reports", "goals"].contains(url.host ?? "") { widgetDestination = url.host }
@@ -122,13 +140,13 @@ struct WatchDashboardView: View {
 					.frame(width: 30, height: 30)
 					.background(CiggyTheme.brandGradient, in: Circle())
 				VStack(alignment: .leading, spacing: 1) {
-					Text("\(review.displayCount) detected")
+					Text("\(review.displayCount) detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 						.font(.system(size: 14, weight: .black, design: .rounded))
 						.foregroundStyle(palette.primaryText)
-					Text(review.origin == .watchHistory ? "\(review.historyHours)h of Watch history" : "While monitoring motion")
+					Text(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? "Today's automatic detections" : "Earlier detection summary")
 						.font(.system(size: 8))
 						.foregroundStyle(palette.secondaryText)
-					Text(review.windowEnd, format: .dateTime.month(.abbreviated).day().hour().minute())
+					Text(reviewDateText(review))
 						.font(.system(size: 8))
 						.foregroundStyle(palette.secondaryText)
 				}
@@ -136,7 +154,7 @@ struct WatchDashboardView: View {
 			}
 
 			if review.decision == .pending {
-				Text("Already added. Feedback is optional.")
+				Text("Already counted. Review is optional.")
 					.font(.system(size: 8))
 					.foregroundStyle(palette.secondaryText)
 				HStack(spacing: 6) {
@@ -179,10 +197,10 @@ struct WatchDashboardView: View {
 				.font(.system(size: 15, weight: .bold))
 				.foregroundStyle(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
 			VStack(alignment: .leading, spacing: 1) {
-				Text(isMotionMonitoring ? "Motion monitoring" : "Motion unavailable")
+				Text(tracking.status?.title() ?? (isMotionMonitoring ? "Motion monitoring" : "Motion unavailable"))
 					.font(.system(size: 12, weight: .bold))
 					.foregroundStyle(palette.primaryText)
-				Text(sensorDetail)
+				Text(tracking.status?.detail() ?? sensorDetail)
 					.font(.system(size: 9))
 					.foregroundStyle(palette.secondaryText)
 			}
@@ -241,6 +259,14 @@ struct WatchDashboardView: View {
 		min(1, Double(viewModel.todayCount) / Double(max(1, settings.settings.dailyLimit)))
 	}
 
+	private func reviewDateText(_ review: DetectionReview) -> String {
+		if Calendar.current.isDate(review.windowStart, inSameDayAs: review.windowEnd) {
+			let day = Calendar.current.isDateInToday(review.windowEnd) ? "Today" : review.windowEnd.formatted(date: .abbreviated, time: .omitted)
+			return "\(day) · \(review.windowStart.formatted(date: .omitted, time: .shortened)) – \(review.windowEnd.formatted(date: .omitted, time: .shortened))"
+		}
+		return "\(review.windowStart.formatted(date: .abbreviated, time: .shortened)) – \(review.windowEnd.formatted(date: .abbreviated, time: .shortened))"
+	}
+
 	private var todayAccessibilityLabel: String {
 		"\(viewModel.todayCount) cigarettes today, daily limit \(settings.settings.dailyLimit)"
 	}
@@ -280,6 +306,7 @@ struct WatchDashboardView_Previews: PreviewProvider {
 				.environmentObject(EventRepository())
 				.environmentObject(UserSettingsStore())
 				.environmentObject(DetectionReviewStore())
+				.environmentObject(WatchAppCoordinator())
 		}
 	}
 }
@@ -303,7 +330,7 @@ private struct WatchDetectionCountAdjustmentView: View {
 			CiggyBackdrop()
 			ScrollView {
 				VStack(spacing: 10) {
-					Text("Correct count")
+					Text("Correct this summary")
 						.font(.system(size: 18, weight: .black, design: .rounded))
 						.foregroundStyle(palette.primaryText)
 					Stepper(value: $count, in: 0...100) {
@@ -313,7 +340,7 @@ private struct WatchDetectionCountAdjustmentView: View {
 					}
 					.padding(9)
 					.background(palette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-					Text("Updates both devices")
+					Text("Changes this summary on both devices, not your whole daily total.")
 						.font(.system(size: 9))
 						.foregroundStyle(palette.secondaryText)
 					Button("Save") {

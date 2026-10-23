@@ -13,6 +13,7 @@ struct HistoricalMotionBatch: Sendable {
 	let latestSampleAt: Date?
 	let pendingRanges: [MotionHistoryRange]
 	let didExpireHistory: Bool
+	let recentPending: Bool
 }
 
 private struct MotionHistoryCheckpoint: Codable {
@@ -22,6 +23,8 @@ private struct MotionHistoryCheckpoint: Codable {
 	let latestSampleAt: Date?
 	let pendingRanges: [MotionHistoryRange]?
 	let hasExpiredHistory: Bool?
+	let checkedAt: Date?
+	let backlogPending: Bool?
 }
 
 /// Arms watchOS historical accelerometer capture and analyzes the recorded backlog during
@@ -45,6 +48,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let cursorKey = "BackgroundMotionMonitor.processedThrough.v1"
 	private let checkpointKey = "BackgroundMotionMonitor.checkpoint.v2"
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
+	private let scheduledRefreshKey = "BackgroundMotionMonitor.scheduledRefresh.v1"
 	private let captureDuration: TimeInterval = 12 * 60 * 60
 	// A refresh also analyzes the backlog. watchOS decides when it actually runs.
 	private let renewalInterval: TimeInterval = 30 * 60
@@ -55,7 +59,8 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private init(userDefaults: UserDefaults = .standard) {
 		self.userDefaults = userDefaults
 		lastHistorySampleAt = checkpoint?.latestSampleAt
-		hasPendingHistory = checkpoint?.pendingRanges?.isEmpty == false
+		lastHistoryCheckedAt = checkpoint?.checkedAt
+		hasPendingHistory = checkpoint?.pendingRanges?.isEmpty == false || checkpoint?.backlogPending == true
 		hasExpiredHistory = checkpoint?.hasExpiredHistory ?? false
 		refreshStatus()
 	}
@@ -66,7 +71,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 		if hasExpiredHistory { return "Some older motion history expired before it could be checked, so past totals may be incomplete. Recent available activity still updates." }
 		if isCaptureAvailable == false { return "Automatic detection needs a physical Apple Watch with motion access." }
 		if isCaptureArmed == false { return "Open Ciggy and allow Motion & Fitness access to start background capture." }
-		return "Motion estimates can appear a few minutes later. Open Ciggy to check recorded activity; background updates depend on watchOS."
+		return "Motion estimates can appear a few minutes later. Keep a Ciggy complication on your active Watch face to give background checks more opportunities; watchOS controls their timing."
 	}
 
 	var statusText: String {
@@ -94,23 +99,54 @@ final class BackgroundMotionMonitor: ObservableObject {
 	/// foreground launch also calls this method.
 	func armRecording() {
 		refreshStatus()
-		guard isCaptureAvailable else { return }
+		guard isCaptureAvailable else {
+			userDefaults.removeObject(forKey: armedUntilKey)
+			publishStatus()
+			return
+		}
 
 		let authorization = CMSensorRecorder.authorizationStatus()
 		guard authorization != .denied, authorization != .restricted else {
+			userDefaults.removeObject(forKey: armedUntilKey)
 			isCaptureArmed = false
 			lastError = "Motion access is disabled in Settings."
+			publishStatus()
 			return
 		}
 
 		let now = Date()
 		if processedThrough == nil { userDefaults.set(now, forKey: cursorKey) }
-		recorder.recordAccelerometer(forDuration: captureDuration)
-		userDefaults.set(now.addingTimeInterval(captureDuration), forKey: armedUntilKey)
-		// The first call can still be awaiting the system permission prompt.
-		isCaptureArmed = CMSensorRecorder.authorizationStatus() == .authorized
+		let armedUntil = userDefaults.object(forKey: armedUntilKey) as? Date
+		if MotionCapturePolicy.shouldRenew(at: now, armedUntil: armedUntil) {
+			recorder.recordAccelerometer(forDuration: captureDuration)
+			if CMSensorRecorder.authorizationStatus() == .authorized {
+				userDefaults.set(now.addingTimeInterval(captureDuration), forKey: armedUntilKey)
+			}
+		}
+		refreshStatus()
 		lastError = nil
 		scheduleRenewal(after: renewalInterval)
+		publishStatus()
+	}
+
+	func backgroundRefreshDidBegin() {
+		userDefaults.removeObject(forKey: scheduledRefreshKey)
+	}
+
+	func publishStatus() {
+		let status = TrackingStatus(
+			historyCheckedAt: lastHistoryCheckedAt,
+			historySampleAt: lastHistorySampleAt,
+			captureUntil: userDefaults.object(forKey: armedUntilKey) as? Date,
+			pendingHistory: hasPendingHistory,
+			expiredHistory: hasExpiredHistory,
+			captureAvailable: isCaptureAvailable,
+			permissionGranted: CMSensorRecorder.authorizationStatus() == .authorized,
+			lastError: lastError,
+			isProcessing: isProcessingHistory
+		)
+		TrackingStatusStore.shared.receive(status)
+		ConnectivityManager.shared.send(trackingStatus: status)
 	}
 
 	/// Reads samples old enough to be available from Core Motion and returns all probable
@@ -126,7 +162,8 @@ final class BackgroundMotionMonitor: ObservableObject {
 		guard start < end else { return nil }
 
 		isProcessingHistory = true
-		defer { isProcessingHistory = false }
+		defer { isProcessingHistory = false; publishStatus() }
+		publishStatus()
 		lastHistoryCheckedAt = Date()
 		let queryChunkDuration = self.queryChunkDuration
 		var analyzer = checkpoint?.analyzer ?? RecordedMotionAnalyzer(sensitivity: sensitivity)
@@ -151,13 +188,14 @@ final class BackgroundMotionMonitor: ObservableObject {
 		}
 		guard Task.isCancelled == false else { return nil }
 		return HistoricalMotionBatch(
-			candidates: result.candidates,
+			candidates: result.recent.candidates + result.history.candidates,
 			processedFrom: start,
-			processedThrough: result.processedThrough,
-			analyzer: result.analyzer,
-			latestSampleAt: result.latestSampleAt,
-			pendingRanges: result.pendingRanges,
-			didExpireHistory: result.expiredRangeCount > 0 || storedCursor < start
+			processedThrough: result.history.processedThrough,
+			analyzer: result.history.analyzer,
+			latestSampleAt: [result.recent.latestSampleAt, result.history.latestSampleAt].compactMap { $0 }.max(),
+			pendingRanges: result.history.pendingRanges,
+			didExpireHistory: result.history.expiredRangeCount > 0 || storedCursor < start,
+			recentPending: result.recent.isComplete == false || result.history.processedThrough < end
 		)
 	}
 
@@ -167,14 +205,16 @@ final class BackgroundMotionMonitor: ObservableObject {
 		let checkpoint = MotionHistoryCheckpoint(processedThrough: batch.processedThrough, analyzer: batch.analyzer,
 		                                        latestSampleAt: latestSample,
 		                                        pendingRanges: batch.pendingRanges,
-		                                        hasExpiredHistory: hasExpiredHistory || batch.didExpireHistory)
+		                                        hasExpiredHistory: hasExpiredHistory || batch.didExpireHistory,
+		                                        checkedAt: lastHistoryCheckedAt, backlogPending: batch.recentPending)
 		// Cursor and classifier state are one value: a relaunch must not lose a
 		// partial smoking session or the cooldown established in the previous batch.
 		guard let data = try? JSONEncoder().encode(checkpoint) else { return }
 		userDefaults.set(data, forKey: checkpointKey)
 		lastHistorySampleAt = checkpoint.latestSampleAt
-		hasPendingHistory = batch.pendingRanges.isEmpty == false
+		hasPendingHistory = batch.pendingRanges.isEmpty == false || batch.recentPending
 		hasExpiredHistory = checkpoint.hasExpiredHistory ?? false
+		publishStatus()
 	}
 
 	private var processedThrough: Date? {
@@ -199,13 +239,22 @@ final class BackgroundMotionMonitor: ObservableObject {
 	}
 
 	private func scheduleRenewal(after interval: TimeInterval) {
+		let now = Date()
+		let preferred = now.addingTimeInterval(interval)
+		let existing = userDefaults.object(forKey: scheduledRefreshKey) as? Date
+		guard MotionCapturePolicy.shouldSchedule(at: now, existing: existing, preferred: preferred) else { return }
+		userDefaults.set(preferred, forKey: scheduledRefreshKey)
 		WKApplication.shared().scheduleBackgroundRefresh(
-			withPreferredDate: Date().addingTimeInterval(interval),
-			userInfo: nil
+			withPreferredDate: preferred, userInfo: nil
 		) { [weak self] error in
 			guard let error else { return }
 			Task { @MainActor [weak self] in
-				self?.lastError = error.localizedDescription
+				guard let self else { return }
+				if self.userDefaults.object(forKey: self.scheduledRefreshKey) as? Date == preferred {
+					self.userDefaults.removeObject(forKey: self.scheduledRefreshKey)
+				}
+				self.lastError = error.localizedDescription
+				self.publishStatus()
 			}
 		}
 	}
@@ -220,24 +269,33 @@ private enum HistoricalMotionProcessor {
 		sensitivity: Double,
 		queryChunkDuration: TimeInterval,
 		maximumProcessingTime: TimeInterval
-	) -> MotionHistoryProcessor.Result {
+	) -> (recent: MotionHistoryProcessor.RecentResult, history: MotionHistoryProcessor.Result) {
 		let recorder = CMSensorRecorder()
-		let deadline = ProcessInfo.processInfo.systemUptime + maximumProcessingTime
-		return MotionHistoryProcessor.process(
+		let started = ProcessInfo.processInfo.systemUptime
+		let budget = max(0.5, maximumProcessingTime)
+		let deadline = started + budget
+		let recentDeadline = started + min(5, budget * 0.75)
+		let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { queryStart, queryEnd in
+			guard let samples = recorder.accelerometerData(from: queryStart, to: queryEnd) else { return nil }
+			var iterator = NSFastEnumerationIterator(samples)
+			return AnySequence { AnyIterator {
+				guard let sample = iterator.next() as? CMRecordedAccelerometerData else { return nil }
+				let acceleration = sample.acceleration
+				return RecordedAccelerationSample(timestamp: sample.startDate, x: acceleration.x,
+				                                  y: acceleration.y, z: acceleration.z)
+			} }
+		}
+		let recent = MotionHistoryProcessor.processRecent(
+			from: start, to: end, sensitivity: sensitivity, query: query,
+			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < recentDeadline }
+		)
+		let history = MotionHistoryProcessor.process(
 			from: start, to: end, analyzer: initialAnalyzer, pendingRanges: pendingRanges,
 			sensitivity: sensitivity, queryChunkDuration: queryChunkDuration,
-			query: { queryStart, queryEnd in
-				guard let samples = recorder.accelerometerData(from: queryStart, to: queryEnd) else { return nil }
-				var iterator = NSFastEnumerationIterator(samples)
-				return AnySequence { AnyIterator {
-					guard let sample = iterator.next() as? CMRecordedAccelerometerData else { return nil }
-					let acceleration = sample.acceleration
-					return RecordedAccelerationSample(timestamp: sample.startDate, x: acceleration.x,
-					                                  y: acceleration.y, z: acceleration.z)
-				} }
-			},
+			query: query,
 			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline }
 		)
+		return (recent, history)
 	}
 }
 #endif
