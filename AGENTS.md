@@ -8,6 +8,13 @@
 - Keep `main` as the only local and remote branch; delete other branches after their work is safely present on and pushed to `main`.
 - Stage only product code, tests, documentation, and intentional project configuration. Never commit secrets, `.DS_Store`, build output, or user-specific Xcode state.
 
+## TestFlight update details
+
+- Every uploaded build must have build-specific update details saved in App Store Connect's **What to Test** field. This is required for every build, including small fixes and follow-up builds.
+- Explain the user-visible changes, relevant fixes, what testers should check, and any material known limitations. Match the notes to that exact version/build; do not leave the field blank or reuse unrelated notes.
+- As soon as Apple makes an uploaded build editable, save its notes and read them back to verify persistence. Verify the final build's tester-group assignment as part of delivery.
+- Do not report TestFlight delivery as complete until processing, tester availability, and saved update details are verified. If Apple processing or account access blocks verification, report the build number and the outstanding step explicitly.
+
 ## Xcode project integrity
 
 - Full Xcode is installed at `/Applications/dev/Xcode.app`, outside the standard `/Applications` location. Do not infer that Xcode is unavailable from `xcode-select -p` reporting Command Line Tools.
