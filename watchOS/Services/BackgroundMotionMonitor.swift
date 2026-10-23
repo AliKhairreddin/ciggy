@@ -143,7 +143,8 @@ final class BackgroundMotionMonitor: ObservableObject {
 			captureAvailable: isCaptureAvailable,
 			permissionGranted: CMSensorRecorder.authorizationStatus() == .authorized,
 			lastError: lastError,
-			isProcessing: isProcessingHistory
+			isProcessing: isProcessingHistory,
+			calibration: BackgroundCalibrationCollector.shared.status
 		)
 		TrackingStatusStore.shared.receive(status)
 		ConnectivityManager.shared.send(trackingStatus: status)

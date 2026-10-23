@@ -3,6 +3,27 @@ import XCTest
 
 @MainActor
 final class TrackingStatusTests: XCTestCase {
+    func testCalibrationStatusPreservesTransferStageAndConsentAcrossTransport() throws {
+        let now = Date(timeIntervalSince1970: 1_792_785_600.125)
+        let calibration = CalibrationTrackingStatus(enabledAt: now.addingTimeInterval(-600), checkedAt: now,
+            latestQueuedMotionAt: now.addingTimeInterval(-10), pendingWindowCount: 1, retryingWindowCount: 1,
+            queuedTransferCount: 2, lastError: nil)
+        let status = TrackingStatus(generatedAt: now, captureAvailable: true, permissionGranted: true, calibration: calibration)
+        let restored = try TrackingStatus.fromTransfer(status.transferData())
+        XCTAssertEqual(restored.calibration, calibration)
+        XCTAssertTrue(calibration.detail(consent: calibration.enabledAt!, now: now).contains("waiting to reach this iPhone"))
+        XCTAssertFalse(calibration.detail(consent: calibration.enabledAt!, now: now).contains("uploaded"))
+        XCTAssertTrue(calibration.detail(consent: now, now: now).contains("receive the sharing setting"))
+        let legacy = TrackingStatus(generatedAt: now, captureAvailable: true, permissionGranted: true)
+        XCTAssertNil(try TrackingStatus.fromTransfer(legacy.transferData()).calibration)
+    }
+
+    func testInvalidCalibrationTimestampCannotPoisonTrackingStatus() {
+        let bad = CalibrationTrackingStatus(enabledAt: Date(timeIntervalSince1970: .nan), checkedAt: nil,
+            latestQueuedMotionAt: nil, pendingWindowCount: 0, retryingWindowCount: 0, queuedTransferCount: 0, lastError: nil)
+        XCTAssertFalse(TrackingStatus(captureAvailable: true, permissionGranted: true, calibration: bad).hasValidDates)
+    }
+
     func testProcessingAndCompletionInSameSecondSurviveTransportInOrder() throws {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!

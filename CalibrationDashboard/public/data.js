@@ -2,6 +2,20 @@ export const APPLE_EPOCH_MS = Date.UTC(2001, 0, 1);
 export const LIMITS = Object.freeze({ fileBytes: 10 * 1024 * 1024, datasetBytes: 128 * 1024 * 1024, fileSamples: 18000, totalSamples: 1000000 });
 export const LABELS = Object.freeze(['smoking', 'eating', 'drinking', 'other', 'unknown']);
 export const SOURCES = Object.freeze(['liveDeviceMotion', 'recordedAccelerometer']);
+
+// A recent page replaces its covered prefix, including deleted/missing entries.
+// Older saved metadata survives until a deliberate full reconciliation.
+export function mergeRemotePage(existing, recent, { hasMore, fromMs, toMs, nowMs = Date.now() }) {
+  if (!hasMore) return recent;
+  const last = recent.at(-1);
+  if (!last) throw new Error('An incomplete recording page was returned. Saved data is kept.');
+  const boundary = Date.parse(last.startedAt), ids = new Set(recent.map(row => row.id));
+  return [...recent, ...existing.filter(row => {
+    const start = Date.parse(row.startedAt), end = Date.parse(row.endedAt);
+    return !ids.has(row.id) && end >= fromMs && start <= toMs && Date.parse(row.expiresAt) > nowMs &&
+      start <= boundary;
+  })];
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function appleSecondsToMs(value) {

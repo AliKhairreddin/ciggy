@@ -38,21 +38,61 @@ final class HistoricalCalibrationSamplerTests: XCTestCase {
         }
     }
 
-    func testIncompleteMissingAndInvalidIntervalsStayRetryable() throws {
+    func testMissingIsDifferentFromUsableFragmentsAndNoGapsAreFilled() throws {
         let window = try XCTUnwrap(HistoricalCalibrationSampler.windows(enabledAt: consent, now: consent.addingTimeInterval(480)).first)
         let complete = raw(from: consent, duration: 300)
-        let cases = [[], Array(complete.dropFirst(100)), Array(complete.dropLast(100)),
+        guard case .missing = HistoricalCalibrationSampler.sample(AnySequence([]), window: window, enabledAt: consent) else {
+            return XCTFail("Empty source must stay pending")
+        }
+        let cases = [Array(complete.dropFirst(100)), Array(complete.dropLast(100)),
                      complete.filter { $0.timestamp < consent.addingTimeInterval(100) || $0.timestamp > consent.addingTimeInterval(103) }]
         for source in cases {
-            guard case .missing = HistoricalCalibrationSampler.sample(AnySequence(source), window: window, enabledAt: consent) else {
-                return XCTFail("Missing history cannot become a complete calibration chunk")
+            guard case .partial(let recording) = HistoricalCalibrationSampler.sample(AnySequence(source), window: window, enabledAt: consent) else {
+                return XCTFail("Available fragments must survive without completing the source window")
             }
+            XCTAssertFalse(recording.samples.isEmpty)
+            XCTAssertNotEqual(recording.id, window.id)
+            XCTAssertTrue(recording.samples.allSatisfy { sample in source.contains { $0.timestamp == sample.timestamp } })
+            if case .partial(let repeated) = HistoricalCalibrationSampler.sample(AnySequence(source), window: window, enabledAt: consent) {
+                XCTAssertEqual(recording.id, repeated.id, "Unchanged fragments must not create repeated uploads")
+            } else { XCTFail("Replay must preserve quality state") }
         }
         var invalid = complete
         invalid[1] = .init(timestamp: invalid[1].timestamp, x: .nan, y: 0, z: -1)
-        guard case .missing = HistoricalCalibrationSampler.sample(AnySequence(invalid), window: window, enabledAt: consent) else {
-            return XCTFail("Invalid sample must not be bridged")
+        guard case .partial = HistoricalCalibrationSampler.sample(AnySequence(invalid), window: window, enabledAt: consent) else {
+            return XCTFail("Invalid sample is excluded while the remaining measured samples survive")
         }
+    }
+
+    func testClockJitterCannotRejectAnOtherwiseCompleteWindow() throws {
+        let window = try XCTUnwrap(HistoricalCalibrationSampler.windows(enabledAt: consent, now: consent.addingTimeInterval(480)).first)
+        let source = (0...15_000).map { RecordedAccelerationSample(timestamp: consent.addingTimeInterval(Double($0) * 0.019999995), x: 0, y: 0, z: -1) }
+        guard case .complete(let recording) = HistoricalCalibrationSampler.sample(AnySequence(source), window: window, enabledAt: consent) else {
+            return XCTFail("A tiny source-clock difference must not discard five minutes of motion")
+        }
+        XCTAssertEqual(recording.samples.count, 3_000)
+    }
+
+    func testPartialDoesNotCompleteLedgerAndMissingRetriesBackOffFromOneMinute() throws {
+        let now = consent.addingTimeInterval(480)
+        let window = try XCTUnwrap(HistoricalCalibrationSampler.windows(enabledAt: consent, now: now).first)
+        guard case .partial(let recording) = HistoricalCalibrationSampler.sample(
+            AnySequence(raw(from: consent.addingTimeInterval(10), duration: 290)), window: window, enabledAt: consent) else { return XCTFail() }
+        var ledger = HistoricalCalibrationSampler.Ledger(enabledAt: consent)
+        ledger.didQueuePartial(recording, for: window)
+        XCTAssertNil(ledger.completed[window.id])
+        var clock = now
+        for delay in [60.0, 120, 240, 480, 900, 900] {
+            ledger.retry(window, after: clock)
+            XCTAssertEqual(ledger.retryAfter[window.id], clock.addingTimeInterval(delay))
+            XCTAssertFalse(ledger.pending(now: clock.addingTimeInterval(delay - 1)).contains { $0.id == window.id })
+            clock.addTimeInterval(delay)
+        }
+        ledger = try JSONDecoder().decode(HistoricalCalibrationSampler.Ledger.self, from: JSONEncoder().encode(ledger))
+        XCTAssertEqual(ledger.partialRecordingIDs?[window.id], recording.id)
+        ledger.didComplete(window)
+        XCTAssertNil(ledger.partialRecordingIDs?[window.id])
+        XCTAssertFalse(ledger.pending(now: clock).contains { $0.id == window.id })
     }
 
     func testCancellationNeverReturnsPartialRecording() throws {

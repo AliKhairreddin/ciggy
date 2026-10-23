@@ -1,11 +1,14 @@
 import { appleSecondsToMs, msToAppleSeconds, cleanAlias, parseImport, mergeSessions, validateAnnotation, validateRecording,
-  coverageRanges, coveredDuration, makeExport, magnitude, LIMITS } from './data.js';
+  coverageRanges, coveredDuration, makeExport, magnitude, LIMITS, mergeRemotePage } from './data.js';
 import { loadSessions, saveSessions } from './storage.js';
 
 const $ = id => document.getElementById(id);
 const colors = ['#ffb885', '#c2e0b8', '#baa8eb', '#ffc952', '#78c5ce', '#ee8ca1'];
 const state = { sessions: [], cache: new Map(), compared: new Set(), active: '', editing: null,
   connected: false, view: null, selection: null, files: [], email: '', loading: false, dirty: false };
+let lastFullRemoteLoad = 0;
+const filterIDs = ['participantFilter', 'periodFilter', 'dayFilter', 'sourceFilter'];
+let appliedFilters = Object.fromEntries(filterIDs.map(id => [id, $(id).value]));
 const timeFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const shortTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 const aliases = () => [...new Set(state.sessions.map(session => session.participant))].sort();
@@ -50,25 +53,42 @@ async function api(path, options = {}) {
   if (!response.ok || !body) throw new Error(body?.error ?? 'The private workspace could not be reached. Sign in again or try refreshing.');
   return body;
 }
-async function loadRemote() {
+async function loadRemote({ incremental = false } = {}) {
+  if (state.loading) return;
   state.loading = true;
+  for (const id of ['periodFilter', 'dayFilter', 'refreshButton']) $(id).disabled = true;
   try {
-    const results = []; let cursor = null;
+    let results = []; let cursor = null; const seenCursors = new Set();
+    const nowMs = Date.now(), [fromMs, toMs] = $('periodFilter').value === 'all'
+      ? [nowMs - 14 * 86400000, nowMs] : periodBounds();
+    if (![fromMs, toMs].every(Number.isFinite) || fromMs > toMs) throw new Error('Choose a valid time period.');
+    const recentOnly = incremental && lastFullRemoteLoad > 0 && nowMs - lastFullRemoteLoad < 5 * 60000;
     do {
-      const query = new URLSearchParams(); if (cursor) query.set('cursor', cursor);
+      const query = new URLSearchParams({ from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString(), limit: '200' });
+      if (cursor) query.set('cursor', cursor);
       const page = await api(`/api/recordings?${query}`);
       if (!Array.isArray(page.recordings)) throw new Error('The recording list could not be read.');
       results.push(...page.recordings.map(session => ({ ...session, remote: true })));
       cursor = page.nextCursor;
-      if (results.length >= 12000 && cursor) throw new Error('There are too many recordings to show at once. Please export or remove older recordings.');
+      if (cursor && (!page.recordings.length || seenCursors.has(cursor))) throw new Error('The recording list was incomplete. Previously loaded data is kept; try Refresh.');
+      if (cursor) seenCursors.add(cursor);
+      if (recentOnly) {
+        results = mergeRemotePage(state.sessions, results, { hasMore: Boolean(cursor), fromMs, toMs, nowMs });
+        break;
+      }
+      if (results.length >= 12000 && cursor) throw new Error('Too many recordings for one view. Choose a specific day or a shorter time period; all saved data is kept.');
     } while (cursor);
     for (const session of results) {
       const cached = state.cache.get(session.id);
       if (cached && (cached.labelRevision !== session.labelRevision || cached.participant !== session.participant) && state.editing == null && !state.dirty) state.cache.delete(session.id);
     }
     state.sessions = results;
+    if (!recentOnly) lastFullRemoteLoad = nowMs;
     $('connectionStatus').textContent = 'Private · connected';
-  } finally { state.loading = false; }
+  } finally {
+    state.loading = false;
+    for (const id of ['periodFilter', 'dayFilter', 'refreshButton']) $(id).disabled = false;
+  }
 }
 async function getSession(id) {
   if (state.cache.has(id)) return state.cache.get(id);
@@ -111,6 +131,7 @@ function render() {
   renderRecordings(visible); renderAnnotations(visible); drawChart();
   if (visible.length && (!activeVisible || !state.cache.has(state.active))) selectRecording(activeVisible ? state.active : visible[0].id).catch(error => showStatus(error.message, true));
   if (!visible.length) { state.active = ''; setFormEnabled(false); }
+  appliedFilters = Object.fromEntries(filterIDs.map(id => [id, $(id).value]));
 }
 function renderRecordings(visible) {
   const list = $('recordingList'); list.replaceChildren();
@@ -286,7 +307,20 @@ $('cancelEdit').onclick = () => selectRecording(state.active);
 $('annotationForm').addEventListener('input', () => { state.dirty = true; $('cancelEdit').hidden = false; });
 $('recordingSelect').onchange = () => selectRecording($('recordingSelect').value, true).catch(error => showStatus(error.message, true));
 for (const id of ['rangeStart', 'rangeEnd']) $(id).onchange = () => { const range = [new Date($('rangeStart').value).getTime(), new Date($('rangeEnd').value).getTime()]; if (range.every(Number.isFinite) && range[0] < range[1]) { state.selection = range; drawChart(); } };
-for (const id of ['participantFilter', 'periodFilter', 'dayFilter', 'sourceFilter']) $(id).onchange = () => { $('dayLabel').hidden = $('periodFilter').value !== 'day'; state.view = null; state.compared.clear(); render(); };
+for (const id of filterIDs) $(id).onchange = async () => {
+  $('dayLabel').hidden = $('periodFilter').value !== 'day';
+  if (state.dirty) {
+    $(id).value = appliedFilters[id]; $('dayLabel').hidden = $('periodFilter').value !== 'day';
+    showStatus('Save or reset your current activity label before changing the time period.', true); return;
+  }
+  try {
+    if (state.connected && (id === 'periodFilter' || id === 'dayFilter')) await loadRemote();
+    state.view = null; state.compared.clear(); render();
+  } catch (error) {
+    for (const key of filterIDs) $(key).value = appliedFilters[key];
+    $('dayLabel').hidden = $('periodFilter').value !== 'day'; showStatus(error.message, true);
+  }
+};
 for (const id of ['signalSelect', 'axisSelect']) $(id).onchange = drawChart;
 $('resetView').onclick = () => { state.view = periodBounds(); drawChart(); };
 $('fitRecording').onclick = () => { const session = state.cache.get(state.active); if (session) { state.view = paddedRange(bounds(session)); drawChart(); } };
@@ -343,7 +377,7 @@ new ResizeObserver(drawChart).observe($('motionChart'));
 // an open page is bounded and never erases a form in progress on a background tick.
 setInterval(async () => {
   if (!state.connected || state.loading || state.dirty || state.editing || document.hidden || document.querySelector('dialog[open]')) return;
-  try { await loadRemote(); render(); }
+  try { await loadRemote({ incremental: true }); render(); }
   catch { $('connectionStatus').textContent = 'Update pending'; }
 }, 60000);
 async function initialize() {
@@ -353,6 +387,7 @@ async function initialize() {
     const response = await fetch('/api/session', { credentials: 'same-origin' });
     if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       const account = await response.json(); state.connected = true; state.email = account.email; $('pairButton').hidden = false; $('refreshButton').hidden = false;
+      $('periodFilter').querySelector('option[value="all"]').textContent = 'Past 14 days';
       $('privacyNote').textContent = `Private shared workspace · ${account.email}. Motion sharing is opt-in on each iPhone. Uploaded recordings and activity labels expire after ${account.retentionDays ?? 14} days. Gaps mean no recorded evidence, not a smoke-free period. Background history has no gyroscope readings.`;
       await loadRemote();
     } else if (response.status === 404) {

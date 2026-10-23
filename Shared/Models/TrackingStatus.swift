@@ -1,6 +1,43 @@
 import Combine
 import Foundation
 
+public struct CalibrationTrackingStatus: Codable, Equatable, Sendable {
+    public let enabledAt: Date?
+    public let checkedAt: Date?
+    public let latestQueuedMotionAt: Date?
+    public let pendingWindowCount: Int
+    public let retryingWindowCount: Int
+    public let queuedTransferCount: Int
+    public let lastError: String?
+
+    public init(enabledAt: Date?, checkedAt: Date?, latestQueuedMotionAt: Date?,
+                pendingWindowCount: Int, retryingWindowCount: Int, queuedTransferCount: Int, lastError: String?) {
+        self.enabledAt = enabledAt; self.checkedAt = checkedAt; self.latestQueuedMotionAt = latestQueuedMotionAt
+        self.pendingWindowCount = max(0, pendingWindowCount); self.retryingWindowCount = max(0, retryingWindowCount)
+        self.queuedTransferCount = max(0, queuedTransferCount); self.lastError = lastError
+    }
+
+    public var hasValidDates: Bool {
+        [enabledAt, checkedAt, latestQueuedMotionAt].compactMap { $0 }.allSatisfy(MotionHistoryProcessor.isSupportedDate)
+    }
+
+    public func detail(consent: Date, now: Date = Date()) -> String {
+        guard let enabledAt, abs(enabledAt.timeIntervalSince(consent)) < 0.01 else {
+            return "Waiting for your Watch to receive the sharing setting."
+        }
+        if let lastError { return lastError }
+        if queuedTransferCount > 0 { return "Watch last reported \(queuedTransferCount) saved recordings waiting to reach this iPhone." }
+        if let latestQueuedMotionAt {
+            return "Watch saved motion through \(latestQueuedMotionAt.formatted(date: .omitted, time: .shortened)). Background history can still arrive later."
+        }
+        if retryingWindowCount > 0 { return "Waiting for recorded Watch motion. Available fragments are shared while missing intervals retry." }
+        if now.timeIntervalSince(consent) < 8 * 60 {
+            return "Waiting for the first motion. Live motion can arrive sooner; the first complete history window needs at least eight minutes after sharing starts."
+        }
+        return "No Watch recording has reached the transfer queue yet. Check that the Watch has Motion & Fitness permission and Ciggy is installed."
+    }
+}
+
 /// The Watch's observation timestamps, not a claim of uninterrupted coverage.
 public struct TrackingStatus: Codable, Equatable, Sendable {
     public let generatedAt: Date
@@ -13,11 +50,12 @@ public struct TrackingStatus: Codable, Equatable, Sendable {
     public let permissionGranted: Bool
     public let lastError: String?
     public let isProcessing: Bool
+    public let calibration: CalibrationTrackingStatus?
 
     public init(generatedAt: Date = Date(), historyCheckedAt: Date? = nil, historySampleAt: Date? = nil,
                 captureUntil: Date? = nil, pendingHistory: Bool = false, expiredHistory: Bool = false,
                 captureAvailable: Bool, permissionGranted: Bool, lastError: String? = nil,
-                isProcessing: Bool = false) {
+                isProcessing: Bool = false, calibration: CalibrationTrackingStatus? = nil) {
         self.generatedAt = generatedAt
         self.historyCheckedAt = historyCheckedAt
         self.historySampleAt = historySampleAt
@@ -28,11 +66,12 @@ public struct TrackingStatus: Codable, Equatable, Sendable {
         self.permissionGranted = permissionGranted
         self.lastError = lastError
         self.isProcessing = isProcessing
+        self.calibration = calibration
     }
 
     public var hasValidDates: Bool {
         [generatedAt, historyCheckedAt, historySampleAt, captureUntil].compactMap { $0 }
-            .allSatisfy(MotionHistoryProcessor.isSupportedDate)
+            .allSatisfy(MotionHistoryProcessor.isSupportedDate) && (calibration?.hasValidDates ?? true)
     }
 
     public func transferData() throws -> Data {

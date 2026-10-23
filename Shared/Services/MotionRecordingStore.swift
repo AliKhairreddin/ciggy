@@ -138,10 +138,20 @@ public final class MotionRecordingStore: ObservableObject {
     /// Filenames come from a validated UUID, never the sender's path.
     @discardableResult
     public func importRecording(data: Data) throws -> URL {
+        let imported = try Self.decodeValidatedRecording(data)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("motion-\(imported.id.uuidString).json")
+        try data.write(to: url, options: .atomic)
+        latestRecordingURL = url
+        lastError = nil
+        return url
+    }
+
+    public nonisolated static func decodeValidatedRecording(_ data: Data) throws -> MotionRecording {
         guard data.count <= 10 * 1_024 * 1_024 else { throw RecordingError.invalidRecording }
         let imported = try JSONDecoder().decode(MotionRecording.self, from: data)
         guard imported.formatVersion == 1, imported.samples.isEmpty == false,
-              imported.samples.count <= maximumSamples, imported.samples.allSatisfy(\.isValid),
+              imported.samples.count <= 18_000, imported.samples.allSatisfy(\.isValid),
               imported.startedAt.timeIntervalSince1970.isFinite,
               imported.startedAt >= .distantPast, imported.startedAt <= .distantFuture,
               let first = imported.samples.first, let last = imported.samples.last,
@@ -159,11 +169,6 @@ public final class MotionRecordingStore: ObservableObject {
         for index in 1..<imported.samples.count where imported.samples[index].timestamp <= imported.samples[index - 1].timestamp {
             throw RecordingError.invalidRecording
         }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("motion-\(imported.id.uuidString).json")
-        try data.write(to: url, options: .atomic)
-        latestRecordingURL = url
-        lastError = nil
-        return url
+        return imported
     }
 }

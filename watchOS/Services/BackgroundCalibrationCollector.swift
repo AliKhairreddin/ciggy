@@ -18,11 +18,20 @@ final class BackgroundCalibrationCollector: ObservableObject {
     @Published private(set) var lastCompletedAt: Date?
     @Published private(set) var pendingChunkCount = 0
     @Published private(set) var retryingChunkCount = 0
+    @Published private(set) var lastCheckedAt: Date?
+    @Published private(set) var latestQueuedMotionAt: Date?
     private let directory: URL
     private let maximumBytes = 80 * 1_024 * 1_024
 
+    var status: CalibrationTrackingStatus {
+        CalibrationTrackingStatus(enabledAt: activeConsent, checkedAt: lastCheckedAt,
+            latestQueuedMotionAt: latestQueuedMotionAt ?? lastCompletedAt,
+            pendingWindowCount: pendingChunkCount, retryingWindowCount: retryingChunkCount,
+            queuedTransferCount: ConnectivityManager.shared.pendingMotionRecordingCount, lastError: lastError)
+    }
+
     private enum Extraction: Sendable {
-        case recording(Data)
+        case recording(Data, MotionRecording, Bool)
         case missing
         case interrupted
         case failed(String)
@@ -38,6 +47,45 @@ final class BackgroundCalibrationCollector: ObservableObject {
             ledger = saved
             activeConsent = saved.enabledAt
         }
+        latestQueuedMotionAt = UserDefaults.standard.object(forKey: "Ciggy.calibration.latestQueuedMotionAt") as? Date
+    }
+
+    func configureConsent(_ enabledAt: Date?) {
+        guard let consent = enabledAt, MotionHistoryProcessor.isSupportedDate(consent), consent <= Date() else { purge(); return }
+        if activeConsent != consent {
+            purge()
+            activeConsent = consent
+            ledger = .init(enabledAt: consent)
+            saveLedger()
+        }
+    }
+
+    /// Used by opt-in foreground capture as soon as a count or screen sleep
+    /// finishes a fragment. Encoding stays off the sensor/UI actor.
+    func enqueueLive(_ recording: MotionRecording, consent: Date) async {
+        guard activeConsent == consent, recording.samples.first.map({ $0.timestamp >= consent }) == true else { return }
+        let token = generation
+        let data = await Task.detached(priority: .utility) { try? JSONEncoder().encode(recording) }.value
+        guard let data, generation == token, activeConsent == consent else { return }
+        do { try enqueue(data, recording: recording) }
+        catch { lastError = "Could not save live calibration: \(error.localizedDescription)" }
+        BackgroundMotionMonitor.shared.publishStatus()
+    }
+
+    private func enqueue(_ data: Data, recording: MotionRecording) throws {
+        guard let end = recording.endedAt else { return }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var values = URLResourceValues(); values.isExcludedFromBackup = true
+        var folder = directory; try folder.setResourceValues(values)
+        let url = fileURL(id: recording.id, end: end)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }
+        ConnectivityManager.shared.sendMotionRecording(at: url)
+        latestQueuedMotionAt = max(latestQueuedMotionAt ?? .distantPast, recording.samples.last?.timestamp ?? end)
+        UserDefaults.standard.set(latestQueuedMotionAt, forKey: "Ciggy.calibration.latestQueuedMotionAt")
+        lastError = nil
+        prune(at: Date())
     }
 
     /// Caller supplies at most six seconds in foreground and one second during
@@ -48,13 +96,10 @@ final class BackgroundCalibrationCollector: ObservableObject {
             purge()
             return
         }
-        if activeConsent != consent {
-            purge()
-            activeConsent = consent
-            ledger = .init(enabledAt: consent)
-        }
+        configureConsent(consent)
         guard worker == nil, maximumProcessingTime.isFinite, maximumProcessingTime > 0 else { return }
         let now = Date()
+        lastCheckedAt = now
         ledger?.reconcile(consent: consent, now: now)
         prune(at: now)
         saveLedger()
@@ -62,8 +107,16 @@ final class BackgroundCalibrationCollector: ObservableObject {
         #if targetEnvironment(simulator)
         return
         #else
-        guard CMSensorRecorder.isAccelerometerRecordingAvailable(),
-              CMSensorRecorder.authorizationStatus() == .authorized else { return }
+        guard CMSensorRecorder.isAccelerometerRecordingAvailable() else {
+            lastError = "Background motion history is unavailable on this Watch. Consented live motion can still be shared while Ciggy runs."
+            BackgroundMotionMonitor.shared.publishStatus()
+            return
+        }
+        guard CMSensorRecorder.authorizationStatus() == .authorized else {
+            lastError = "Allow Motion & Fitness on your Watch to share recorded motion."
+            BackgroundMotionMonitor.shared.publishStatus()
+            return
+        }
         let token = generation
         let deadline = ProcessInfo.processInfo.systemUptime + min(6, maximumProcessingTime)
         // Time is the main bound; permit enough complete chunks to catch up
@@ -75,6 +128,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
                 worker = nil
                 isCollecting = false
                 updateStatus(at: Date())
+                BackgroundMotionMonitor.shared.publishStatus()
             }
         }
         for _ in 0..<limit {
@@ -102,19 +156,19 @@ final class BackgroundCalibrationCollector: ObservableObject {
             guard generation == token, Task.isCancelled == false else { return }
             worker = nil
             switch result {
-            case .recording(let data):
+            case .recording(let data, let recording, let complete):
                 guard ProcessInfo.processInfo.systemUptime < deadline else { return }
                 do {
-                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                    var values = URLResourceValues()
-                    values.isExcludedFromBackup = true
-                    var folder = directory
-                    try folder.setResourceValues(values)
-                    try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-                    // Enqueue persists before committing the source cursor. A
-                    // termination here can resend the same ID, never lose it.
-                    ConnectivityManager.shared.sendMotionRecording(at: url)
-                    ledger?.didComplete(window)
+                    if complete || ledger?.partialRecordingIDs?[window.id] != recording.id {
+                        // Queue persistence precedes ledger progress. A fuller
+                        // retry never replaces the fragment's samples or labels.
+                        try enqueue(data, recording: recording)
+                    }
+                    if complete { ledger?.didComplete(window) }
+                    else {
+                        ledger?.didQueuePartial(recording, for: window)
+                        ledger?.retry(window, after: now)
+                    }
                     lastError = nil
                 } catch {
                     lastError = "Could not save a calibration chunk: \(error.localizedDescription)"
@@ -151,6 +205,9 @@ final class BackgroundCalibrationCollector: ObservableObject {
         lastCompletedAt = nil
         pendingChunkCount = 0
         retryingChunkCount = 0
+        lastCheckedAt = nil
+        latestQueuedMotionAt = nil
+        UserDefaults.standard.removeObject(forKey: "Ciggy.calibration.latestQueuedMotionAt")
     }
 
     private func updateStatus(at now: Date) {
@@ -162,8 +219,12 @@ final class BackgroundCalibrationCollector: ObservableObject {
     }
 
     private func fileURL(for window: HistoricalCalibrationSampler.Window) -> URL {
-        let endMilliseconds = Int64(window.end.timeIntervalSince1970 * 1_000)
-        return directory.appendingPathComponent("calibration_\(endMilliseconds)_\(window.id.uuidString).json")
+        fileURL(id: window.id, end: window.end)
+    }
+
+    private func fileURL(id: UUID, end: Date) -> URL {
+        let endMilliseconds = Int64(end.timeIntervalSince1970 * 1_000)
+        return directory.appendingPathComponent("calibration_\(endMilliseconds)_\(id.uuidString).json")
     }
 
     private func saveLedger() {
@@ -227,8 +288,14 @@ final class BackgroundCalibrationCollector: ObservableObject {
             do {
                 let data = try JSONEncoder().encode(recording)
                 guard shouldContinue() else { return .interrupted }
-                return .recording(data)
+                return .recording(data, recording, true)
             } catch { return .failed("Could not encode a calibration chunk: \(error.localizedDescription)") }
+        case .partial(let recording):
+            do {
+                let data = try JSONEncoder().encode(recording)
+                guard shouldContinue() else { return .interrupted }
+                return .recording(data, recording, false)
+            } catch { return .failed("Could not encode a calibration fragment: \(error.localizedDescription)") }
         case .missing: return .missing
         case .interrupted: return .interrupted
         }

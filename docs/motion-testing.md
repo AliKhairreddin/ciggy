@@ -72,7 +72,7 @@ A signed physical-device build needs a valid Apple Account session and developme
 
 ## Opt-in raw capture without adding UI
 
-In the **Debug Watch scheme**, Edit Scheme → Run → Arguments, enable `-CiggyRecordMotion`. Run the Watch app again. This records up to five minutes of real samples, ending earlier if the app enters the background, and queues the resulting JSON for transfer to the paired iPhone. The flag exists only in Debug builds. Normal launches do not capture raw recordings. No synthetic motion is substituted on physical hardware.
+In the **Debug Watch scheme**, Edit Scheme → Run → Arguments, enable `-CiggyRecordMotion`. Run the Watch app again. This records up to five minutes of real samples, ending earlier if the app enters the background, and queues the resulting JSON for transfer to the paired iPhone. The flag exists only in Debug builds. Normal launches capture raw calibration only after explicit pairing and sharing consent; see [private motion delivery](calibration-delivery.md). No synthetic motion is substituted on physical hardware.
 
 Files are stored in each app's private Application Support directory under `CiggyMotionRecordings`. The iPhone validates the incoming file, preserves its recording ID and subsecond timestamps, and exposes `MotionRecordingStore.shared.latestRecordingURL`. Retrieve the app container through Xcode's device tools when supported, or attach a share action in the UI to that URL. File transfer requires physical paired devices; Simulator does not exercise this path.
 
@@ -83,7 +83,7 @@ The APIs available to the UI chat are:
 - `DetectionAlgorithm.sessionGestureCount` and `resetSession()`: observe/reset the partial smoking session.
 - `MotionRecordingStore.shared.start(label:duration:)`: opt-in capture with a smoking-gesture, eating, drinking, other, or unlabelled label. The duration is capped at ten minutes / 18,000 samples.
 - `finishIfRecording()`, `latestRecordingURL`, `lastError`, and `deleteRecordings()`: finish, share, and remove private recordings.
-- `ConnectivityManager.shared.sendMotionRecording(at:)`: explicitly queue a recording for the paired companion. Automatic transfer happens only when the opt-in Debug flag is used.
+- `ConnectivityManager.shared.sendMotionRecording(at:)`: explicitly queue a recording for the paired companion. Automatic transfer requires the opt-in Debug flag or explicitly enabled private calibration.
 
 ## Checks
 

@@ -5,6 +5,8 @@ import SwiftUI
 struct CalibrationSettingsView: View {
     @EnvironmentObject private var settings: UserSettingsStore
     @ObservedObject private var uploads = CalibrationUploadManager.shared
+    @ObservedObject private var watchStatus = TrackingStatusStore.shared
+    @ObservedObject private var sync = ConnectivityManager.shared
     @State private var alias = ""
     @State private var code = ""
     @State private var consent = false
@@ -21,7 +23,8 @@ struct CalibrationSettingsView: View {
                 Link("Open private dashboard", destination: CalibrationUploadManager.origin)
             }
             Section("What gets shared") {
-                Text("Only motion recorded after you opt in is eligible. Recording continues while Ciggy is closed when watchOS permits; gaps remain visible. Uploads travel through your paired iPhone over Wi-Fi and may arrive later.")
+                Text("Only motion recorded after you opt in is eligible. Ciggy tries to send saved motion immediately when your iPhone is reachable, with a background transfer as backup. Your iPhone uploads it over Wi-Fi. Recordings are motion chunks, not one file per cigarette.")
+                Text("Live motion can arrive sooner. Background history waits for a complete five-minute window plus at least three minutes for sensor availability, then depends on Watch wake-ups and transfers. Available fragments are kept with gaps visible.")
                 Text("Shared recordings and labels are kept for 14 days. Unsent recordings expire after 48 hours and are cleared when Ciggy next runs. Pausing stops new sharing; you can also delete data already shared by this iPhone.")
             }
             if uploads.isEnrolled {
@@ -37,7 +40,24 @@ struct CalibrationSettingsView: View {
                     Button(settings.settings.calibrationEnabledAt == nil ? "Resume sharing from now" : "Pause sharing") {
                         if settings.settings.calibrationEnabledAt == nil { uploads.resume() } else { uploads.pause() }
                     }.disabled(uploads.requiresPairing)
-                    Button("Retry uploads") { uploads.flush() }
+                    if let consent = settings.settings.calibrationEnabledAt {
+                        if let status = watchStatus.status?.calibration {
+                            Text(status.detail(consent: consent)).font(.footnote)
+                            if let checked = status.checkedAt {
+                                LabeledContent("Watch last checked", value: checked.formatted(date: .abbreviated, time: .shortened))
+                            }
+                        } else {
+                            Text("Waiting for sharing status from Watch. Make sure both apps are updated. A check is requested below; watchOS decides when it runs.")
+                                .font(.footnote)
+                        }
+                    }
+                    Button("Check Watch and retry uploads") {
+                        ConnectivityManager.shared.send(settings: settings.settings)
+                        ConnectivityManager.shared.requestHistoryRefresh()
+                        ConnectivityManager.shared.resumeSync()
+                        uploads.flush()
+                    }
+                    if let issue = sync.lastSyncError { Text(issue).font(.footnote).foregroundStyle(.orange) }
                     Button("Delete my shared calibration data", role: .destructive) { deleting = true }
                     Button("Forget pairing and pair again", role: .destructive) { forgetting = true }
                 }

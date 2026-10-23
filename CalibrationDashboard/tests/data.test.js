@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APPLE_EPOCH_MS, LIMITS, appleSecondsToMs, msToAppleSeconds, validateRecording, validateAnnotation,
-  parseImport, mergeSessions, coverageRanges, coveredDuration, makeExport, sliceSession, cleanAlias } from '../public/data.js';
+  parseImport, mergeSessions, coverageRanges, coveredDuration, makeExport, sliceSession, cleanAlias, mergeRemotePage } from '../public/data.js';
+
+test('recent metadata refresh preserves older history and reconciles its covered prefix', () => {
+  const row = (id, hour, extra = {}) => ({ id, startedAt: `2026-10-23T${hour}:00:00Z`, endedAt: `2026-10-23T${hour}:05:00Z`, expiresAt: '2026-11-01T00:00:00Z', ...extra });
+  const old = [row('a', '12'), row('b', '11'), row('c', '10'), row('d', '09')];
+  const recent = [row('e', '13'), row('b', '11', { labelRevision: 2 })];
+  const options = { hasMore: true, fromMs: Date.parse('2026-10-23T09:30:00Z'), toMs: Date.parse('2026-10-23T14:00:00Z'), nowMs: Date.parse('2026-10-23T14:00:00Z') };
+  const merged = mergeRemotePage(old, recent, options);
+  assert.deepEqual(merged.map(row => row.id), ['e', 'b', 'c']);
+  assert.equal(merged[1].labelRevision, 2);
+  assert.deepEqual(mergeRemotePage(old, [], { ...options, hasMore: false }), []);
+  assert.throws(() => mergeRemotePage(old, [], options), /incomplete/);
+});
 
 const id = '11335577-2244-6688-aabb-ccddeeff0011';
 const labelID = '22335577-2244-6688-aabb-ccddeeff0011';

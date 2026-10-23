@@ -17,7 +17,9 @@ export function metadata(row: RecordingRow) {
     importedAt: new Date(row.created_at).toISOString(), expiresAt: new Date(row.expires_at).toISOString() };
 }
 
-/** Reserve metadata first. Retries resume a pending upload using the same canonical
+/** The 8192/72h device budget covers minute-long foreground fragments, five-minute
+ * history, and bounded gap reconciliation. Deleted reservations still count.
+ * Reserve metadata first. Retries resume a pending upload using the same canonical
  * bytes; a reused UUID with different motion cannot overwrite good data. */
 export async function saveRecording(env: Env, participant: Participant, recording: Recording, annotations: Annotation[] = []) {
   const now = Date.now(), text = JSON.stringify(recording), digest = await hash(text);
@@ -27,7 +29,7 @@ export async function saveRecording(env: Env, participant: Participant, recordin
     (id, participant_id, recording_id, object_key, body_hash, started_at, ended_at, sample_count,
      sources_json, annotations_json, state, created_at, expires_at)
     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11, ?12
-    WHERE (SELECT COUNT(*) FROM recordings WHERE participant_id = ?2 AND created_at >= ?13) < 576
+    WHERE (SELECT COUNT(*) FROM recordings WHERE participant_id = ?2 AND created_at >= ?13) < 8192
       AND EXISTS (SELECT 1 FROM participants WHERE id = ?2 AND revoked_at IS NULL AND expires_at > ?11)`)
     .bind(proposedID, participant.id, recording.id, objectKey, digest, recording.startedAt,
       recording.endedAt, recording.samples.length, JSON.stringify(sources), JSON.stringify(annotations),

@@ -132,10 +132,18 @@ final class WatchAppCoordinator: ObservableObject {
 				self?.notificationsEnabled = sharedSettings.notificationsEnabled
 				self?.detection.updateSensitivity(multiplier: sharedSettings.sensitivity)
 				self?.requestNotificationAuthorizationIfActive()
-				if sharedSettings.calibrationEnabledAt == nil {
-					Task { @MainActor in await BackgroundCalibrationCollector.shared.collect(enabledAt: nil) }
-				}
 			}
+			.store(in: &cancellables)
+
+		settings.$settings.map(\.calibrationEnabledAt).removeDuplicates()
+			.sink { @MainActor [weak self] consent in
+				BackgroundCalibrationCollector.shared.configureConsent(consent)
+				LiveCalibrationCollector.shared.configure(consent: consent)
+				guard consent != nil else { return }
+				Task { @MainActor [weak self] in await self?.refreshTracking() }
+			}.store(in: &cancellables)
+		ConnectivityManager.shared.recordingTransfersChanged.removeDuplicates()
+			.sink { @MainActor _ in BackgroundMotionMonitor.shared.publishStatus() }
 			.store(in: &cancellables)
 
 		ConnectivityManager.shared.incomingSettings
@@ -191,6 +199,7 @@ final class WatchAppCoordinator: ObservableObject {
 					repository: repository,
 					reviewStore: reviewStore
 				)
+				Task { @MainActor in await LiveCalibrationCollector.shared.flush() }
 			}
 			.store(in: &cancellables)
 
@@ -252,12 +261,15 @@ final class WatchAppCoordinator: ObservableObject {
 		if let trackingRefresh { await trackingRefresh.value; return }
 		let work = Task { @MainActor [weak self] in
 			BackgroundMotionMonitor.shared.armRecording()
-			await self?.processHistory()
-			guard Task.isCancelled == false else { return }
+			// Save and send calibration before a large detection backlog consumes
+			// the wake budget. Live samples do not need to wait for sensor history.
+			await LiveCalibrationCollector.shared.flush()
 			await BackgroundCalibrationCollector.shared.collect(
 				enabledAt: self?.settingsStore?.settings.calibrationEnabledAt,
 				maximumProcessingTime: WKApplication.shared().applicationState == .active ? 6 : 1
 			)
+			guard Task.isCancelled == false else { return }
+			await self?.processHistory()
 			ConnectivityManager.shared.resumeSync()
 		}
 		trackingRefresh = work
@@ -294,8 +306,10 @@ final class WatchAppCoordinator: ObservableObject {
 	func appDidEnterBackground() {
 		guard hasStarted else { return }
 		BackgroundMotionMonitor.shared.armRecording()
+		Task { @MainActor in await LiveCalibrationCollector.shared.flush() }
 		historyRefresh?.cancel()
 		historyRefresh = nil
+		trackingRefresh?.cancel()
 		MotionManager.shared.stop()
 		// Preserve completed puffs across a short screen sleep. The fusion engine
 		// expires long gaps itself; an incomplete sensor gesture still resets.

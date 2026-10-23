@@ -96,6 +96,8 @@ With an Xcode developer toolchain selected, run `swift test` to execute the dete
 
 See [TestFlight delivery](docs/testflight.md) for signing, archiving, and beta distribution, and the [privacy policy](docs/privacy.md) for the current data practices.
 
+See [private motion delivery](docs/calibration-delivery.md) for opt-in Watch → iPhone → dashboard uploads, timing, status checks, gap recovery, and labeling back-to-back cigarettes.
+
 ## iPhone and Watch simulator sync
 
 The iPhone and Watch apps have separate local stores. They synchronize automatic and manual events, event deletions, detection reviews, and feedback through WatchConnectivity rather than directly sharing simulator storage.

@@ -355,7 +355,7 @@ test('pairing is rate limited and expired codes cannot enroll a device', async (
 
 test('upload limits count reserved and deleted chunks so retries and deletions cannot bypass the budget', async () => {
   const person = await participant(), now = Date.now();
-  await env.DB.prepare(`WITH RECURSIVE chunks(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM chunks WHERE n < 575)
+  await env.DB.prepare(`WITH RECURSIVE chunks(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM chunks WHERE n < 8191)
     INSERT INTO recordings
     (id, participant_id, recording_id, object_key, body_hash, started_at, ended_at, sample_count,
       sources_json, state, created_at, expires_at)
@@ -366,12 +366,31 @@ test('upload limits count reserved and deleted chunks so retries and deletions c
   const response = await call('/api/upload', 'POST', recording(), { authorization: `Bearer ${person.token}` });
   assert.equal(response.status, 429);
   assert.ok(response.headers.get('retry-after'));
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 576);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 8192);
   await env.DB.prepare('UPDATE recordings SET expires_at = ?1').bind(Date.now() - 1).run();
   let prepared = 0;
   const boundedDB = { prepare(...args) { prepared++; return env.DB.prepare(...args); },
     batch: statements => env.DB.batch(statements) };
   await worker.purgeExpired({ ...env, DB: boundedDB });
   assert.ok(prepared <= 6, 'Large cleanup batches must fit the Free-plan D1 query budget.');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 7192,
+    'Cleanup stays bounded at 1000 rows per call even when the upload budget is larger');
+  for (let index = 0; index < 8; index++) {
+    prepared = 0;
+    await worker.purgeExpired({ ...env, DB: boundedDB });
+    assert.ok(prepared <= 6);
+  }
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 0);
+});
+
+test('three days of normal five-minute history does not exhaust the upload budget', async () => {
+  const person = await participant(), now = Date.now();
+  await env.DB.prepare(`WITH RECURSIVE chunks(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM chunks WHERE n < 863)
+    INSERT INTO recordings
+    (id, participant_id, recording_id, object_key, body_hash, started_at, ended_at, sample_count,
+      sources_json, state, created_at, expires_at)
+    SELECT printf('00000000-0000-4000-8000-%012d', n), ?1,
+      printf('10000000-0000-4000-8000-%012d', n), 'fixture-' || n, 'fixture', 1, 2, 3, '[]',
+      'ready', ?2, ?3 FROM chunks`).bind(person.participantID, now, now + 86400000).run();
+  assert.equal((await call('/api/upload', 'POST', recording(), { authorization: `Bearer ${person.token}` })).status, 201);
 });
