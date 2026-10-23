@@ -80,4 +80,44 @@ final class CiggyLayoutPlanTests: XCTestCase {
 			XCTAssertFalse(plan.overview.intersects(fold))
 		}
 	}
+
+	func testRotatedCameraReservesNearestEdge() {
+		let pane = CGRect(x: 0, y: 0, width: 600, height: 400)
+		let top = CiggyLayoutPlan.contentInsets(in: pane,
+			occlusions: [CGRect(x: 280, y: 0, width: 40, height: 30)])
+		XCTAssertEqual(top.top, 38)
+		XCTAssertEqual(top.bottom, 28)
+		let bottom = CiggyLayoutPlan.contentInsets(in: pane,
+			occlusions: [CGRect(x: 280, y: 370, width: 40, height: 30)])
+		XCTAssertEqual(bottom.top, 14)
+		XCTAssertEqual(bottom.bottom, 38)
+		let left = CiggyLayoutPlan.contentInsets(in: pane,
+			occlusions: [CGRect(x: 0, y: 180, width: 30, height: 40)])
+		XCTAssertEqual(left.left, 38)
+		let right = CiggyLayoutPlan.contentInsets(in: pane,
+			occlusions: [CGRect(x: 570, y: 180, width: 30, height: 40)])
+		XCTAssertEqual(right.right, 38)
+	}
+
+	func testCameraAvoidanceUsesPaneCoordinatesAndIgnoresOtherPane() {
+		let pane = CGRect(x: 450, y: 0, width: 400, height: 600)
+		let insets = CiggyLayoutPlan.contentInsets(in: pane, occlusions: [
+			CGRect(x: 100, y: 0, width: 40, height: 40),
+			CGRect(x: 820, y: 280, width: 40, height: 40)
+		])
+		XCTAssertEqual(insets.top, 14)
+		XCTAssertEqual(insets.left, 18)
+		XCTAssertEqual(insets.right, 38)
+	}
+
+	func testChangingHingeClearanceKeepsBothPanesOutsideFold() throws {
+		let size = CGSize(width: 800, height: 600)
+		for clearance in stride(from: 8.0, through: 80.0, by: 8.0) {
+			let fold = CGRect(x: 400 - clearance / 2, y: 0, width: clearance, height: 600)
+			let plan = CiggyLayoutPlan(size: size, regularWidth: true, division: fold)
+			XCTAssertEqual(plan.mode, .book)
+			XCTAssertEqual(plan.overview.maxX, fold.minX)
+			XCTAssertEqual(try XCTUnwrap(plan.controls).minX, fold.maxX)
+		}
+	}
 }

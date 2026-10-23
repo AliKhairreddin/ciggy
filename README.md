@@ -52,6 +52,10 @@ Detection is an estimate from wrist motion, not a measurement of the object in t
 
 Synthetic tests exercise full assumed smoking, spoon/fork eating, drinking, resting, opposite-wrist and interrupted-data scenarios through both live-motion and historical-acceleration pipelines. They are deterministic software stress tests, **not training data or proof of real-world accuracy**. Identical wrist traces cannot be distinguished by labeling them differently. See [the motion test guide](docs/motion-testing.md) for the reproducible large-sweep command and measured results, and [the reliability validation record](docs/reliability-validation.md) for this update's checks.
 
+## iPhone Duo
+
+Ciggy uses the native iOS 27.1 hinge and reserved-region APIs for the cover display, fully open layouts, book mode, and half-open desk mode. The fold's actual frame and interactive margins keep independently scrollable content and controls clear as its angle changes. Rotation preserves notes, goals, and report selections. The native laptop pose also unlocks an immersive ashtray scene above a full-width ambient music player, with ten randomly selected scenic backgrounds. This Easter egg is exclusive to Duo desk mode; adjusting the hinge or rotation restores tracking. See [the Duo guide](docs/iphone-duo.md) for layouts and native simulator validation.
+
 ## Technical risks
 
 - False positives from eating, drinking, shaving, brushing teeth, or similar hand-to-mouth gestures.

@@ -23,8 +23,9 @@ struct DashboardView: View {
 	@Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
 	var body: some View {
-		CiggyAdaptiveScreen {
+		CiggyAdaptiveScreen(immersiveDuoDesk: true) {
 			profileHeader
+			CiggyDuoStatus()
 			logConfirmation
 			todayHero
 			quickMetrics
@@ -33,26 +34,39 @@ struct DashboardView: View {
 			weeklyChart
 			todaysTimeline
 		} overview: { mode in
-			profileHeader
-			if mode.isFolded {
-				foldedSummary
-				weeklyChart
-			} else {
-				logConfirmation
-				todayHero
-				quickMetrics
+			CiggyDuoDeskGate {
+				CiggyDuoAshtrayScene()
+			} normal: {
+				profileHeader
+				CiggyDuoStatus()
+				if mode.isFolded {
+					foldedSummary(mode: mode)
+					if mode == .book { weeklyChart }
+				} else {
+					logConfirmation
+					todayHero
+					quickMetrics
+				}
 			}
 		} controls: { mode in
-			if mode.isFolded {
-				logConfirmation
-				quickMetrics
-			} else {
-				weeklyChart
+			CiggyDuoDeskGate {
+				CiggyDuoMusicPlayer()
+			} normal: {
+				if mode.isFolded {
+					logConfirmation
+					foldedCheckIn
+					detectionStatus
+					quickMetrics
+					if mode == .tabletop { weeklyChart }
+				} else {
+					weeklyChart
+					detectionExperience
+				}
+				todaysTimeline
+				LiveActivityCard()
 			}
-			detectionExperience
-			todaysTimeline
-			LiveActivityCard()
 		}
+
 		.toolbar(.hidden, for: .navigationBar)
 		.navigationDestination(for: DashboardDestination.self) { destination in
 			switch destination {
@@ -108,21 +122,36 @@ struct DashboardView: View {
 		}
 	}
 
-	private var foldedSummary: some View {
-		CiggyPanel {
-			VStack(alignment: .leading, spacing: 12) {
-				Text("TODAY, AT A GLANCE").font(.caption.weight(.bold)).tracking(1.4)
-				HStack {
-					dailyCount
-					Spacer(minLength: 0)
-					if !dynamicTypeSize.isAccessibilitySize {
-						CiggyMascot().frame(width: 88, height: 88)
-					}
+	private func foldedSummary(mode: CiggyLayoutPlan.Mode) -> some View {
+		VStack(alignment: .leading, spacing: 12) {
+			Text(mode == .tabletop ? "A little breathing room." : "Today's page.")
+				.font(.system(.title2, design: .rounded, weight: .black))
+			HStack {
+				dailyCount
+				Spacer(minLength: 0)
+				if !dynamicTypeSize.isAccessibilitySize {
+					CiggyMascot().frame(width: 88, height: 88)
 				}
-				CiggyPackMeter(count: viewModel.dailyCount, limit: settings.settings.dailyLimit)
-				Text(todayMessage).font(.subheadline.weight(.semibold))
 			}
-			.foregroundStyle(palette.primaryText)
+			CiggyPackMeter(count: viewModel.dailyCount, limit: settings.settings.dailyLimit)
+			Text(todayMessage).font(.subheadline.weight(.semibold))
+		}
+		.foregroundStyle(palette.primaryText)
+		.padding(22)
+		.background(palette.heroGradient, in: RoundedRectangle(cornerRadius: 28))
+		.overlay(RoundedRectangle(cornerRadius: 28).stroke(palette.border, lineWidth: 1))
+		.accessibilityElement(children: .contain)
+		.accessibilityIdentifier(mode == .tabletop ? "desk-summary" : "book-summary")
+	}
+
+	private var foldedCheckIn: some View {
+		CiggyPanel {
+			VStack(alignment: .leading, spacing: 8) {
+				Text("Within reach.").font(.system(.title3, design: .rounded, weight: .bold))
+				Text("Your Watch keeps track. Add a check-in here if it missed one.")
+					.font(.caption).foregroundStyle(palette.secondaryText)
+				manualLogButton
+			}.foregroundStyle(palette.primaryText)
 		}
 	}
 
@@ -292,21 +321,30 @@ struct DashboardView: View {
 
 	private var detectionExperience: some View {
 		VStack(alignment: .leading, spacing: 2) {
-			if let review = reviewStore.latestReview {
-				detectionReviewCard(review)
-			} else {
-				detectionReadyCard
-			}
-			Button { isLogging = true } label: {
-				Label("Add missed cigarette", systemImage: "plus.circle")
-					.font(.subheadline)
-					.frame(minHeight: 44)
-			}
-			.buttonStyle(.plain)
-			.foregroundStyle(palette.secondaryText)
-			.accessibilityHint("Manually add one cigarette if detection missed it")
-			.accessibilityIdentifier("phone-log-button")
+			detectionStatus
+			manualLogButton
 		}
+	}
+
+	@ViewBuilder
+	private var detectionStatus: some View {
+		if let review = reviewStore.latestReview {
+			detectionReviewCard(review)
+		} else {
+			detectionReadyCard
+		}
+	}
+
+	private var manualLogButton: some View {
+		Button { isLogging = true } label: {
+			Label("Add missed cigarette", systemImage: "plus.circle")
+				.font(.subheadline)
+				.frame(minHeight: 44)
+		}
+		.buttonStyle(.plain)
+		.foregroundStyle(palette.secondaryText)
+		.accessibilityHint("Manually add one cigarette if detection missed it")
+		.accessibilityIdentifier("phone-log-button")
 	}
 
 	private func detectionReviewCard(_ review: DetectionReview) -> some View {

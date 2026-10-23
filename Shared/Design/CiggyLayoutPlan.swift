@@ -11,6 +11,33 @@ public struct CiggyLayoutPlan: Equatable {
 	public let overview: CGRect
 	public let controls: CGRect?
 
+	public struct ContentInsets: Equatable {
+		public var top: CGFloat = 14
+		public var left: CGFloat = 18
+		public var bottom: CGFloat = 28
+		public var right: CGFloat = 18
+	}
+
+	/// Keep rotated camera regions clear without pushing a whole pane below them.
+	public static func contentInsets(in pane: CGRect, occlusions: [CGRect]) -> ContentInsets {
+		var insets = ContentInsets()
+		for occlusion in occlusions {
+			let overlap = pane.intersection(occlusion)
+			guard !overlap.isNull, overlap.width > 0, overlap.height > 0 else { continue }
+			let distances = [overlap.maxY - pane.minY, pane.maxY - overlap.minY,
+							 overlap.maxX - pane.minX, pane.maxX - overlap.minX]
+			guard let edge = distances.indices.min(by: { distances[$0] < distances[$1] }) else { continue }
+			let clearance = distances[edge] + 8
+			switch edge {
+			case 0: insets.top = max(insets.top, clearance)
+			case 1: insets.bottom = max(insets.bottom, clearance)
+			case 2: insets.left = max(insets.left, clearance)
+			default: insets.right = max(insets.right, clearance)
+			}
+		}
+		return insets
+	}
+
 	public init(
 		size: CGSize,
 		regularWidth: Bool,
