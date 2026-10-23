@@ -47,6 +47,12 @@ The proxy emitted two candidates for participant 11's first recording, while oth
 
 These are **positive-recording coverage and raw output counts**, not daily accuracy, puff precision/recall, or free-living false-positive rates. Detected shape gestures are not matched one-to-one to annotated puffs. SED contains no representative non-smoking day, the hardware differs, and the publisher normalized hand/orientation. Claims about background reliability also require suspension, renewal, transport, energy, and actual smoking tests on physical Apple Watch hardware.
 
+## Session-boundary update, build 6
+
+The eight-minute post-detection lockout has been removed. After emitting a candidate, the engine continues observing gesture times and keeps one count for an uninterrupted pattern, even beyond eight minutes. A gap of more than the existing 150-second inter-gesture limit allows a new pattern to accumulate. The rolling eight-minute evidence window and gesture-shape thresholds remain unchanged. Repository deduplication now compares supporting intervals with 30 seconds of timing tolerance instead of blocking every automatic event within eight minutes; corrected intervals remain retained.
+
+Replaying the same pinned release with this rule produced **17 historical candidates in 17/20 recordings** and **18 gyro-assisted proxy candidates in 18/20 recordings**, with the same 257 proxy shape gestures. Participant 11's first recording now emits one proxy candidate rather than two. Historical per-recording output is unchanged. An initial 90-second boundary produced an extra historical candidate for participant 2's first recording and was rejected; production retains the existing 150-second gap. This small, inspected corpus is regression evidence, not independent validation of the session boundary or a measure of free-living accuracy. No model was trained. Two cigarettes without a recognizable gap can still merge; missed gestures or a long pause within one cigarette can split it.
+
 ## Background execution constraints
 
 Apple documents [historical recording](https://developer.apple.com/documentation/coremotion/cmsensorrecorder/recordaccelerometer(forduration:)) at 50 Hz for up to 12 hours per request during suspension/termination, with up to three days of retention. [Retrieval](https://developer.apple.com/documentation/coremotion/cmsensorrecorder/accelerometerdata(from:to:)) can lag by three minutes.

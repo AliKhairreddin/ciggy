@@ -68,6 +68,82 @@ final class EventRepositoryTests: XCTestCase {
         XCTAssertTrue(restored.events.isEmpty)
     }
 
+    func testThreeCloseAutomaticSessionsSurviveReplaySyncAndRelaunch() throws {
+        let (name, defaults) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let origin = Date(timeIntervalSince1970: 1_700_000_000)
+        let repository = EventRepository(userDefaults: defaults)
+        let events = [0.0, 175, 350].map { offset in
+            SmokingEvent(timestamp: origin.addingTimeInterval(offset + 80), source: .automatic,
+                         motionSessionStartedAt: origin.addingTimeInterval(offset))
+        }
+        for event in events { XCTAssertTrue(repository.addEvent(event)) }
+        let restored = EventRepository(userDefaults: defaults)
+        for event in events.reversed() {
+            // Lower-fidelity history may cross the count threshold later and
+            // therefore produce a different ID for the same supporting pattern.
+            let replay = SmokingEvent(timestamp: event.timestamp.addingTimeInterval(15), source: .automatic,
+                                      motionSessionStartedAt: event.motionSessionStartedAt?.addingTimeInterval(20))
+            XCTAssertFalse(restored.addEvent(replay))
+            let transferred = try JSONDecoder().decode(SmokingEvent.self, from: JSONEncoder().encode(event))
+            XCTAssertFalse(restored.addEvent(transferred))
+        }
+        XCTAssertEqual(EventRepository(userDefaults: defaults).events, events)
+    }
+
+    func testCorrectedPatternStaysDeletedWithoutSuppressingTheNextCigarette() {
+        let (name, defaults) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let origin = Date(timeIntervalSince1970: 1_700_000_000)
+        let repository = EventRepository(userDefaults: defaults)
+        let event = SmokingEvent(timestamp: origin.addingTimeInterval(80), source: .automatic,
+                                 motionSessionStartedAt: origin)
+        XCTAssertTrue(repository.addEvent(event))
+        XCTAssertTrue(repository.removeEvent(id: event.id))
+        let restored = EventRepository(userDefaults: defaults)
+        let replay = SmokingEvent(timestamp: origin.addingTimeInterval(100), source: .automatic,
+                                  motionSessionStartedAt: origin.addingTimeInterval(20))
+        XCTAssertFalse(restored.addEvent(replay))
+        let next = SmokingEvent(timestamp: origin.addingTimeInterval(255), source: .automatic,
+                                motionSessionStartedAt: origin.addingTimeInterval(175))
+        XCTAssertTrue(restored.addEvent(next))
+        XCTAssertEqual(EventRepository(userDefaults: defaults).events, [next])
+    }
+
+    func testDeletionBeforeDeliveryStillRetainsPatternEvidence() {
+        let (name, defaults) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let repository = EventRepository(userDefaults: defaults)
+        let origin = Date(timeIntervalSince1970: 1_700_000_000)
+        let event = SmokingEvent(timestamp: origin.addingTimeInterval(80), source: .automatic,
+                                 motionSessionStartedAt: origin)
+        repository.removeEvent(id: event.id)
+        XCTAssertFalse(repository.addEvent(event))
+        let replay = SmokingEvent(timestamp: origin.addingTimeInterval(100), source: .automatic,
+                                  motionSessionStartedAt: origin.addingTimeInterval(20))
+        XCTAssertFalse(EventRepository(userDefaults: defaults).addEvent(replay))
+        XCTAssertTrue(EventRepository(userDefaults: defaults).events.isEmpty)
+    }
+
+    func testOldAtomicSnapshotAndEventWithoutPatternMetadataMigrate() throws {
+        let (name, defaults) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let id = UUID()
+        let legacy = """
+        {"events":[{"id":"\(id)","timestamp":80,"source":"automatic"}],
+        "deletedEventIDs":[],"automaticEventTimes":["\(id)",80]}
+        """
+        defaults.set(Data(legacy.utf8), forKey: "events")
+        let repository = EventRepository(userDefaults: defaults, storageKey: "events")
+        XCTAssertEqual(repository.events.first?.id, id)
+        let origin = Date(timeIntervalSinceReferenceDate: 0)
+        XCTAssertFalse(repository.addEvent(.init(timestamp: origin.addingTimeInterval(90), source: .automatic,
+                                                 motionSessionStartedAt: origin)))
+        XCTAssertTrue(repository.addEvent(.init(timestamp: origin.addingTimeInterval(255), source: .automatic,
+                                                motionSessionStartedAt: origin.addingTimeInterval(175))))
+        XCTAssertEqual(EventRepository(userDefaults: defaults, storageKey: "events").events.count, 2)
+    }
+
     func testStreakUsesCalendarDaysAcrossDaylightSavingAndIgnoresFutureEvents() throws {
         let (name, defaults) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: name) }

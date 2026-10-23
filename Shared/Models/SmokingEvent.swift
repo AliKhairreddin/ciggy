@@ -12,6 +12,8 @@ public struct SmokingEvent: Identifiable, Codable, Equatable, Sendable {
 	public let timestamp: Date
 	public let source: SmokingEventSource
 	public let heartRate: Double?
+	/// First completed gesture supporting an automatic event; nil for older events.
+	public let motionSessionStartedAt: Date?
 	public var notes: String?
 
 	public init(
@@ -19,13 +21,15 @@ public struct SmokingEvent: Identifiable, Codable, Equatable, Sendable {
 		timestamp: Date = Date(),
 		source: SmokingEventSource,
 		heartRate: Double? = nil,
-		notes: String? = nil
+		notes: String? = nil,
+		motionSessionStartedAt: Date? = nil
 	) {
 		self.id = id
 		self.timestamp = timestamp
 		self.source = source
 		self.heartRate = heartRate
 		self.notes = notes
+		self.motionSessionStartedAt = motionSessionStartedAt
 	}
 }
 

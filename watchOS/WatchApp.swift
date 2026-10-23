@@ -345,10 +345,9 @@ final class WatchAppCoordinator: ObservableObject {
 		var reviewStart = windowStart
 		var reviewEnd = windowEnd
 		for candidate in candidates {
-			// Foreground and recorded motion observe the same wrist movement using
-			// different sensors. Do not double-log a session when history catches up.
-			if repository.hasRecordedAutomaticSession(near: candidate.gestureAt) { continue }
 			let event = candidate.detectedEvent()
+			// The repository compares supporting motion intervals across live/history
+			// and retains corrected sessions without an eight-minute blanket block.
 			guard repository.addEvent(event) else { continue }
 			newEvents.append(event)
 			reviewStart = min(reviewStart, candidate.motionSessionStartedAt ?? candidate.gestureAt)

@@ -43,7 +43,8 @@ public struct DetectionCandidate: Identifiable, Codable, Equatable, Sendable {
 			timestamp: gestureAt,
 			source: .automatic,
 			heartRate: peakHeartRate,
-			notes: notes
+			notes: notes,
+			motionSessionStartedAt: motionSessionStartedAt
 		)
 	}
 

@@ -208,7 +208,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 		                                        hasExpiredHistory: hasExpiredHistory || batch.didExpireHistory,
 		                                        checkedAt: lastHistoryCheckedAt, backlogPending: batch.recentPending)
 		// Cursor and classifier state are one value: a relaunch must not lose a
-		// partial smoking session or the cooldown established in the previous batch.
+		// partial or already counted smoking session from the previous batch.
 		guard let data = try? JSONEncoder().encode(checkpoint) else { return }
 		userDefaults.set(data, forKey: checkpointKey)
 		lastHistorySampleAt = checkpoint.latestSampleAt

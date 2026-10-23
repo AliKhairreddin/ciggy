@@ -71,7 +71,7 @@ final class SyntheticMotionSimulationTests: XCTestCase {
         XCTAssertEqual(outputs[0], outputs[2])
     }
 
-    func testManySequentialSessionsRecoverAfterCooldownAndCheckpoint() throws {
+    func testManySequentialSessionsRecoverAfterSessionBreakAndCheckpoint() throws {
         var gesture = MotionGestureEngine()
         var fusion = DetectionFusionEngine()
         var candidates: [DetectionCandidate] = []

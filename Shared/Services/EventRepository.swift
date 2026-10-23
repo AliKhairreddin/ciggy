@@ -12,11 +12,13 @@ public final class EventRepository: ObservableObject {
 	private let deletedStorageKey: String
 	private var deletedEventIDs: Set<UUID> = []
 	private var automaticEventTimes: [UUID: Date] = [:]
+	private var automaticSessionStarts: [UUID: Date] = [:]
 	private var automaticTimesKey: String { "\(storageKey).automaticTimes.v1" }
 	private struct Snapshot: Codable {
 		let events: [SmokingEvent]
 		let deletedEventIDs: Set<UUID>
 		let automaticEventTimes: [UUID: Date]
+		let automaticSessionStarts: [UUID: Date]?
 	}
 
 	public init(
@@ -32,10 +34,25 @@ public final class EventRepository: ObservableObject {
 	@discardableResult
 	public func addEvent(_ event: SmokingEvent) -> Bool {
 		guard let event = Self.validated(event) else { return false }
+		if event.source == .automatic {
+			// Compare the observed pattern, rather than blocking every event near
+			// another timestamp. Retain matching evidence even after a correction.
+			let matchedID = automaticSessionID(matching: event)
+			let retainedID = matchedID ?? event.id
+			let start = event.motionSessionStartedAt ?? event.timestamp
+			let retainedStart = min(automaticSessionStarts[retainedID] ?? automaticEventTimes[retainedID] ?? start, start)
+			let retainedEnd = max(automaticEventTimes[retainedID] ?? event.timestamp, event.timestamp)
+			let changed = automaticSessionStarts[retainedID] != retainedStart || automaticEventTimes[retainedID] != retainedEnd
+			automaticSessionStarts[retainedID] = retainedStart
+			automaticEventTimes[retainedID] = retainedEnd
+			if matchedID != nil || deletedEventIDs.contains(event.id) {
+				if changed { save() }
+				return false
+			}
+		}
 		guard deletedEventIDs.contains(event.id) == false else { return false }
 		guard events.contains(where: { $0.id == event.id }) == false else { return false }
 		events.append(event)
-		if event.source == .automatic { automaticEventTimes[event.id] = event.timestamp }
 		events.sort { $0.timestamp < $1.timestamp }
 		save()
 		return true
@@ -57,11 +74,25 @@ public final class EventRepository: ObservableObject {
 		save()
 	}
 
-	/// Retain the time of corrected automatic events so a later, lower-fidelity
-	/// history pass cannot restore the same smoking session with a different ID.
-	public func hasRecordedAutomaticSession(near date: Date, tolerance: TimeInterval = 8 * 60) -> Bool {
+	/// Legacy point lookup. New writes compare complete supporting intervals.
+	public func hasRecordedAutomaticSession(near date: Date, tolerance: TimeInterval = 30) -> Bool {
 		guard Self.isValid(date), tolerance.isFinite, tolerance > 0 else { return false }
-		return automaticEventTimes.values.contains { abs($0.timeIntervalSince(date)) < tolerance }
+		return automaticEventTimes.contains { id, end in
+			date >= (automaticSessionStarts[id] ?? end).addingTimeInterval(-tolerance)
+				&& date <= end.addingTimeInterval(tolerance)
+		}
+	}
+
+	private func automaticSessionID(matching event: SmokingEvent) -> UUID? {
+		if automaticEventTimes[event.id] != nil { return event.id }
+		let start = event.motionSessionStartedAt ?? event.timestamp
+		// Small sensor timing differences are expected between fused motion and
+		// accelerometer history. A distinct session break remains separate.
+		return automaticEventTimes.keys.sorted { $0.uuidString < $1.uuidString }.first { id in
+			guard let end = automaticEventTimes[id] else { return false }
+			let savedStart = automaticSessionStarts[id] ?? end
+			return start <= end.addingTimeInterval(30) && event.timestamp >= savedStart.addingTimeInterval(-30)
+		}
 	}
 
 	public func events(on day: Date) -> [SmokingEvent] {
@@ -105,6 +136,9 @@ public final class EventRepository: ObservableObject {
 		   let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
 			deletedEventIDs = snapshot.deletedEventIDs
 			automaticEventTimes = snapshot.automaticEventTimes.filter { Self.isValid($0.value) }
+			automaticSessionStarts = (snapshot.automaticSessionStarts ?? [:]).filter {
+				Self.isValid($0.value) && $0.value <= (automaticEventTimes[$0.key] ?? .distantPast)
+			}
 			loadEvents(snapshot.events)
 			return
 		}
@@ -130,13 +164,18 @@ public final class EventRepository: ObservableObject {
 			.filter { deletedEventIDs.contains($0.id) == false }
 			.filter { seen.insert($0.id).inserted }
 			.sorted { $0.timestamp < $1.timestamp }
-		for event in events where event.source == .automatic { automaticEventTimes[event.id] = event.timestamp }
+		for event in events where event.source == .automatic {
+			automaticEventTimes[event.id] = max(automaticEventTimes[event.id] ?? event.timestamp, event.timestamp)
+			let start = event.motionSessionStartedAt ?? event.timestamp
+			automaticSessionStarts[event.id] = min(automaticSessionStarts[event.id] ?? start, start)
+		}
 	}
 
 	private func save() {
 		// Keep corrections and their session history in the same persisted value.
 		// A terminated write cannot leave a new events array with old tombstones.
-		let snapshot = Snapshot(events: events, deletedEventIDs: deletedEventIDs, automaticEventTimes: automaticEventTimes)
+		let snapshot = Snapshot(events: events, deletedEventIDs: deletedEventIDs,
+		                        automaticEventTimes: automaticEventTimes, automaticSessionStarts: automaticSessionStarts)
 		if let data = try? JSONEncoder().encode(snapshot) {
 			userDefaults.set(data, forKey: storageKey)
 		}
@@ -149,7 +188,10 @@ public final class EventRepository: ObservableObject {
 	private static func validated(_ event: SmokingEvent) -> SmokingEvent? {
 		guard isValid(event.timestamp) else { return nil }
 		let heartRate = event.heartRate.flatMap { $0.isFinite && $0 > 0 && $0 <= 300 ? $0 : nil }
+		let sessionStart = event.motionSessionStartedAt.flatMap {
+			event.source == .automatic && isValid($0) && $0 <= event.timestamp ? $0 : nil
+		}
 		return SmokingEvent(id: event.id, timestamp: event.timestamp, source: event.source,
-		                    heartRate: heartRate, notes: event.notes)
+		                    heartRate: heartRate, notes: event.notes, motionSessionStartedAt: sessionStart)
 	}
 }

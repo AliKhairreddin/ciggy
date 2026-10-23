@@ -35,7 +35,7 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         XCTAssertEqual(actual.count, 1)
     }
 
-    func testReplayProducesStableIDsAndCooldownSurvivesCheckpoint() throws {
+    func testReplayProducesStableIDsAndContinuingSessionSurvivesCheckpoint() throws {
         let stream = samples(cycles: 5)
         var first = RecordedMotionAnalyzer()
         let candidate = try XCTUnwrap(stream.compactMap { first.record($0) }.first)
@@ -43,6 +43,21 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         XCTAssertEqual(stream.compactMap { replay.record($0) }.first?.id, candidate.id)
         first = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(first))
         for sample in samples(cycles: 5, offset: 100) { XCTAssertNil(first.record(sample)) }
+    }
+
+    func testSeparateRecordedPatternsCountWithinEightMinutesAcrossCheckpoint() throws {
+        var analyzer = RecordedMotionAnalyzer()
+        var detected = samples(cycles: 5).compactMap { analyzer.record($0) }
+        analyzer = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(analyzer))
+        detected += samples(cycles: 5, offset: 275).compactMap { analyzer.record($0) }
+        XCTAssertEqual(detected.count, 2)
+        XCTAssertEqual(Set(detected.map(\.id)).count, 2)
+        XCTAssertLessThan(try XCTUnwrap(detected.last?.gestureAt).timeIntervalSince(start), 480)
+    }
+
+    func testLongRecordedPatternCountsOnce() {
+        var analyzer = RecordedMotionAnalyzer()
+        XCTAssertEqual(samples(cycles: 40).compactMap { analyzer.record($0) }.count, 1)
     }
 
     func testMalformedAndOutOfOrderSamplesAreIgnored() {

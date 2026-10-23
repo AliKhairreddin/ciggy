@@ -62,13 +62,54 @@ final class DetectionFusionEngineTests: XCTestCase {
 		XCTAssertEqual(engine.observedGestureCount, 1)
 	}
 
-	func testCooldownSuppressesASecondCandidate() {
-		var engine = makeEngine(minimumGestures: 2, cooldown: 120)
-		XCTAssertNil(engine.recordGesture(at: start))
-		XCTAssertNotNil(engine.recordGesture(at: start.addingTimeInterval(20)))
+	func testThreeSeparatePatternsCountWithinEightMinutes() {
+		var engine = DetectionFusionEngine()
+		var candidates: [DetectionCandidate] = []
+		for offset in [0.0, 200, 400] {
+			for puff in 0..<5 {
+				if let candidate = engine.recordGesture(at: start.addingTimeInterval(offset + Double(puff) * 10)) {
+					candidates.append(candidate)
+				}
+			}
+		}
+		XCTAssertEqual(candidates.count, 3)
+		XCTAssertEqual(candidates.last?.gestureAt, start.addingTimeInterval(440))
+	}
 
-		XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(40)))
+	func testContinuousPuffsCountOnceBeyondEightMinutesAndAcrossCheckpoint() throws {
+		var engine = DetectionFusionEngine()
+		var candidates: [DetectionCandidate] = []
+		for puff in 0..<40 {
+			if puff == 20 { engine = try JSONDecoder().decode(DetectionFusionEngine.self, from: JSONEncoder().encode(engine)) }
+			if let candidate = engine.recordGesture(at: start.addingTimeInterval(Double(puff) * 20)) { candidates.append(candidate) }
+		}
+		XCTAssertEqual(candidates.count, 1)
 		XCTAssertFalse(engine.hasActiveMotionSession)
+		for puff in 0..<4 { XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(960 + Double(puff) * 20))) }
+		XCTAssertNotNil(engine.recordGesture(at: start.addingTimeInterval(1040)))
+	}
+
+	func testResetAndSensitivityChangeCannotSplitContinuingPuffs() {
+		var engine = DetectionFusionEngine()
+		for puff in 0..<5 { _ = engine.recordGesture(at: start.addingTimeInterval(Double(puff) * 20)) }
+		engine.resetSession()
+		engine.updateSensitivity(1)
+		for puff in 5..<20 { XCTAssertNil(engine.recordGesture(at: start.addingTimeInterval(Double(puff) * 20))) }
+	}
+
+	func testLegacyCheckpointDropsLockoutButKeepsCountedSession() throws {
+		let checkpoint = """
+		{"configuration":{"minimumGestureCount":5,"sessionWindowSeconds":480,
+		"minimumGestureSeparationSeconds":6,"maximumGestureSeparationSeconds":150,
+		"detectionCooldownSeconds":480,"heartRateContextSeconds":60},
+		"recentHeartRates":[],"gestureTimestamps":[],"lastCandidateAt":0}
+		"""
+		var engine = try JSONDecoder().decode(DetectionFusionEngine.self, from: Data(checkpoint.utf8))
+		let origin = Date(timeIntervalSinceReferenceDate: 0)
+		XCTAssertEqual(engine.configuration.maximumGestureSeparationSeconds, 150)
+		XCTAssertNil(engine.recordGesture(at: origin.addingTimeInterval(20)))
+		for puff in 0..<4 { XCTAssertNil(engine.recordGesture(at: origin.addingTimeInterval(180 + Double(puff) * 20))) }
+		XCTAssertNotNil(engine.recordGesture(at: origin.addingTimeInterval(260)))
 	}
 
 	func testSensitivityMapsToMotionCount() {
@@ -106,10 +147,11 @@ final class DetectionFusionEngineTests: XCTestCase {
 		XCTAssertEqual(event.timestamp, candidate.gestureAt)
 		XCTAssertEqual(event.source, .automatic)
 		XCTAssertEqual(event.heartRate, 84)
+		XCTAssertEqual(event.motionSessionStartedAt, candidate.motionSessionStartedAt)
 	}
 
-	func testDuplicateGesturesNeverCountEvenWithZeroSeparationAndCooldown() {
-		var engine = makeEngine(minimumGestures: 2, minimumSeparation: 0, cooldown: 0)
+	func testDuplicateAndOutOfOrderGesturesNeverCountEvenWithZeroSeparation() {
+		var engine = makeEngine(minimumGestures: 2, minimumSeparation: 0)
 		XCTAssertNil(engine.recordGesture(at: start))
 		for _ in 0..<100 { XCTAssertNil(engine.recordGesture(at: start)) }
 		XCTAssertEqual(engine.observedGestureCount, 1)
@@ -133,13 +175,12 @@ final class DetectionFusionEngineTests: XCTestCase {
 	func testMalformedConfigurationIsBoundedAndFinite() {
 		let config = DetectionFusionEngine.Configuration(minimumGestureCount: .max,
 			sessionWindowSeconds: .nan, minimumGestureSeparationSeconds: .infinity,
-			maximumGestureSeparationSeconds: -.infinity, detectionCooldownSeconds: .nan,
+			maximumGestureSeparationSeconds: -.infinity,
 			heartRateContextSeconds: .infinity)
 		XCTAssertEqual(config.minimumGestureCount, 100)
 		XCTAssertEqual(config.sessionWindowSeconds, 480)
 		XCTAssertEqual(config.minimumGestureSeparationSeconds, 6)
 		XCTAssertEqual(config.maximumGestureSeparationSeconds, 150)
-		XCTAssertEqual(config.detectionCooldownSeconds, 480)
 		XCTAssertEqual(config.heartRateContextSeconds, 60)
 	}
 
@@ -164,8 +205,7 @@ final class DetectionFusionEngineTests: XCTestCase {
 	private func makeEngine(
 		minimumGestures: Int = 5,
 		minimumSeparation: TimeInterval = 6,
-		maximumSeparation: TimeInterval = 150,
-		cooldown: TimeInterval = 480
+		maximumSeparation: TimeInterval = 150
 	) -> DetectionFusionEngine {
 		DetectionFusionEngine(
 			configuration: .init(
@@ -173,7 +213,6 @@ final class DetectionFusionEngineTests: XCTestCase {
 				sessionWindowSeconds: 480,
 				minimumGestureSeparationSeconds: minimumSeparation,
 				maximumGestureSeparationSeconds: maximumSeparation,
-				detectionCooldownSeconds: cooldown,
 				heartRateContextSeconds: 60
 			)
 		)

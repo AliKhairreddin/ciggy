@@ -245,6 +245,32 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertEqual(queryCount, 0)
     }
 
+    func testCigaretteCrossingEightMinuteBatchBoundaryCountsOnceAndNextPatternCounts() throws {
+        let stream = recordedSession(offset: 420) + recordedSession(offset: 675)
+        let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
+            AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+        }
+        let first = MotionHistoryProcessor.process(
+            from: start, to: start.addingTimeInterval(480), analyzer: .init(), pendingRanges: [],
+            sensitivity: 0.5, queryChunkDuration: 480, query: query
+        )
+        XCTAssertTrue(first.candidates.isEmpty, "The first cigarette is still incomplete at the batch boundary")
+        let checkpoint = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(first.analyzer))
+        let next = MotionHistoryProcessor.process(
+            from: first.processedThrough, to: start.addingTimeInterval(800), analyzer: checkpoint,
+            pendingRanges: [], sensitivity: 0.5, queryChunkDuration: 480, query: query
+        )
+        XCTAssertEqual(next.candidates.count, 2)
+        let crossing = try XCTUnwrap(next.candidates.first)
+        XCTAssertLessThan(try XCTUnwrap(crossing.motionSessionStartedAt), start.addingTimeInterval(480))
+        XCTAssertGreaterThan(crossing.gestureAt, start.addingTimeInterval(480))
+        let uninterrupted = MotionHistoryProcessor.process(
+            from: start, to: start.addingTimeInterval(800), analyzer: .init(), pendingRanges: [],
+            sensitivity: 0.5, queryChunkDuration: 480, query: query
+        )
+        XCTAssertEqual(next.candidates, uninterrupted.candidates)
+    }
+
     private func recordedSession(offset: Double) -> [RecordedAccelerationSample] {
         (0..<5_000).map { index in
             let seconds = Double(index) * 0.02
