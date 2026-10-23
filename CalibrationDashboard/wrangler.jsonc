@@ -1,0 +1,57 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ciggy-calibration",
+  "account_id": "33fc046ae39af5e3cc14e465646b1544",
+  "main": "server/index.ts",
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ciggy-calibration",
+      "database_id": "3435c362-25fe-4bb9-ac2c-66da39882baf",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RECORDINGS",
+      "bucket_name": "ciggy-calibration-private"
+    }
+  ],
+  "vars": {
+    "APP_ORIGIN": "https://ciggy.thatcanadian.dev",
+    "SHARED_WORKSPACE_ID": "ciggy-internal-testers",
+    "ACCESS_TEAM_DOMAIN": "https://bold-lake-b8b2.cloudflareaccess.com",
+    "ACCESS_AUD": "047c7a13a79a845bf31b9cf2a42400310f39162c56799da6523ae67b65fec4aa"
+  },
+  "secrets": {
+    "required": [
+      "ALLOWED_EMAILS"
+    ]
+  },
+  "routes": [
+    {
+      "pattern": "ciggy.thatcanadian.dev",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "17 * * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  }
+}

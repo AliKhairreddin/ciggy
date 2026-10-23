@@ -4,3 +4,10 @@
 DerivedData/
 *.xcuserstate
 xcuserdata/
+CalibrationDashboard/node_modules/
+CalibrationDashboard/.wrangler/
+CalibrationDashboard/.dev.vars*
+CalibrationDashboard/worker-configuration.d.ts
+CalibrationDashboard/coverage/
+CalibrationDashboard/dist/
+Tools/MotionBenchmark/__pycache__/
