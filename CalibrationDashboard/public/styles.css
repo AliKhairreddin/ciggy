@@ -11,3 +11,10 @@
 
 .introduction { padding-top: 24px; padding-bottom: 24px; }
 .chart-tooltip { background: var(--card, #292130); z-index: 2; }
+
+.detail-grid { grid-template-columns: 1fr; }
+.recordings-panel:not([open]) { padding-top: 16px; padding-bottom: 16px; }
+@media (min-width: 800px) {
+  #annotationForm { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; }
+  #annotationForm > .form-hint { grid-column: 1 / -1; }
+}

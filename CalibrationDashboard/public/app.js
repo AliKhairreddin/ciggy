@@ -161,7 +161,7 @@ function render() {
   if (state.autoFit) fitTimeline();
   renderRecordings(visible); renderAnnotations(visible); drawChart();
   if (!state.hydrating) void hydrateTimeline();
-  if (!state.dirty && visible.length && (!activeVisible || !state.cache.has(state.active))) selectRecording(activeVisible ? state.active : [...visible].sort((a, b) => (b.sampleCount ?? samples(b).length) - (a.sampleCount ?? samples(a).length))[0].id).catch(error => showStatus(error.message, true));
+  if (!state.dirty && visible.length && (!activeVisible || !state.active)) selectRecording(activeVisible ? state.active : [...visible].sort((a, b) => (b.sampleCount ?? samples(b).length) - (a.sampleCount ?? samples(a).length))[0].id).catch(error => showStatus(error.message, true));
   if (!visible.length && !state.dirty) { state.active = ''; setFormEnabled(false); }
   appliedFilters = Object.fromEntries(filterIDs.map(id => [id, $(id).value]));
 }
@@ -187,8 +187,9 @@ function renderRecordings(visible) {
 function setFormEnabled(enabled) { ['rangeStart', 'rangeEnd', 'activitySelect', 'annotationNotes', 'saveAnnotation'].forEach(id => $(id).disabled = !enabled); }
 async function selectRecording(id, fit = false) {
   state.active = id; state.editing = null; state.dirty = false;
-  const session = await getSession(id); if (state.active !== id) return;
-  setFormEnabled(true); $('recordingSelect').value = id; $('cancelEdit').hidden = true;
+  const session = state.cache.get(id) ?? state.sessions.find(item => item.id === id);
+  if (!session || state.active !== id) return;
+  setFormEnabled((session.sampleCount ?? samples(session).length) > 1); $('recordingSelect').value = id; $('cancelEdit').hidden = true;
   $('saveAnnotation').textContent = 'Save activity label'; $('annotationNotes').value = '';
   const range = bounds(session); state.selection = range; $('rangeStart').value = timeInput(range[0]); $('rangeEnd').value = timeInput(range[1]);
   if (fit) { state.autoFit = false; state.view = paddedRange(range); }
@@ -346,7 +347,7 @@ $('motionChart').addEventListener('pointerup', async () => {
   if (!options.length) { showStatus('There are no recorded samples in that moment. Gaps cannot be labeled.', true); drawChart(); return; }
   try {
     await selectRecording(options[0].session.id);
-    const recorded = bounds(state.cache.get(state.active));
+    const recorded = bounds(state.cache.get(state.active) ?? state.sessions.find(item => item.id === state.active));
     state.selection = [Math.max(recorded[0], range[0]), Math.min(recorded[1], range[1])];
     state.dirty = true; $('cancelEdit').hidden = false;
     $('rangeStart').value = timeInput(state.selection[0]); $('rangeEnd').value = timeInput(state.selection[1]);
@@ -393,7 +394,7 @@ for (const id of filterIDs) $(id).onchange = async () => {
 };
 for (const id of ['signalSelect', 'axisSelect']) $(id).onchange = drawChart;
 $('resetView').onclick = () => { fitTimeline(); drawChart(); };
-$('fitRecording').onclick = () => { const session = state.cache.get(state.active); if (session) { state.autoFit = false; state.view = paddedRange(bounds(session)); drawChart(); } };
+$('fitRecording').onclick = () => { const session = state.cache.get(state.active) ?? state.sessions.find(item => item.id === state.active); if (session) { state.autoFit = false; state.view = paddedRange(bounds(session)); drawChart(); } };
 function zoom(factor) { state.autoFit = false; const range = state.view ?? periodBounds(), middle = (range[0] + range[1]) / 2, span = Math.max(1000, (range[1] - range[0]) * factor); state.view = [middle - span / 2, middle + span / 2]; drawChart(); }
 $('zoomIn').onclick = () => zoom(.5); $('zoomOut').onclick = () => zoom(2);
 $('importButton').onclick = $('emptyImport').onclick = () => $('fileInput').click();
