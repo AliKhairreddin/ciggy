@@ -23,7 +23,10 @@ export async function saveDeliveryReport(request: Request, env: Env, participant
   const now = Date.now(), input = object(await readJSON(request, 8192));
   if (input.kind !== 'deliveryStatus') throw new APIError(400, 'Invalid delivery report.');
   const observedAt = date(input.observedAt, now), consentAt = date(input.consentAt, now);
-  if (observedAt == null || consentAt == null || consentAt < participant.created_at || consentAt > observedAt || observedAt < now - 14 * DAY) {
+  // Consent uses the phone clock; enrollment uses the server clock. The same
+  // five-minute skew allowance as other timestamps avoids rejecting all status
+  // reports from an otherwise healthy paired device. Motion eligibility is separate.
+  if (observedAt == null || consentAt == null || consentAt < participant.created_at - 300000 || consentAt > observedAt || observedAt < now - 14 * DAY) {
     throw new APIError(400, 'Invalid delivery report period.');
   }
   let watch = null;

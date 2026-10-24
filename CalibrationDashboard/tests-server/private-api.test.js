@@ -470,3 +470,10 @@ test('delivery expiry and participant deletion remove diagnostics with the share
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM delivery_reports').first()).count, 0);
   assert.equal((await call('/api/upload', 'POST', delivery(person), reportHeaders(person))).status, 401);
 });
+
+test('small phone/server clock differences do not prevent delivery diagnostics', async () => {
+  const person = await participant();
+  const payload = delivery(person, { consentAt: Date.now() - 60000 });
+  assert.equal((await call('/api/upload', 'POST', payload, reportHeaders(person))).status, 200);
+  assert.equal((await call('/api/upload', 'POST', { ...payload, consentAt: Date.now() - 360000 }, reportHeaders(person))).status, 400);
+});
