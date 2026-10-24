@@ -19,4 +19,10 @@ Three added UI regressions rotate with the keyboard still visible through landsc
 
 ## Delivery
 
-Validation is complete; release archive and TestFlight delivery are in progress. The build-specific [What to Test](releases/build-12.md) will be saved and read back in App Store Connect before delivery is marked complete.
+- Source commit `9e06e9cb77da9461622e8e071817a42c92f2972f` was committed and pushed to `main`. The release was archived from a clean snapshot of that exact commit, excluding the separately coordinated build 13 changes.
+- The full Xcode Release archive succeeded. The iOS app, Watch app, and both widgets each report version **1.0 (12)**; all four signatures passed strict verification and all four privacy manifests are present.
+- App Store Connect upload succeeded on October 23, 2026 at 22:46 EDT. Apple completed processing, and build `2ccacd87-5a4e-4397-921f-08c206f31c05` became editable.
+- The exact 1,148-character English (Canada) [What to Test](releases/build-12.md) was saved and verified unchanged after a full reload.
+- The existing **Ciggy Internal** group is assigned, and its build list shows **1.0 (12) — Testing**. Internal TestFlight delivery is verified.
+
+Real Duo hinge hardware remains untested; folded-layout coverage uses the simulator preview. This layout fix does not change the existing experimental motion-detection limitations.
