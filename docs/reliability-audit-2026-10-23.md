@@ -11,7 +11,7 @@ This review covered the shared repositories, synchronization and review workflow
 - **Recent motion replay:** when a saved chronological checkpoint falls inside the recent replay context, the priority pass copies its analyzer and resumes from its cursor. This prevents a dense–sparse–dense continuing pattern from being counted again by a fresh analyzer. The chronological checkpoint remains independent and detection thresholds are unchanged.
 - **Missing history:** an interval with an expired prefix now reports lost coverage even if its retained suffix is recovered.
 - **Privacy copy:** the in-app explanation and TestFlight guide now reflect the existing, explicitly consented private motion-upload feature.
-- **Portable Xcode builds:** the shared package reference now points to the repository's parent directory relative to the Xcode project, instead of assuming the checkout folder is named `ciggy`. A clean release snapshot exposed the old path's dependency-resolution failure.
+- **Portable Xcode builds:** the shared package reference now points to the repository root relative to the Xcode project, instead of assuming the checkout folder is named `ciggy`. A clean release snapshot exposed the old path's dependency-resolution failure.
 
 ## Remaining risks and validation limits
 
@@ -28,11 +28,17 @@ These changes do not establish that the app is free of bugs or that wrist-motion
 - **5 iPhone unit tests passed** for independent form fields and preserving unrelated settings on save.
 - **6 iPhone UI scenarios passed** across two focused runs: goals/screens, manual logging/undo, deep links, Live Activity start/relaunch/stop, rotation with logging/undo, and historical detection review.
 - **2 Watch unit tests and 2 Watch UI scenarios passed**: fresh logs update before the next timer tick, future events remain excluded, manual save adds exactly one log through relaunch, and appearance persists.
-- **41 dashboard/backend tests and 5 Python dataset-decoder tests passed**. Dashboard deployment remains owned by the parallel calibration task; this audit changes no Worker code.
+- **41 dashboard/backend tests, TypeScript checks, and 5 Python dataset-decoder tests passed**. Dashboard deployment remains owned by the parallel calibration task; this audit changes no Worker code.
 - Project source membership, both `CiggyShared` links, Watch embedding/dependency, matching companion identifiers, property lists, privacy manifests, and whitespace checks passed.
 
 The combined run found an obsolete calibration-status string assertion after the parallel task's final copy change. Test-only commit `637b1f0` aligns it with hourly delivery; the full suite then passed. Watch UI testing also exposed a regression in the initial future-date fix: the count used a cached timer timestamp and delayed a fresh log until the next tick. The final code evaluates current time on every event emission, with native Watch unit and UI tests proving the correction. Incoming historical-preview events from the preceding iPhone run also interfered with the first Watch count assertion; final Watch checks ran with that test companion app stopped.
 
 All Xcode and Swift commands used `DEVELOPER_DIR=/Applications/dev/Xcode.app/Contents/Developer`. Native tests used the paired iPhone 18 Pro (`28D5127A-C145-4373-A9FC-C55C306F2BAE`) and Watch Series 12 (`815BA98E-CEF0-477F-A0D1-099A469584D6`) simulators. No simulator was erased.
 
-Distribution is pending the signed build 10 archive/upload and App Store Connect verification. Its exact tester notes are in [build-10.md](releases/build-10.md).
+## Distribution
+
+Product changes are pushed directly to `origin/main` in `3e2a042`, with the portable package path fixed in `b985c11`. The final Release archive was built from a clean snapshot of `b985c11`; dependency resolution succeeded with a checkout directory name other than `ciggy`. All four executable bundles are signed and verified at **1.0 (10)**, contain privacy manifests, and retain the correct Watch companion identifier.
+
+Xcode uploaded build 10 through the existing App Store Connect workflow on October 23 at **20:38:54 Toronto time**, reporting `EXPORT SUCCEEDED` and **Uploaded package is processing**. No duplicate upload is needed. This audit did not modify or redeploy the dashboard.
+
+**TestFlight delivery is not yet complete.** The accessible App Store Connect browser session is signed out. Completed processing, assignment to Ciggy Internal, tester availability, and saving/read-back of build 10's What to Test field remain unverified. The exact build-specific notes are saved in [build-10.md](releases/build-10.md), ready to paste into that build after authenticated access is restored. The parallel task's build 9 has separate notes and verification status; do not substitute its notes for build 10's.
