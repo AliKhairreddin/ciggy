@@ -11,7 +11,7 @@ final class TrackingStatusTests: XCTestCase {
         let status = TrackingStatus(generatedAt: now, captureAvailable: true, permissionGranted: true, calibration: calibration)
         let restored = try TrackingStatus.fromTransfer(status.transferData())
         XCTAssertEqual(restored.calibration, calibration)
-        XCTAssertTrue(calibration.detail(consent: calibration.enabledAt!, now: now).contains("waiting to reach this iPhone"))
+        XCTAssertTrue(calibration.detail(consent: calibration.enabledAt!, now: now).contains("2 saved recordings queued for hourly background delivery to this iPhone"))
         XCTAssertFalse(calibration.detail(consent: calibration.enabledAt!, now: now).contains("uploaded"))
         XCTAssertTrue(calibration.detail(consent: now, now: now).contains("receive the sharing setting"))
         let legacy = TrackingStatus(generatedAt: now, captureAvailable: true, permissionGranted: true)
