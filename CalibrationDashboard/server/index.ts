@@ -5,6 +5,7 @@ import { deleteObjects, deleteRecording, findRecording, loadRawRecording, metada
 import { APIError, APPLE_EPOCH_MS, cleanAlias, object, readJSON, RETENTION_DAYS,
   UUID, validateAnnotations, validateRecording, type Annotation } from './validation.ts';
 import { validateNativeUploadWindow } from './validation.ts';
+import { summarizeRecording } from '../public/timeline.js';
 
 type Authenticator = (request: Request, env: Env) => Promise<string>;
 const DAY = 86400000;
@@ -151,10 +152,17 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
               .bind(alias, id, scope).run();
             if (!result.meta.changes) throw new APIError(404, 'Participant unavailable.');
             response = json({ participantID: id, participant: alias });
-          } else if (/^\/api\/recordings\/[^/]+(?:\/labels)?$/.test(pathname)) {
+          } else if (/^\/api\/recordings\/[^/]+(?:\/(?:labels|overview))?$/.test(pathname)) {
             const parts = pathname.split('/'), id = identifier(parts[3]);
             const row = await findRecording(env, id, scope);
-            if (parts[4] === 'labels' && method === 'PUT') {
+            if (parts[4] === 'overview' && method === 'GET') {
+              // Existing recordings are summarized once, then reused. A failed
+              // source read never replaces saved evidence with an empty chart.
+              const overview = row.overview_json ? JSON.parse(row.overview_json) : summarizeRecording(await loadRawRecording(env, row));
+              if (!row.overview_json) await env.DB.prepare("UPDATE recordings SET overview_json = ?1 WHERE id = ?2 AND state = 'ready' AND overview_json IS NULL")
+                .bind(JSON.stringify(overview), id).run();
+              response = json({ ...metadata(row), overview, annotations: JSON.parse(row.annotations_json) as Annotation[] });
+            } else if (parts[4] === 'labels' && method === 'PUT') {
               assertSameOrigin(request, env, true);
               const body = object(await readJSON(request, 1024 * 1024));
               if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision !== row.label_revision) {

@@ -2,3 +2,12 @@
 
 .dialog-error{color:var(--peach);font-size:11px;line-height:1.6}.pair-code{display:block;font-family:ui-monospace,monospace;font-size:32px;font-weight:750;letter-spacing:4px;color:var(--mint);padding:12px 0}.top-actions{flex-wrap:wrap;justify-content:flex-end}@media(max-width:600px){.top-actions .secondary,.top-actions .quiet{font-size:10px;padding:8px}.top-actions{max-width:190px}.local-badge{width:100%;justify-content:flex-end}}
 .participant-color-0{background:#ffb885}.participant-color-1{background:#c2e0b8}.participant-color-2{background:#baa8eb}.participant-color-3{background:#ffc952}.participant-color-4{background:#78c5ce}.participant-color-5{background:#ee8ca1}
+
+.advanced-filters { margin-bottom: 20px; }
+.advanced-filters summary, .recordings-panel > summary { cursor: pointer; color: var(--secondary); font-weight: 600; padding: 10px 0; }
+.advanced-filters[open] .filters { margin-top: 14px; }
+#freshness { max-width: 760px; margin-bottom: 0; }
+.chart-tooltip { position: absolute; pointer-events: none; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; font-size: 12px; max-width: 280px; }
+
+.introduction { padding-top: 24px; padding-bottom: 24px; }
+.chart-tooltip { background: var(--card, #292130); z-index: 2; }

@@ -32,8 +32,9 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private var liveTransfers: Set<UUID> = []
 	private let recordingTransfersKey = "Ciggy.connectivity.recordingTransfers.v1"
 	private var pendingRecordingPaths: [String] = []
-	private var fastRecordingTokens: [String: UUID] = [:]
-	private var fastRecordingRetryAfter: [String: Date] = [:]
+	private var calibrationSchedule = CalibrationTransferSchedule()
+	private let calibrationScheduleKey = "Ciggy.connectivity.calibrationBatch.v1"
+	private var needsCalibrationMigration = false
 	nonisolated private static let recordingInbox = RecordingTransferInbox()
 	public var pendingMotionRecordingCount: Int { pendingRecordingPaths.count }
 	private let refreshRequestedKey = "Ciggy.connectivity.historyRefreshRequestedAt.v1"
@@ -46,6 +47,15 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			settingsSyncNeedsRetry = true
 		}
 		pendingRecordingPaths = UserDefaults.standard.stringArray(forKey: recordingTransfersKey) ?? []
+		if let data = UserDefaults.standard.data(forKey: calibrationScheduleKey),
+		   let saved = try? JSONDecoder().decode(CalibrationTransferSchedule.self, from: data) {
+			calibrationSchedule = saved
+		} else {
+			// Build 8 queued every file immediately. Restage only those raw files;
+			// event/settings delivery and already received files are unaffected.
+			needsCalibrationMigration = true
+		}
+		calibrationSchedule.reconcile(pending: pendingRecordingPaths, at: Date())
 		session?.delegate = self
 		session?.activate()
 		refreshSessionState()
@@ -128,6 +138,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		guard url.isFileURL, FileManager.default.fileExists(atPath: url.path) else { return }
 		if pendingRecordingPaths.contains(url.path) == false {
 			pendingRecordingPaths.append(url.path)
+			calibrationSchedule.reconcile(pending: pendingRecordingPaths, at: Date())
 			UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 			recordingTransfersChanged.send(pendingRecordingPaths.count)
 		}
@@ -138,7 +149,6 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	public func cancelMotionRecordings(in directory: URL) {
 		let prefix = directory.standardizedFileURL.path + "/"
 		pendingRecordingPaths.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path.hasPrefix(prefix) }
-		fastRecordingTokens = fastRecordingTokens.filter { !URL(fileURLWithPath: $0.key).standardizedFileURL.path.hasPrefix(prefix) }
 		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 		recordingTransfersChanged.send(pendingRecordingPaths.count)
 		for transfer in session?.outstandingFileTransfers ?? [] {
@@ -152,8 +162,6 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	public func cancelMotionRecordingTransfer(at url: URL) {
 		let path = url.standardizedFileURL.path
 		pendingRecordingPaths.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path == path }
-		fastRecordingTokens.removeValue(forKey: url.path)
-		fastRecordingRetryAfter.removeValue(forKey: url.path)
 		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 		recordingTransfersChanged.send(pendingRecordingPaths.count)
 		for transfer in session?.outstandingFileTransfers ?? [] {
@@ -164,81 +172,27 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	private func flushRecordingTransfers() {
 		guard let session, session.activationState == .activated else { return }
+		if needsCalibrationMigration {
+			needsCalibrationMigration = false
+			for transfer in session.outstandingFileTransfers where transfer.file.metadata?["type"] as? String == "motionRecording" {
+				transfer.cancel()
+			}
+		}
+		pendingRecordingPaths.removeAll { FileManager.default.fileExists(atPath: $0) == false }
+		calibrationSchedule.releaseIfDue(pending: pendingRecordingPaths, at: Date())
+		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
+		if let data = try? JSONEncoder().encode(calibrationSchedule) { UserDefaults.standard.set(data, forKey: calibrationScheduleKey) }
 		#if !targetEnvironment(simulator)
 		let outstanding = Set(session.outstandingFileTransfers.compactMap { $0.file.metadata?["recordingPath"] as? String })
-		for path in pendingRecordingPaths where outstanding.contains(path) == false {
+		var slots = max(0, 2 - outstanding.count)
+		for path in pendingRecordingPaths where outstanding.contains(path) == false && calibrationSchedule.releasedPaths.contains(path) {
+			guard slots > 0 else { break }
 			guard FileManager.default.fileExists(atPath: path) else { continue }
 			session.transferFile(URL(fileURLWithPath: path), metadata: ["type": "motionRecording", "recordingPath": path])
+			slots -= 1
 		}
 		#endif
-		startFastRecordingTransfers()
-	}
-
-	private struct PreparedRecording: Sendable {
-		let id: UUID
-		let digest: String
-		let parts: [Data]
-		nonisolated init(id: UUID, digest: String, parts: [Data]) {
-			self.id = id; self.digest = digest; self.parts = parts
-		}
-	}
-
-	private func startFastRecordingTransfers() {
-		guard let session, session.isReachable else { return }
-		let pending = Set(pendingRecordingPaths)
-		fastRecordingRetryAfter = fastRecordingRetryAfter.filter { pending.contains($0.key) }
-		for path in pendingRecordingPaths.reversed() {
-			guard fastRecordingTokens.count < 2 else { break }
-			guard fastRecordingTokens[path] == nil,
-			      fastRecordingRetryAfter[path].map({ $0 <= Date() }) ?? true else { continue }
-			let token = UUID()
-			fastRecordingTokens[path] = token
-			fastRecordingRetryAfter[path] = Date().addingTimeInterval(30)
-			Task { @MainActor [weak self] in
-				let prepared = await Task.detached(priority: .utility) { () -> PreparedRecording? in
-					guard let bytes = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey]).fileSize,
-					      bytes <= RecordingTransfer.maximumBytes,
-					      let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-					      let frames = try? RecordingTransfer.frames(for: data), let first = frames.first else { return nil }
-					let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
-					guard let parts = try? frames.map({ try encoder.encode($0) }),
-					      parts.allSatisfy({ $0.count <= 48 * 1_024 }) else { return nil }
-					return PreparedRecording(id: first.recordingID, digest: first.digest, parts: parts)
-				}.value
-				guard let self, self.fastRecordingTokens[path] == token else { return }
-				guard let prepared else { self.fastRecordingTokens.removeValue(forKey: path); return }
-				self.sendRecordingPart(prepared, index: 0, path: path, token: token)
-				Task { @MainActor [weak self] in
-					try? await Task.sleep(for: .seconds(15))
-					if self?.fastRecordingTokens[path] == token { self?.fastRecordingTokens.removeValue(forKey: path) }
-				}
-			}
-		}
-	}
-
-	private func sendRecordingPart(_ recording: PreparedRecording, index: Int, path: String, token: UUID) {
-		guard fastRecordingTokens[path] == token, pendingRecordingPaths.contains(path),
-		      let session, session.isReachable else { fastRecordingTokens.removeValue(forKey: path); return }
-		let acknowledgement = "\(recording.digest):\(index)"
-		session.sendMessage(["type": "motionRecordingPart.v1", "data": recording.parts[index]], replyHandler: { [weak self] reply in
-			let acknowledged = reply["acknowledged"] as? String == acknowledgement
-			let completed = reply["recordingID"] as? String == recording.id.uuidString
-			Task { @MainActor [weak self] in
-				guard let self, self.fastRecordingTokens[path] == token else { return }
-				guard acknowledged else { self.fastRecordingTokens.removeValue(forKey: path); return }
-				if completed {
-					self.fastRecordingTokens.removeValue(forKey: path)
-					self.cancelMotionRecordingTransfer(at: URL(fileURLWithPath: path))
-					self.flushRecordingTransfers()
-				} else if index == recording.parts.count - 1 {
-					self.fastRecordingTokens.removeValue(forKey: path)
-				} else { self.sendRecordingPart(recording, index: index + 1, path: path, token: token) }
-			}
-		}, errorHandler: { [weak self] _ in
-			Task { @MainActor [weak self] in
-				if self?.fastRecordingTokens[path] == token { self?.fastRecordingTokens.removeValue(forKey: path) }
-			}
-		})
+		// No raw sendMessage stream: let the system deliver the hourly batch.
 	}
 
 	private func encodedPayload<Value: Encodable>(type: String, value: Value) -> [String: Any]? {
@@ -473,9 +427,9 @@ extension ConnectivityManager: WCSessionDelegate {
 			guard let self else { return }
 			if let message { self.lastSyncError = message; return }
 			self.pendingRecordingPaths.removeAll { $0 == path }
-			self.fastRecordingTokens.removeValue(forKey: path)
 			UserDefaults.standard.set(self.pendingRecordingPaths, forKey: self.recordingTransfersKey)
 			self.recordingTransfersChanged.send(self.pendingRecordingPaths.count)
+			self.flushRecordingTransfers()
 		}
 	}
 

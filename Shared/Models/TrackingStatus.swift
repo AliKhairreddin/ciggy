@@ -26,13 +26,13 @@ public struct CalibrationTrackingStatus: Codable, Equatable, Sendable {
             return "Waiting for your Watch to receive the sharing setting."
         }
         if let lastError { return lastError }
-        if queuedTransferCount > 0 { return "Watch last reported \(queuedTransferCount) saved recordings waiting to reach this iPhone." }
+        if queuedTransferCount > 0 { return "Watch last reported \(queuedTransferCount) saved recordings queued for hourly background delivery to this iPhone." }
         if let latestQueuedMotionAt {
             return "Watch saved motion through \(latestQueuedMotionAt.formatted(date: .omitted, time: .shortened)). Background history can still arrive later."
         }
         if retryingWindowCount > 0 { return "Waiting for recorded Watch motion. Available fragments are shared while missing intervals retry." }
         if now.timeIntervalSince(consent) < 8 * 60 {
-            return "Waiting for the first motion. Live motion can arrive sooner; the first complete history window needs at least eight minutes after sharing starts."
+            return "Waiting for the first saved motion. Calibration is sent in hourly batches when watchOS allows; cigarette counts sync independently."
         }
         return "No Watch recording has reached the transfer queue yet. Check that the Watch has Motion & Fitness permission and Ciggy is installed."
     }

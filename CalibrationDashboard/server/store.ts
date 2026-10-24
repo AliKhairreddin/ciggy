@@ -1,11 +1,13 @@
 import { hash, type Participant } from './auth.ts';
 import { APIError, appleDateISO, RETENTION_DAYS, type Annotation, type Recording } from './validation.ts';
+import { summarizeRecording } from '../public/timeline.js';
 
 export type RecordingRow = {
   id: string; participant_id: string; recording_id: string; object_key: string; body_hash: string;
   started_at: number; ended_at: number; sample_count: number; sources_json: string;
   annotations_json: string; label_revision: number; state: 'pending' | 'ready' | 'deleted'; created_at: number; expires_at: number;
   alias?: string; owner_email?: string;
+  overview_json?: string | null;
 };
 
 export function metadata(row: RecordingRow) {
@@ -43,10 +45,10 @@ export async function saveRecording(env: Env, participant: Participant, recordin
   if (row.state === 'ready') return { id: row.id, recordingID: row.recording_id, duplicate: true,
     expiresAt: new Date(row.expires_at).toISOString() };
   await env.RECORDINGS.put(objectKey, text, { httpMetadata: { contentType: 'application/json' } });
-  const result = await env.DB.prepare(`UPDATE recordings SET state = 'ready'
+  const result = await env.DB.prepare(`UPDATE recordings SET state = 'ready', overview_json = ?4
     WHERE id = ?1 AND state = 'pending' AND EXISTS
     (SELECT 1 FROM participants WHERE id = ?2 AND revoked_at IS NULL AND expires_at > ?3)`)
-    .bind(row.id, participant.id, now).run();
+    .bind(row.id, participant.id, now, JSON.stringify(summarizeRecording(recording))).run();
   if (!result.meta.changes) {
     // A deletion/revocation won a race with the object write. Do not publish it.
     const latest = await env.DB.prepare('SELECT state FROM recordings WHERE id = ?1').bind(row.id).first<{ state: string }>();
@@ -81,7 +83,7 @@ export async function loadRawRecording(env: Env, row: RecordingRow): Promise<Rec
 
 export async function deleteRecording(env: Env, row: RecordingRow): Promise<void> {
   // Keep a short-lived tombstone so a delayed app retry cannot restore a deletion.
-  await env.DB.prepare("UPDATE recordings SET state = 'deleted', annotations_json = '[]' WHERE id = ?1")
+  await env.DB.prepare("UPDATE recordings SET state = 'deleted', annotations_json = '[]', overview_json = NULL WHERE id = ?1")
     .bind(row.id).run();
   await env.RECORDINGS.delete(row.object_key);
   await env.DB.prepare('UPDATE recordings SET raw_deleted_at = ?1 WHERE id = ?2').bind(Date.now(), row.id).run();
@@ -104,7 +106,7 @@ export async function purgeExpired(env: Env): Promise<void> {
     await deleteObjects(env, results.map(row => row.object_key));
     // Two bulk statements stay below D1's Free-plan query budget even for a
     // thousand expired chunks. Delete only objects whose cleanup just succeeded.
-    await env.DB.prepare(`UPDATE recordings SET state = 'deleted', annotations_json = '[]', raw_deleted_at = ?1
+    await env.DB.prepare(`UPDATE recordings SET state = 'deleted', annotations_json = '[]', overview_json = NULL, raw_deleted_at = ?1
       WHERE id IN (SELECT value FROM json_each(?2))`)
       .bind(now, JSON.stringify(results.map(row => row.id))).run();
     const remove = results.filter(row => row.expires_at <= now || row.revoked_at !== null);

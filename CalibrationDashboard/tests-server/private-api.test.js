@@ -394,3 +394,29 @@ test('three days of normal five-minute history does not exhaust the upload budge
       'ready', ?2, ?3 FROM chunks`).bind(person.participantID, now, now + 86400000).run();
   assert.equal((await call('/api/upload', 'POST', recording(), { authorization: `Bearer ${person.token}` })).status, 201);
 });
+
+test('chart overviews preserve measured peaks and gaps, are saved once, and remain private', async () => {
+  const person = await participant();
+  const raw = recording();
+  raw.samples = [0, .1, 6, 6.1].map((offset, index) => ({ ...raw.samples[0], timestamp: raw.startedAt + offset,
+    userAcceleration: { x: [0, 3, 1, 0][index], y: 0, z: 0 } }));
+  raw.endedAt = raw.samples.at(-1).timestamp;
+  const saved = await upload(person, raw), path = `/api/recordings/${saved.id}/overview`;
+  const chart = await call(path);
+  assert.equal(chart.status, 200);
+  const data = await chart.json();
+  assert.equal(data.overview.sampleCount, 4);
+  assert.equal(data.overview.ranges.length, 2);
+  assert.equal(Math.max(...data.overview.bins.map(bin => bin.values.userAcceleration.magnitude[1])), 3);
+  assert.equal(data.recording, undefined);
+  const row = await env.DB.prepare('SELECT overview_json FROM recordings WHERE id = ?1').bind(saved.id).first();
+  assert.ok(row.overview_json);
+  await env.DB.prepare('UPDATE recordings SET overview_json = NULL WHERE id = ?1').bind(saved.id).run();
+  const backfill = await call(path);
+  assert.deepEqual((await backfill.json()).overview, data.overview);
+  assert.equal((await call(path, 'GET', undefined, { 'x-test-reviewer': 'other@example.test' })).status, 404);
+  assert.equal((await call(path, 'GET', undefined, { authorization: `Bearer ${person.token}` }, worker.default)).status, 401);
+  await call(`/api/recordings/${saved.id}`, 'DELETE');
+  assert.equal((await env.DB.prepare('SELECT overview_json FROM recordings WHERE id = ?1').bind(saved.id).first()).overview_json, null);
+  assert.equal((await call(path)).status, 404);
+});

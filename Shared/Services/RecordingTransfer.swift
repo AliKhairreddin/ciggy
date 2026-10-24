@@ -1,6 +1,29 @@
 import CryptoKit
 import Foundation
 
+/// Raw calibration files wait for an hourly batch. Cigarette events and settings
+/// use their independent, immediate transport and never consult this schedule.
+public struct CalibrationTransferSchedule: Codable, Equatable, Sendable {
+    public static let interval: TimeInterval = 60 * 60
+    public private(set) var nextBatchAt: Date?
+    public private(set) var releasedPaths: Set<String> = []
+
+    public init() {}
+
+    public mutating func reconcile(pending: [String], at now: Date) {
+        releasedPaths.formIntersection(pending)
+        if pending.isEmpty { nextBatchAt = nil }
+        else if nextBatchAt == nil { nextBatchAt = now.addingTimeInterval(Self.interval) }
+    }
+
+    public mutating func releaseIfDue(pending: [String], at now: Date) {
+        reconcile(pending: pending, at: now)
+        guard let nextBatchAt, now >= nextBatchAt else { return }
+        releasedPaths.formUnion(pending)
+        self.nextBatchAt = now.addingTimeInterval(Self.interval)
+    }
+}
+
 /// Small acknowledged messages supplement the durable WC file transfer. The
 /// original file stays queued until the complete bytes are saved on iPhone.
 public enum RecordingTransfer {

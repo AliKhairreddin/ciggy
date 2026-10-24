@@ -23,9 +23,9 @@ struct CalibrationSettingsView: View {
                 Link("Open private dashboard", destination: CalibrationUploadManager.origin)
             }
             Section("What gets shared") {
-                Text("Only motion recorded after you opt in is eligible. Ciggy tries to send saved motion immediately when your iPhone is reachable, with a background transfer as backup. Your iPhone uploads it over Wi-Fi. Recordings are motion chunks, not one file per cigarette.")
-                Text("Live motion can arrive sooner. Background history waits for a complete five-minute window plus at least three minutes for sensor availability, then depends on Watch wake-ups and transfers. Available fragments are kept with gaps visible.")
-                Text("Shared recordings and labels are kept for 14 days. Unsent recordings expire after 48 hours and are cleared when Ciggy next runs. Pausing stops new sharing; you can also delete data already shared by this iPhone.")
+                Text("Only motion recorded after you opt in is eligible. The Watch saves motion locally and releases an hourly batch to your iPhone, with at most two files in transfer at once. Your iPhone uploads received files over Wi-Fi. Recordings are motion chunks, not one file per cigarette.")
+                Text("Delivery happens when watchOS gives Ciggy time to run; it can take longer than an hour. Background history also needs time to become available. The dashboard shows the latest received motion and any gaps. Cigarette tracking and count sync keep working independently.")
+                Text("Shared recordings and labels are kept for 14 days. The Watch queue is limited to 80 MB and 48 hours; the oldest unsent files are cleared first when either limit is reached. Pausing stops new sharing; you can also delete data already shared by this iPhone.")
             }
             if uploads.isEnrolled {
                 Section("This iPhone") {

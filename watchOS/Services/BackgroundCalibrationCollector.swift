@@ -145,7 +145,9 @@ final class BackgroundCalibrationCollector: ObservableObject {
                 continue
             }
             let task = Task.detached(priority: .utility) {
-                Self.extract(window: window, consent: consent, deadline: deadline)
+                // Release Core Motion's Objective-C sample objects after each
+                // window instead of accumulating them across a catch-up batch.
+                autoreleasepool { Self.extract(window: window, consent: consent, deadline: deadline) }
             }
             worker = task
             let result = await withTaskCancellationHandler {

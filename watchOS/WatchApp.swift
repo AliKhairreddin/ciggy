@@ -143,6 +143,7 @@ final class WatchAppCoordinator: ObservableObject {
 				Task { @MainActor [weak self] in await self?.refreshTracking() }
 			}.store(in: &cancellables)
 		ConnectivityManager.shared.recordingTransfersChanged.removeDuplicates()
+			.debounce(for: .seconds(2), scheduler: DispatchQueue.main)
 			.sink { @MainActor _ in BackgroundMotionMonitor.shared.publishStatus() }
 			.store(in: &cancellables)
 
@@ -199,7 +200,6 @@ final class WatchAppCoordinator: ObservableObject {
 					repository: repository,
 					reviewStore: reviewStore
 				)
-				Task { @MainActor in await LiveCalibrationCollector.shared.flush() }
 			}
 			.store(in: &cancellables)
 
@@ -261,9 +261,8 @@ final class WatchAppCoordinator: ObservableObject {
 		if let trackingRefresh { await trackingRefresh.value; return }
 		let work = Task { @MainActor [weak self] in
 			BackgroundMotionMonitor.shared.armRecording()
-			// Save and send calibration before a large detection backlog consumes
-			// the wake budget. Live samples do not need to wait for sensor history.
-			await LiveCalibrationCollector.shared.flush()
+			// Calibration is saved locally and released in hourly file batches.
+			// Keep the live buffer continuous across ordinary history checks.
 			await BackgroundCalibrationCollector.shared.collect(
 				enabledAt: self?.settingsStore?.settings.calibrationEnabledAt,
 				maximumProcessingTime: WKApplication.shared().applicationState == .active ? 6 : 1
