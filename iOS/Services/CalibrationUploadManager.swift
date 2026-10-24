@@ -23,6 +23,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
     @Published private(set) var nextRetryAt: Date?
     @Published private(set) var lastUploadedAt: Date?
     @Published private(set) var lastError: String?
+    @Published private(set) var lastDeliveryError: String?
     @Published private(set) var isWorking = false
     @Published private(set) var requiresPairing = false
     var backgroundCompletion: (() -> Void)? {
@@ -38,6 +39,8 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
     private var subscriptions: Set<AnyCancellable> = []
     private var responses: [Int: Data] = [:]
     private var backoff = CalibrationUploadPolicy.Backoff()
+    private var deliveryPolicy = CalibrationDeliveryPolicy()
+    private let deliveryPolicyKey = "Ciggy.calibration.deliveryPolicy.v14"
     private var generation = UUID()
     private var preparation: Task<PreparedQueue, Never>?
     private var session: URLSession?
@@ -55,6 +58,8 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         requiresPairing = UserDefaults.standard.bool(forKey: pairingRequiredKey)
         if let data = UserDefaults.standard.data(forKey: backoffKey), data.count <= 1_024 * 1_024,
            let saved = try? JSONDecoder().decode(CalibrationUploadPolicy.Backoff.self, from: data) { backoff = saved }
+        if let data = UserDefaults.standard.data(forKey: deliveryPolicyKey), data.count <= 4_096,
+           let saved = try? JSONDecoder().decode(CalibrationDeliveryPolicy.self, from: data) { deliveryPolicy = saved }
         backoff.prune(keeping: Set(backoff.failures.keys), at: Date())
     }
 
@@ -240,6 +245,12 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                     $0.originalRequest?.value(forHTTPHeaderField: "X-Ciggy-Consent") == consentHeader &&
                     $0.originalRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)"
                 }.compactMap(\.taskDescription))
+                // Diagnostics must not wait for every raw file to decode/stage.
+                // These counts describe the saved inbox and system upload queue;
+                // expired/pre-consent files are reconciled by preparation below.
+                self.pendingCount = urls.count
+                self.scheduledCount = activeNames.count
+                self.scheduleDeliveryReport(tasks: tasks, consent: enabledAt, token: token)
                 let now = Date()
                 let delays = self.backoff
                 let directory = self.queueDirectory
@@ -291,7 +302,6 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 }
                 self.scheduledCount = active.count
                 self.nextRetryAt = prepared.eligible.map { self.backoff.nextAttempt(for: $0.name, at: now) }.filter { $0 > now }.min()
-                self.scheduleDeliveryReport(tasks: tasks, consent: enabledAt, token: token)
                 if prepared.failed { self.lastError = "Could not queue a motion recording. The original remains saved for retry." }
             }
         }
@@ -313,6 +323,9 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         try? FileManager.default.removeItem(at: queueDirectory)
         try? FileManager.default.removeItem(at: statusDirectory)
         UserDefaults.standard.removeObject(forKey: "Ciggy.calibration.statusQueuedAt")
+        deliveryPolicy = CalibrationDeliveryPolicy()
+        UserDefaults.standard.removeObject(forKey: deliveryPolicyKey)
+        lastDeliveryError = nil
         pendingCount = 0
         scheduledCount = 0
         nextRetryAt = nil
@@ -350,10 +363,12 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
     }
 
     private func scheduleDeliveryReport(tasks: [URLSessionTask], consent: Date, token: String) {
-        guard !tasks.contains(where: { Self.isDeliveryReport($0.taskDescription) && ($0.state == .running || $0.state == .suspended) }) else { return }
+        guard !tasks.contains(where: { Self.isDeliveryReport($0.taskDescription) &&
+            ($0.state == .running || $0.state == .suspended) &&
+            $0.originalRequest?.value(forHTTPHeaderField: "X-Ciggy-Consent") == String(consent.timeIntervalSince1970) &&
+            $0.originalRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)" }) else { return }
         let now = Date()
-        let last = UserDefaults.standard.object(forKey: "Ciggy.calibration.statusQueuedAt") as? Date
-        guard last.map({ $0 > now || now.timeIntervalSince($0) >= 30 * 60 }) ?? true else { return }
+        guard deliveryPolicy.shouldSchedule(at: now) else { return }
         let report = CalibrationDeliveryReport(observedAt: now, consentAt: consent,
             phoneBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
             phoneLastReceivedAt: MotionRecordingStore.shared.lastReceivedAt, phoneLastUploadedAt: lastUploadedAt,
@@ -372,10 +387,9 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
             request.setValue("delivery-status", forHTTPHeaderField: "X-Ciggy-Payload")
             let task = ensureSession().uploadTask(with: request, fromFile: body)
             task.taskDescription = Self.statusTaskName + reportID
-            task.earliestBeginDate = backoff.providerRetryAt
+            task.earliestBeginDate = deliveryPolicy.earliestBeginDate(at: now, providerRetryAt: backoff.providerRetryAt)
             task.resume()
-            UserDefaults.standard.set(now, forKey: "Ciggy.calibration.statusQueuedAt")
-        } catch { /* Saved recordings and their upload state are unaffected. */ }
+        } catch { lastDeliveryError = "Delivery status could not be saved for upload. Motion recordings remain queued separately." }
     }
 
     private struct QueueEntry: Sendable {
@@ -536,6 +550,30 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         if Self.isDeliveryReport(name) {
             let id = String(name.dropFirst(Self.statusTaskName.count))
             if UUID(uuidString: id) != nil { try? FileManager.default.removeItem(at: statusDirectory.appendingPathComponent(id + ".json")) }
+            // A cancelled/old-consent callback must not resurrect opted-out work.
+            guard errorCode != NSURLErrorCancelled,
+                  let enabledAt = settings?.settings.calibrationEnabledAt,
+                  consent == String(enabledAt.timeIntervalSince1970),
+                  let token = credential(), authorization == "Bearer \(token)" else { return }
+            if error == nil, let response, (200..<300).contains(response.statusCode),
+               CalibrationDeliveryPolicy.receiptMatches(body) {
+                deliveryPolicy.succeeded(at: Date())
+                lastDeliveryError = nil
+            } else {
+                deliveryPolicy.failed(at: Date(), retryAfter: response?.value(forHTTPHeaderField: "Retry-After"))
+                lastDeliveryError = "Delivery status has not reached the dashboard. A background retry is queued over Wi-Fi."
+            }
+            if let saved = try? JSONEncoder().encode(deliveryPolicy) { UserDefaults.standard.set(saved, forKey: deliveryPolicyKey) }
+            if response?.statusCode == 401 {
+                requiresPairing = true
+                UserDefaults.standard.set(true, forKey: pairingRequiredKey)
+                stopSharing()
+                lastError = "This pairing can no longer upload. Reconnect this iPhone using a new dashboard code."
+            } else if deliveryPolicy.failures > 0 {
+                // Recreate the small report with current metadata and give its
+                // persisted retry deadline to the background session now.
+                flush()
+            }
             return
         }
         if errorCode == NSURLErrorCancelled { flush(); return }

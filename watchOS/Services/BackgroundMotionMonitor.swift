@@ -294,7 +294,11 @@ private enum HistoricalMotionProcessor {
 		let deadline = started + budget
 		let recentDeadline = started + min(5, budget * 0.75)
 		let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { queryStart, queryEnd in
-			guard let samples = recorder.accelerometerData(from: queryStart, to: queryEnd) else { return nil }
+			// A persisted repair may begin before the sensor's wall-clock cutoff.
+			// Clip the native read only; the existing analyzer still sees missing
+			// leading coverage and keeps its normal reconciliation/counting rules.
+			guard let range = SensorHistoryQuery.range(from: queryStart, to: queryEnd),
+			      let samples = recorder.accelerometerData(from: range.start, to: range.end) else { return nil }
 			var iterator = NSFastEnumerationIterator(samples)
 			return AnySequence { AnyIterator {
 				guard let sample = iterator.next() as? CMRecordedAccelerometerData else { return nil }

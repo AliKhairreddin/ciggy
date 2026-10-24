@@ -299,7 +299,8 @@ final class BackgroundCalibrationCollector: ObservableObject {
         let shouldContinue = { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline }
         guard shouldContinue() else { return .interrupted }
         let recorder = CMSensorRecorder()
-        guard let source = recorder.accelerometerData(from: window.start, to: window.end) else { return .missing }
+        guard let range = SensorHistoryQuery.range(from: window.start, to: window.end),
+              let source = recorder.accelerometerData(from: range.start, to: range.end) else { return .missing }
         var iterator = NSFastEnumerationIterator(source)
         let samples = AnySequence { AnyIterator<RecordedAccelerationSample> {
             guard let raw = iterator.next() as? CMRecordedAccelerometerData else { return nil }

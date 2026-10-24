@@ -66,6 +66,8 @@ struct CalibrationSettingsView: View {
                         ConnectivityManager.shared.resumeSync()
                         uploads.flush()
                     }
+                    Text("Sharing is automatic. This button requests an extra check; you do not need to press it for each batch.")
+                        .font(.footnote).foregroundStyle(.secondary)
                     if let issue = sync.lastSyncError {
                         Text("Live Watch check: \(issue) Background file delivery can continue without a live connection.")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -91,6 +93,9 @@ struct CalibrationSettingsView: View {
             }
             if let message = error ?? uploads.lastError {
                 Section { Text(message).foregroundStyle(.orange) }
+            }
+            if let message = uploads.lastDeliveryError {
+                Section("Delivery status") { Text(message).foregroundStyle(.orange) }
             }
         }
         .disabled(uploads.isWorking)
