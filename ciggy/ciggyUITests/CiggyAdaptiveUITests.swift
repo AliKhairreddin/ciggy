@@ -81,6 +81,84 @@ final class CiggyAdaptiveUITests: XCTestCase {
 	}
 
 	@MainActor
+	func testKeyboardDismissalAndDraftSurviveBothRotations() throws {
+		try exerciseKeyboardRotations(folded: false)
+	}
+
+	@MainActor
+	func testFoldedKeyboardDismissalAndDraftSurviveBothRotations() throws {
+		try exerciseKeyboardRotations(folded: true)
+	}
+
+	@MainActor
+	func testLargeTextKeyboardDismissalAndDraftSurviveBothRotations() throws {
+		try exerciseKeyboardRotations(folded: false, largeText: true)
+	}
+
+	@MainActor
+	private func exerciseKeyboardRotations(folded: Bool, largeText: Bool = false) throws {
+		XCUIDevice.shared.orientation = .portrait
+		let app = XCUIApplication()
+		app.launchArguments = folded ? ["--ciggy-preview-fold"] : []
+		if largeText {
+			app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+		}
+		app.launch()
+		let count = app.descendants(matching: .any)["today-count"].firstMatch
+		XCTAssertTrue(count.waitForExistence(timeout: 5))
+		let original = count.label
+		let originalCount = try XCTUnwrap(Int(original.split(separator: " ").first ?? ""))
+		let log = app.buttons["phone-log-button"]
+		let dashboardPane = app.scrollViews[folded ? "controls-pane" : "compact-pane"]
+		scrollTo(log, in: dashboardPane)
+		XCTAssertTrue(log.isHittable)
+		log.tap()
+		let sheet = app.scrollViews["phone-log-scroll"]
+		XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+		// The medium sheet expands before its content scrolls. A full swipe
+		// crosses that detent; repeated small drags only spring back at large text.
+		if largeText { sheet.swipeUp(velocity: .slow) }
+		let field = app.textFields["phone-log-note"].exists
+			? app.textFields["phone-log-note"] : app.textViews["phone-log-note"]
+		scrollTo(field, in: sheet, fullyVisible: false)
+		XCTAssertTrue(field.isHittable)
+		field.tap()
+		XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+		field.typeText("Rotation draft")
+
+		for orientation in [UIDeviceOrientation.landscapeLeft, .landscapeRight, .portrait] {
+			// Rotate with the keyboard still open, then dismiss and reopen it.
+			XCUIDevice.shared.orientation = orientation
+			XCTAssertEqual(field.value as? String, "Rotation draft")
+			XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+			let done = app.buttons["dismiss-note-keyboard"]
+			XCTAssertTrue(done.waitForExistence(timeout: 5))
+			XCTAssertTrue(done.isHittable)
+			capture(app, "Keyboard open \(folded ? "folded" : "standard") \(orientation.rawValue)")
+			done.tap()
+			XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+			scrollTo(field, in: sheet, fullyVisible: false)
+			XCTAssertTrue(field.isHittable)
+			field.tap()
+			XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+		}
+		app.buttons["dismiss-note-keyboard"].tap()
+		XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+		XCTAssertEqual(field.value as? String, "Rotation draft")
+		let save = app.buttons["save-phone-log"]
+		scrollTo(save, in: sheet)
+		XCTAssertTrue(save.isHittable)
+		save.tap()
+		XCTAssertTrue(sheet.waitForNonExistence(timeout: 5))
+		XCTAssertEqual(count.label, "\(originalCount + 1) cigarettes today")
+		let undo = app.buttons["undo-phone-log"]
+		scrollTo(undo, in: dashboardPane)
+		XCTAssertTrue(undo.isHittable)
+		undo.tap()
+		XCTAssertEqual(count.label, original)
+	}
+
+	@MainActor
 	func testFoldedGoalDraftAndReportRangeSurviveRotation() throws {
 		XCUIDevice.shared.orientation = .portrait
 		let app = XCUIApplication()
@@ -128,14 +206,17 @@ final class CiggyAdaptiveUITests: XCTestCase {
 	}
 
 	@MainActor
-	private func scrollTo(_ target: XCUIElement, in pane: XCUIElement) {
+	private func scrollTo(_ target: XCUIElement, in pane: XCUIElement, fullyVisible: Bool = true) {
 		// A full fling can skip a small secondary action in a short pane.
 		// Drag in small steps and recover if the action has passed above us.
 		for _ in 0..<30 {
 			let targetFrame = target.frame
 			let viewport = pane.frame.insetBy(dx: 0, dy: 12)
 			// XCTest can throw when asking hittability for a fully clipped item.
-			if viewport.contains(targetFrame), target.isHittable { return }
+			// A multiline note may be taller than the sheet at accessibility sizes.
+			// It only needs a visible, hittable area to focus; buttons must fit fully.
+			let visible = fullyVisible ? viewport.contains(targetFrame) : viewport.intersects(targetFrame)
+			if visible, target.isHittable { return }
 			let start = pane.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
 			let end = pane.coordinate(withNormalizedOffset: CGVector(
 				dx: 0.85, dy: targetFrame.midY < viewport.minY ? 0.7 : 0.3
@@ -146,7 +227,7 @@ final class CiggyAdaptiveUITests: XCTestCase {
 
 	@MainActor
 	private func capture(_ app: XCUIApplication, _ name: String) {
-		let attachment = XCTAttachment(screenshot: app.screenshot())
+		let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
 		attachment.name = name
 		attachment.lifetime = .keepAlways
 		add(attachment)

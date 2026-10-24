@@ -11,19 +11,30 @@ struct PhoneLogSmokeView: View {
 	var notes: Binding<String>? = nil
 	@State private var didSave = false
 	@State private var saveError: String?
+	@FocusState private var isEditingNotes: Bool
 	let onSave: (SmokingEvent) -> Void
 
 	var body: some View {
 		NavigationStack {
 			ScrollView {
 				VStack(alignment: .leading, spacing: 20) {
-					PhoneLogSmokeForm(notes: notes ?? $localNotes, didSave: didSave, saveError: saveError, onSave: save)
+					PhoneLogSmokeForm(notes: notes ?? $localNotes, isEditingNotes: $isEditingNotes,
+						didSave: didSave, saveError: saveError, onSave: save)
 				}.padding(24)
 			}
 			.foregroundStyle(palette.primaryText)
+			.accessibilityIdentifier("phone-log-scroll")
 			.scrollDismissesKeyboard(.interactively)
 			.toolbar {
 				ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+				// Keep dismissal in the sheet's navigation bar: the keyboard
+				// accessory toolbar produces invalid frames as the sheet resizes.
+				ToolbarItem(placement: .confirmationAction) {
+					if isEditingNotes {
+						Button("Done") { isEditingNotes = false }
+							.accessibilityIdentifier("dismiss-note-keyboard")
+					}
+				}
 			}
 		}
 		.tint(CiggyTheme.ember)
@@ -46,8 +57,8 @@ struct PhoneLogSmokeView: View {
 /// Manual fallback opened deliberately from the dashboard or a widget.
 struct PhoneLogSmokeForm: View {
 	@Environment(\.colorScheme) private var colorScheme
-	@FocusState private var isEditingNotes: Bool
 	@Binding var notes: String
+	@FocusState.Binding var isEditingNotes: Bool
 	let didSave: Bool
 	let saveError: String?
 	let onSave: () -> Void
@@ -80,12 +91,6 @@ struct PhoneLogSmokeForm: View {
 			}.buttonStyle(.plain).disabled(didSave).accessibilityIdentifier("save-phone-log")
 			Text("Saves to today and syncs with your paired Watch.").font(.caption).foregroundStyle(palette.secondaryText)
 		}.foregroundStyle(palette.primaryText)
-		.toolbar {
-			ToolbarItemGroup(placement: .keyboard) {
-				Spacer()
-				Button("Done") { isEditingNotes = false }
-			}
-		}
 	}
 }
 
