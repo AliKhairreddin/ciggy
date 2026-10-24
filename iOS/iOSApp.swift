@@ -143,25 +143,29 @@ final class IOSAppCoordinator: ObservableObject {
 			}
 			.store(in: &cancellables)
 
-		ConnectivityManager.shared.incomingEvent
-			.sink { @MainActor event in
-				repository.addEvent(event)
+		repository.configureEventDelivery(
+			enqueueEvent: { ConnectivityManager.shared.send(event: $0) },
+			enqueueDeletion: { ConnectivityManager.shared.sendDeletedEvent(id: $0) }
+		)
+		reviewStore.configureCorrectionDelivery(repository: repository, enqueue: { ConnectivityManager.shared.send(review: $0) })
+		ConnectivityManager.shared.bindMutationReceivers(
+			event: { event in
+				guard repository.receiveEvent(event) else { return false }
+				guard reviewStore.retryPendingCorrections() else { return false }
 				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
-			}
-			.store(in: &cancellables)
-
-		ConnectivityManager.shared.incomingDeletedEventID
-			.sink { @MainActor eventID in
-				repository.removeEvent(id: eventID)
-			}
-			.store(in: &cancellables)
-
-		ConnectivityManager.shared.incomingReview
-			.sink { @MainActor review in
-				reviewStore.upsert(review)
+				return reviewStore.lastPersistenceError == nil
+			},
+			deletion: { repository.receiveDeletion(id: $0) },
+			review: { review in
+				guard reviewStore.receive(review) else { return false }
 				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
+				return reviewStore.lastPersistenceError == nil
+			},
+			retry: {
+				_ = repository.retryPendingEventMutations()
+				_ = reviewStore.retryPendingCorrections()
 			}
-			.store(in: &cancellables)
+		)
 
 		ConnectivityManager.shared.incomingSettings
 			.sink { @MainActor remoteSettings in

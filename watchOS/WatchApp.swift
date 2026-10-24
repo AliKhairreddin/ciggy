@@ -95,6 +95,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 @MainActor
 final class WatchAppCoordinator: ObservableObject {
 	private let detection = DetectionAlgorithm()
+	private let ingestion = DetectionIngestionStore()
 	private var notificationsEnabled = false
 	private var hasStarted = false
 	private var isForegroundMonitoring = false
@@ -125,6 +126,10 @@ final class WatchAppCoordinator: ObservableObject {
 		self.repository = repository
 		settingsStore = settings
 		self.reviewStore = reviewStore
+		detection.$lastPersistenceError.removeDuplicates()
+			.sink { @MainActor [weak self] error in
+				BackgroundMotionMonitor.shared.reportPersistenceError(self?.ingestion.lastPersistenceError ?? error)
+			}.store(in: &cancellables)
 
 		settings.$settings
 			.removeDuplicates()
@@ -155,25 +160,33 @@ final class WatchAppCoordinator: ObservableObject {
 			}
 			.store(in: &cancellables)
 
-		ConnectivityManager.shared.incomingEvent
-			.sink { @MainActor event in
-				repository.addEvent(event)
+		repository.configureEventDelivery(
+			enqueueEvent: { ConnectivityManager.shared.send(event: $0) },
+			enqueueDeletion: { ConnectivityManager.shared.sendDeletedEvent(id: $0) }
+		)
+		reviewStore.configureCorrectionDelivery(repository: repository, enqueue: { ConnectivityManager.shared.send(review: $0) })
+		ConnectivityManager.shared.bindMutationReceivers(
+			event: { event in
+				guard repository.receiveEvent(event) else { return false }
+				guard reviewStore.retryPendingCorrections() else { return false }
 				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
-			}
-			.store(in: &cancellables)
-
-		ConnectivityManager.shared.incomingDeletedEventID
-			.sink { @MainActor eventID in
-				repository.removeEvent(id: eventID)
-			}
-			.store(in: &cancellables)
-
-		ConnectivityManager.shared.incomingReview
-			.sink { @MainActor review in
-				reviewStore.upsert(review)
+				return reviewStore.lastPersistenceError == nil
+			},
+			deletion: { repository.receiveDeletion(id: $0) },
+			review: { review in
+				guard reviewStore.receive(review) else { return false }
 				reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
+				return reviewStore.lastPersistenceError == nil
+			},
+			retry: { [weak self] in
+				_ = repository.retryPendingEventMutations()
+				_ = reviewStore.retryPendingCorrections()
+				_ = self?.ingestion.recover(repository: repository, reviews: reviewStore,
+					sendEvent: { ConnectivityManager.shared.send(event: $0) },
+					sendReview: { ConnectivityManager.shared.send(review: $0) })
+				BackgroundMotionMonitor.shared.reportPersistenceError(self?.ingestion.lastPersistenceError ?? self?.detection.lastPersistenceError)
 			}
-			.store(in: &cancellables)
+		)
 
 		ConnectivityManager.shared.incomingHistoryRefreshRequest
 			.sink { @MainActor [weak self] request in
@@ -190,24 +203,18 @@ final class WatchAppCoordinator: ObservableObject {
 			}
 			.store(in: &cancellables)
 
-		detection.candidatePublisher
-			.sink { @MainActor [weak self] candidate in
-				self?.autoRecord(
-					[candidate],
-					origin: .liveWatch,
-					windowStart: candidate.motionSessionStartedAt ?? candidate.gestureAt,
-					windowEnd: candidate.gestureAt,
-					repository: repository,
-					reviewStore: reviewStore
-				)
-			}
-			.store(in: &cancellables)
+		detection.persistCandidate = { [weak self] candidate in
+			guard let self else { return false }
+			return self.autoRecord([candidate], origin: .liveWatch,
+				windowStart: candidate.motionSessionStartedAt ?? candidate.gestureAt,
+				windowEnd: candidate.gestureAt, repository: repository, reviewStore: reviewStore) != nil
+		}
 
 		reviewStore.normalizePendingReviews(events: repository.events).forEach { ConnectivityManager.shared.send(review: $0) }
 		let legacyCandidates = legacyCandidateStore.pendingCandidates
 		ConnectivityManager.shared.activateIncomingDelivery()
 		if let first = legacyCandidates.first, let last = legacyCandidates.last {
-			autoRecord(
+			let saved = autoRecord(
 				legacyCandidates,
 				origin: .watchHistory,
 				windowStart: first.motionSessionStartedAt ?? first.gestureAt,
@@ -215,7 +222,7 @@ final class WatchAppCoordinator: ObservableObject {
 				repository: repository,
 				reviewStore: reviewStore
 			)
-			legacyCandidates.forEach { legacyCandidateStore.resolve(candidateID: $0.id) }
+			if saved != nil { legacyCandidates.forEach { legacyCandidateStore.resolve(candidateID: $0.id) } }
 		}
 
 		if WKApplication.shared().applicationState == .active {
@@ -288,11 +295,11 @@ final class WatchAppCoordinator: ObservableObject {
 			sensitivity: settingsStore.settings.sensitivity,
 			maximumProcessingTime: WKApplication.shared().applicationState == .active ? 20 : 4
 		), Task.isCancelled == false else { return }
-		let reviews = autoRecord(
+		guard let reviews = autoRecord(
 			batch.candidates, origin: .watchHistory,
 			windowStart: batch.processedFrom, windowEnd: batch.processedThrough,
 			repository: repository, reviewStore: reviewStore
-		)
+		) else { return }
 		if notificationsEnabled, let review = reviews.last(where: { Calendar.current.isDate($0.windowEnd, inSameDayAs: Date()) }) {
 			NotificationManager.scheduleDetectionSummaryNotification(
 				reviewID: review.id, count: review.eventIDs.count, historyHours: review.historyHours
@@ -353,25 +360,13 @@ final class WatchAppCoordinator: ObservableObject {
 		windowEnd: Date,
 		repository: EventRepository,
 		reviewStore: DetectionReviewStore
-	) -> [DetectionReview] {
-		var newEvents: [SmokingEvent] = []
-		var reviewStart = windowStart
-		var reviewEnd = windowEnd
-		for candidate in candidates {
-			let event = candidate.detectedEvent()
-			// The repository compares supporting motion intervals across live/history
-			// and retains corrected sessions without an eight-minute blanket block.
-			guard repository.addEvent(event) else { continue }
-			newEvents.append(event)
-			reviewStart = min(reviewStart, candidate.motionSessionStartedAt ?? candidate.gestureAt)
-			reviewEnd = max(reviewEnd, candidate.gestureAt)
-			ConnectivityManager.shared.send(event: event)
-		}
-		let reviews = reviewStore.recordDaily(
-			events: newEvents, origin: origin, windowStart: reviewStart, windowEnd: reviewEnd
-		)
-		reviews.forEach { ConnectivityManager.shared.send(review: $0) }
-		return reviews
+	) -> [DetectionReview]? {
+		let result = ingestion.ingest(candidates, origin: origin, windowStart: windowStart, windowEnd: windowEnd,
+			repository: repository, reviews: reviewStore,
+			sendEvent: { ConnectivityManager.shared.send(event: $0) },
+			sendReview: { ConnectivityManager.shared.send(review: $0) })
+		BackgroundMotionMonitor.shared.reportPersistenceError(ingestion.lastPersistenceError ?? detection.lastPersistenceError)
+		return result
 	}
 }
 #else

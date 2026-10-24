@@ -45,6 +45,7 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	public private(set) var configuration: Configuration
 	public var hasActiveMotionSession: Bool { gestureTimestamps.isEmpty == false }
 	public var observedGestureCount: Int { gestureTimestamps.count }
+	public var sessionBoundarySeconds: TimeInterval { configuration.validated.maximumGestureSeparationSeconds }
 
 	private struct HeartRateContext: Codable, Sendable {
 		let timestamp: Date
@@ -144,6 +145,14 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	public mutating func resetSession() {
 		gestureTimestamps.removeAll()
 		recentHeartRates.removeAll()
+	}
+
+	/// Historical replay may begin inside a previously counted episode. Only
+	/// measured, continuous quiet establishes a new boundary after unknown source.
+	public mutating func confirmObservedSessionBoundary() {
+		gestureTimestamps.removeAll()
+		lastObservedGestureAt = nil
+		sessionCounted = false
 	}
 
 	/// Refresh progress even when no new gesture is completed. Keeping a partial

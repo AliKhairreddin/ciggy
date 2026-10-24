@@ -20,38 +20,59 @@ public struct RecordedMotionAnalyzer: Codable, Sendable {
     private var fusionEngine: DetectionFusionEngine
     private var gravity: MotionVector?
     private var lastSampleAt: Date?
+    // Optional checkpoint fields migrate analyzers written before continuity
+    // proof existed. Canonical capture starts are trusted; cold replays are not.
+    private var requiresBoundary: Bool?
+    private var quietSince: Date?
+    private var sourceDisruptions: Int?
+    private var deferredCandidates: Int?
+
+    public var sourceDisruptionCount: Int { sourceDisruptions ?? 0 }
+    public var deferredCandidateCount: Int { deferredCandidates ?? 0 }
+    public var hasConfirmedContinuity: Bool { requiresBoundary != true }
+    public var latestProcessedSampleAt: Date? { lastSampleAt }
 
     public init(sensitivity: Double = 0.5, sampleInterval: TimeInterval = 0.1,
                 gravityTimeConstant: TimeInterval = 0.25,
                 gestureEngine: MotionGestureEngine = .init(),
-                fusionConfiguration: DetectionFusionEngine.Configuration = .init()) {
+                fusionConfiguration: DetectionFusionEngine.Configuration = .init(),
+                requiresConfirmedBoundary: Bool = false) {
         self.sampleInterval = sampleInterval.isFinite ? min(1, max(0.02, sampleInterval)) : 0.1
         self.gravityTimeConstant = gravityTimeConstant.isFinite ? min(5, max(0.05, gravityTimeConstant)) : 0.25
         self.gestureEngine = gestureEngine
         fusionEngine = DetectionFusionEngine(configuration: fusionConfiguration)
         fusionEngine.updateSensitivity(sensitivity)
+        requiresBoundary = requiresConfirmedBoundary
     }
 
     public mutating func updateSensitivity(_ sensitivity: Double) { fusionEngine.updateSensitivity(sensitivity) }
 
+    /// An unavailable interval is not an observed pause between cigarettes.
+    public mutating func sourceBecameUnavailable() {
+        requiresBoundary = true
+        quietSince = nil
+        gravity = nil
+        gestureEngine.reset()
+        sourceDisruptions = sourceDisruptionCount &+ 1
+    }
+
     public mutating func record(_ sample: RecordedAccelerationSample) -> DetectionCandidate? {
         let acceleration = MotionVector(x: sample.x, y: sample.y, z: sample.z)
-        guard sample.timestamp.timeIntervalSince1970.isFinite else { return nil }
+        guard MotionHistoryProcessor.isSupportedDate(sample.timestamp) else {
+            sourceBecameUnavailable()
+            return nil
+        }
         // Ignore old deliveries before they can interrupt the current stream.
         if let lastSampleAt, sample.timestamp <= lastSampleAt { return nil }
         guard acceleration.isFinite, acceleration.magnitude.isFinite, acceleration.magnitude > 0.01 else {
-            gravity = nil
-            gestureEngine.reset()
+            sourceBecameUnavailable()
             lastSampleAt = sample.timestamp
             return nil
         }
         let elapsed = lastSampleAt.map { sample.timestamp.timeIntervalSince($0) } ?? sampleInterval
         guard elapsed >= sampleInterval - 0.000_001 else { return nil }
         if elapsed > gestureEngine.configuration.maximumSampleGap {
-            gravity = nil
-            gestureEngine.reset()
-            // The session engine keeps separated complete gestures; it resets them
-            // on a long inter-gesture gap. A sensor gap cannot complete a gesture.
+            sourceBecameUnavailable()
         }
         lastSampleAt = sample.timestamp
         let weight = 1 - exp(-elapsed / gravityTimeConstant)
@@ -64,7 +85,22 @@ public struct RecordedMotionAnalyzer: Codable, Sendable {
             rotationRate: nil,
             source: .recordedAccelerometer
         )
-        guard let gestureAt = gestureEngine.record(motion) else { return nil }
-        return fusionEngine.recordGesture(at: gestureAt)
+        let gestureAt = gestureEngine.record(motion)
+        if quietSince == nil { quietSince = sample.timestamp }
+        if let gestureAt {
+            quietSince = gestureAt
+            let candidate = fusionEngine.recordGesture(at: gestureAt)
+            if requiresBoundary == true {
+                if candidate != nil { deferredCandidates = deferredCandidateCount &+ 1 }
+                return nil
+            }
+            return candidate
+        }
+        if requiresBoundary == true, let quietSince,
+           sample.timestamp.timeIntervalSince(quietSince) > fusionEngine.sessionBoundarySeconds {
+            requiresBoundary = false
+            fusionEngine.confirmObservedSessionBoundary()
+        }
+        return nil
     }
 }

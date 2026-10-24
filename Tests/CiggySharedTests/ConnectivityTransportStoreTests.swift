@@ -3,6 +3,94 @@ import XCTest
 
 @MainActor
 final class ConnectivityTransportStoreTests: XCTestCase {
+    func testReusedTransportIDWithDifferentContentsIsNotAcknowledged() {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = ConnectivityTransportStore(defaults: defaults)
+        let original = ConnectivityEnvelope(type: "event", data: Data("original".utf8))
+        let collision = ConnectivityEnvelope(id: original.id, type: "eventDeletion", data: Data("different".utf8))
+        XCTAssertTrue(store.enqueue(original))
+        XCTAssertTrue(store.receive(original))
+        XCTAssertFalse(store.enqueue(collision))
+        XCTAssertFalse(store.receive(collision))
+        XCTAssertNotNil(store.lastPersistenceError)
+        let restored = ConnectivityTransportStore(defaults: defaults)
+        XCTAssertEqual(restored.outgoing, [original])
+        XCTAssertEqual(restored.incoming, [original])
+        XCTAssertTrue(store.receive(original))
+        XCTAssertNil(store.lastPersistenceError)
+    }
+
+    func testAtomicInboxAndOutboxSurviveWithoutPreferences() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("transport.json")
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let envelope = ConnectivityEnvelope(type: "reviewCorrection.v2", data: Data("correction".utf8))
+        let store = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)
+        XCTAssertTrue(store.enqueue(envelope))
+        XCTAssertTrue(store.receive(envelope))
+        defaults.removePersistentDomain(forName: name)
+        let reloaded = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)
+        XCTAssertEqual(reloaded.outgoing, [envelope])
+        XCTAssertEqual(reloaded.incoming, [envelope])
+        XCTAssertTrue(reloaded.acknowledge(id: envelope.id))
+        XCTAssertTrue(reloaded.didDeliver(id: envelope.id))
+        let final = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)
+        XCTAssertTrue(final.outgoing.isEmpty)
+        XCTAssertTrue(final.incoming.isEmpty)
+    }
+
+    func testFailedInboxSaveCannotAcknowledgeAndRetriesAfterDiskRecovers() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data("file blocking directory".utf8).write(to: directory)
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        // Construct before making its parent unavailable, so this tests write failure.
+        let file = directory.appendingPathComponent("state.json")
+        try FileManager.default.removeItem(at: directory)
+        let store = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)
+        try Data("file blocking directory".utf8).write(to: directory)
+        let event = ConnectivityEnvelope(type: "event", data: Data("event".utf8))
+        XCTAssertFalse(store.receive(event))
+        XCTAssertFalse(store.enqueue(event))
+        XCTAssertTrue(store.incoming.isEmpty)
+        XCTAssertTrue(store.outgoing.isEmpty)
+        XCTAssertNotNil(store.lastPersistenceError)
+        try FileManager.default.removeItem(at: directory)
+        XCTAssertTrue(store.receive(event))
+        XCTAssertTrue(store.enqueue(event))
+        XCTAssertNil(store.lastPersistenceError)
+        XCTAssertEqual(ConnectivityTransportStore(defaults: defaults, snapshotURL: file).incoming, [event])
+    }
+
+    func testUnreadableJournalIsNeverOverwrittenWithEmptyState() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("state.json")
+        let corrupt = Data("saved but malformed".utf8)
+        try corrupt.write(to: file)
+        let store = ConnectivityTransportStore(snapshotURL: file)
+        XCTAssertFalse(store.enqueue(.init(type: "event", data: Data())))
+        XCTAssertNotNil(store.lastPersistenceError)
+        XCTAssertEqual(try Data(contentsOf: file), corrupt)
+    }
+
+    func testOnlyMutationMessagesRequireAnApplicationPersistenceReceipt() {
+        for type in ["event", "eventDeletion", "detectionReview", "reviewCorrection.v2"] {
+            XCTAssertTrue(ConnectivityEnvelope(type: type, data: Data()).requiresDurableReceipt)
+        }
+        for type in ["transportReceipt.v2", "trackingStatus", "historyRefreshRequest", "settings"] {
+            XCTAssertFalse(ConnectivityEnvelope(type: type, data: Data()).requiresDurableReceipt)
+        }
+    }
+
     func testRepeatedChecksAndStatusCoalesceWithoutDroppingEventMutations() {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!

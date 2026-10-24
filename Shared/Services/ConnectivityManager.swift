@@ -29,6 +29,10 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private var settingsSyncNeedsRetry = false
 	private let transportStore = ConnectivityTransportStore()
 	private var isIncomingDeliveryReady = false
+	private var receiveEvent: ((SmokingEvent) -> Bool)?
+	private var receiveDeletion: ((UUID) -> Bool)?
+	private var receiveReview: ((DetectionReview) -> Bool)?
+	private var retrySavedMutations: (() -> Void)?
 	private var liveTransfers: Set<UUID> = []
 	private let recordingTransfersKey = "Ciggy.connectivity.recordingTransfers.v1"
 	private var pendingRecordingPaths: [String] = []
@@ -61,19 +65,32 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		refreshSessionState()
 	}
 
-	public func send(event: SmokingEvent) {
-		guard let payload = encodedPayload(type: "event", value: event) else { return }
-		queueDurable(payload)
+	@discardableResult public func send(event: SmokingEvent) -> Bool {
+		guard let payload = encodedPayload(type: "event", value: event) else { return false }
+		return queueDurable(payload)
 	}
 
-	public func sendDeletedEvent(id: UUID) {
-		guard let payload = encodedPayload(type: "eventDeletion", value: id) else { return }
-		queueDurable(payload)
+	@discardableResult public func sendDeletedEvent(id: UUID) -> Bool {
+		guard let payload = encodedPayload(type: "eventDeletion", value: id) else { return false }
+		return queueDurable(payload)
 	}
 
-	public func send(review: DetectionReview) {
-		guard let payload = encodedPayload(type: "detectionReview", value: review) else { return }
-		queueDurable(payload)
+	@discardableResult public func send(review: DetectionReview) -> Bool {
+		// A legacy app cannot apply a reversible correction. Keep this operation
+		// queued until an updated companion durably accepts it.
+		let type = review.correction == nil ? "detectionReview" : "reviewCorrection.v2"
+		guard let payload = encodedPayload(type: type, value: review) else { return false }
+		return queueDurable(payload)
+	}
+
+	public func bindMutationReceivers(
+		event: @escaping (SmokingEvent) -> Bool,
+		deletion: @escaping (UUID) -> Bool,
+		review: @escaping (DetectionReview) -> Bool,
+		retry: @escaping () -> Void
+	) {
+		receiveEvent = event; receiveDeletion = deletion; receiveReview = review
+		retrySavedMutations = retry
 	}
 
 	public func send(settings: UserSettings) {
@@ -111,6 +128,8 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	}
 
 	public func resumeSync() {
+		retrySavedMutations?()
+		flushIncoming()
 		refreshSessionState()
 		flushLatestSettings()
 		flushPendingDurablePayloads()
@@ -197,6 +216,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 
 	private func encodedPayload<Value: Encodable>(type: String, value: Value) -> [String: Any]? {
 		let encoder = JSONEncoder()
+		encoder.outputFormatting = [.sortedKeys]
 		encoder.dateEncodingStrategy = .iso8601
 		guard let data = try? encoder.encode(value) else { return nil }
 		return ["type": type, "data": data]
@@ -234,10 +254,14 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		}
 	}
 
-	private func queueDurable(_ payload: [String: Any]) {
-		guard let type = payload["type"] as? String, let data = payload["data"] as? Data else { return }
-		transportStore.enqueue(.init(type: type, data: data))
+	@discardableResult private func queueDurable(_ payload: [String: Any]) -> Bool {
+		guard let type = payload["type"] as? String, let data = payload["data"] as? Data else { return false }
+		guard transportStore.enqueue(.init(type: type, data: data)) else {
+			lastSyncError = transportStore.lastPersistenceError
+			return false
+		}
 		flushPendingDurablePayloads()
+		return true
 	}
 
 	private func queueLatest(_ payload: [String: Any]) {
@@ -260,7 +284,8 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			let payload: [String: Any] = ["type": envelope.type, "data": envelope.data, "transportID": envelope.id.uuidString]
 			if session.isReachable, liveTransfers.insert(envelope.id).inserted {
 				session.sendMessage(payload, replyHandler: { [weak self] reply in
-					let acknowledged = reply["acknowledged"] as? String == envelope.id.uuidString
+					let acknowledged = reply["acknowledged"] as? String == envelope.id.uuidString &&
+						(envelope.requiresDurableReceipt == false || reply["durableProtocol"] as? Int == 2)
 					Task { @MainActor [weak self] in
 						self?.liveTransfers.remove(envelope.id)
 						if acknowledged { self?.transportStore.acknowledge(id: envelope.id) }
@@ -281,41 +306,50 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private func flushIncoming() {
 		guard isIncomingDeliveryReady else { return }
 		for envelope in transportStore.incoming {
-			deliver(type: envelope.type, data: envelope.data)
-			transportStore.didDeliver(id: envelope.id)
+			if deliver(type: envelope.type, data: envelope.data) {
+				if transportStore.didDeliver(id: envelope.id) == false {
+					lastSyncError = transportStore.lastPersistenceError
+				}
+			}
 		}
 	}
 
-	private func deliver(type: String, data: Data) {
+	private func deliver(type: String, data: Data) -> Bool {
 		let decoder = JSONDecoder()
 		decoder.dateDecodingStrategy = .iso8601
 		switch type {
 		case "event":
-			if let value = try? decoder.decode(SmokingEvent.self, from: data) { incomingEvent.send(value) }
+			guard let value = try? decoder.decode(SmokingEvent.self, from: data) else { return false }
+			guard receiveEvent?(value) == true else { return false }
+			incomingEvent.send(value)
 		case "eventDeletion":
-			if let value = try? decoder.decode(UUID.self, from: data) { incomingDeletedEventID.send(value) }
-		case "detectionReview":
-			if let value = try? decoder.decode(DetectionReview.self, from: data) { incomingReview.send(value) }
+			guard let value = try? decoder.decode(UUID.self, from: data) else { return false }
+			guard receiveDeletion?(value) == true else { return false }
+			incomingDeletedEventID.send(value)
+		case "detectionReview", "reviewCorrection.v2":
+			guard let value = try? decoder.decode(DetectionReview.self, from: data) else { return false }
+			guard receiveReview?(value) == true else { return false }
+			incomingReview.send(value)
+		case "transportReceipt.v2":
+			guard let id = try? decoder.decode(UUID.self, from: data) else { return false }
+			return transportStore.acknowledge(id: id)
 		case "historyRefreshRequest":
 			if let request = try? decoder.decode(HistoryRefreshRequest.self, from: data),
 			   MotionHistoryProcessor.isSupportedDate(request.requestedAt) {
 				incomingHistoryRefreshRequest.send(request)
 			}
 		case "trackingStatus":
-			if let value = try? TrackingStatus.fromTransfer(data) {
-				TrackingStatusStore.shared.receive(value)
-			}
+			if let value = try? TrackingStatus.fromTransfer(data) { TrackingStatusStore.shared.receive(value) }
 		case "settings":
 			if let value = try? decoder.decode(UserSettings.self, from: data) {
-				// Receiving the counterpart's settings supersedes any local snapshot.
-				// Never replay an older local value after relaunch or re-pairing.
+				guard transportStore.clearSettings() else { return false }
 				latestSettingsPayload = nil
 				settingsSyncNeedsRetry = false
-				transportStore.clearSettings()
 				incomingSettings.send(value)
 			}
-		default: break
+		default: return false
 		}
+		return true
 	}
 
 	private func refreshSessionState() {
@@ -393,9 +427,11 @@ extension ConnectivityManager: WCSessionDelegate {
 		guard let value = userInfoTransfer.userInfo["transportID"] as? String,
 		      let id = UUID(uuidString: value) else { return }
 		let message = error?.localizedDescription
+		let type = userInfoTransfer.userInfo["type"] as? String ?? ""
+		let requiresReceipt = ConnectivityEnvelope(type: type, data: Data()).requiresDurableReceipt
 		Task { @MainActor [weak self] in
 			if let message { self?.lastSyncError = message }
-			else { self?.transportStore.acknowledge(id: id) }
+			else if requiresReceipt == false { self?.transportStore.acknowledge(id: id) }
 		}
 	}
 
@@ -465,9 +501,23 @@ extension ConnectivityManager: WCSessionDelegate {
 		let envelope = ConnectivityEnvelope(id: id, type: type, data: data)
 		Task { @MainActor [weak self] in
 			guard let self else { replyHandler?([:]); return }
-			self.transportStore.receive(envelope)
+			guard ["event", "eventDeletion", "detectionReview", "reviewCorrection.v2", "transportReceipt.v2",
+			       "settings", "historyRefreshRequest", "trackingStatus"].contains(type),
+			      self.transportStore.receive(envelope) else {
+				self.lastSyncError = self.transportStore.lastPersistenceError
+				replyHandler?([:])
+				return
+			}
+			// Persist a receipt before retiring the inbox entry. A crash between any
+			// two writes leaves either the original sender or this inbox able to retry.
+			if envelope.requiresDurableReceipt,
+			   let receipt = self.encodedPayload(type: "transportReceipt.v2", value: id),
+			   self.queueDurable(receipt) == false {
+				replyHandler?([:])
+				return
+			}
 			self.flushIncoming()
-			replyHandler?(["acknowledged": id.uuidString])
+			replyHandler?(["acknowledged": id.uuidString, "durableProtocol": 2])
 		}
 	}
 }
@@ -492,9 +542,11 @@ public final class ConnectivityManager: ObservableObject {
 
 	private init() {}
 
-	public func send(event: SmokingEvent) {}
-	public func sendDeletedEvent(id: UUID) {}
-	public func send(review: DetectionReview) {}
+	@discardableResult public func send(event: SmokingEvent) -> Bool { true }
+	@discardableResult public func sendDeletedEvent(id: UUID) -> Bool { true }
+	@discardableResult public func send(review: DetectionReview) -> Bool { true }
+	public func bindMutationReceivers(event: @escaping (SmokingEvent) -> Bool, deletion: @escaping (UUID) -> Bool,
+	                                  review: @escaping (DetectionReview) -> Bool, retry: @escaping () -> Void) {}
 	public func send(settings: UserSettings) {}
 	public func requestHistoryRefresh() {}
 	public func send(trackingStatus: TrackingStatus) {}

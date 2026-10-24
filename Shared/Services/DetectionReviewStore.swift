@@ -15,7 +15,8 @@ public final class DetectionReviewStore: ObservableObject {
 	/// not compete with their day-scoped replacements in the interface.
 	private var activeReviews: [DetectionReview] {
 		let replaced = Set(reviews.compactMap(\.parentReviewID))
-		return reviews.filter { replaced.contains($0.id) == false }
+		return DetectionReview.effectiveScopes(reviews, resolvingEventID: { self.correctionRepository?.canonicalEventID($0) ?? $0 })
+            .filter { replaced.contains($0.id) == false }
 	}
 
 	public func reviews(on day: Date, calendar: Calendar = .current) -> [DetectionReview] {
@@ -36,17 +37,72 @@ public final class DetectionReviewStore: ObservableObject {
 			.sorted { $0.windowEnd > $1.windowEnd }
 	}
 
-	private let userDefaults: UserDefaults
-	private let storageKey: String
+    @Published public private(set) var lastPersistenceError: String?
+    public var pendingTransmissions: [DetectionReview] {
+        reviews.filter { pendingTransmissionIDs.contains($0.id) }
+    }
+    private struct Snapshot: Codable {
+        var reviews: [DetectionReview]
+        var pendingTransmissionIDs: Set<UUID>
+    }
+    private let userDefaults: UserDefaults
+    private let storageKey: String
+    private let snapshotFile: DurableSnapshotFile?
+    private let snapshotWriter: ((Data) throws -> Void)?
+    private var pendingTransmissionIDs = Set<UUID>()
+    private var loadFailed = false
+    private weak var correctionRepository: EventRepository?
+    private var enqueueReview: ((DetectionReview) -> Bool)?
+    private var isRetrying = false
 
-	public init(
-		userDefaults: UserDefaults = .standard,
-		storageKey: String = "DetectionReviewStore.reviews.v1"
-	) {
-		self.userDefaults = userDefaults
-		self.storageKey = storageKey
-		load()
-	}
+    public init(
+        userDefaults: UserDefaults = .standard,
+        storageKey: String = "DetectionReviewStore.reviews.v1",
+        snapshotURL: URL? = nil,
+        snapshotWriter: ((Data) throws -> Void)? = nil
+    ) {
+        self.userDefaults = userDefaults
+        self.storageKey = storageKey
+        self.snapshotFile = (snapshotURL ?? (userDefaults === UserDefaults.standard ?
+            DurableSnapshotFile.defaultURL(name: storageKey) : nil)).map { DurableSnapshotFile(url: $0) }
+        self.snapshotWriter = snapshotWriter
+        load()
+    }
+
+    /// Bind before draining the incoming transport. The review journal is the
+    /// source of truth; effects and outgoing delivery can always be retried.
+    public func configureCorrectionDelivery(repository: EventRepository, enqueue: @escaping (DetectionReview) -> Bool) {
+        correctionRepository = repository
+        enqueueReview = enqueue
+        _ = retryPendingCorrections()
+    }
+
+    @discardableResult
+    public func retryPendingCorrections() -> Bool {
+        guard loadFailed == false else { return false }
+        guard isRetrying == false else { return false }
+        guard let repository = correctionRepository else {
+            lastPersistenceError = "The cigarette log is not ready to save this review. Please try again."
+            return false
+        }
+        isRetrying = true
+        defer { isRetrying = false }
+        guard repository.applyCorrections(reviews) else {
+            lastPersistenceError = repository.lastPersistenceError ?? "Could not apply the saved review. Please retry."
+            return false
+        }
+        for review in pendingTransmissions {
+            guard enqueueReview?(review) == true else {
+                lastPersistenceError = "The review is saved locally. Its sync queue could not be saved; please retry."
+                return false
+            }
+            var remaining = pendingTransmissionIDs
+            remaining.remove(review.id)
+            guard persist(reviews, pending: remaining) else { return false }
+        }
+        lastPersistenceError = nil
+        return true
+    }
 
 	/// Compatibility convenience for callers recording events from a single day.
 	@discardableResult
@@ -77,10 +133,11 @@ public final class DetectionReviewStore: ObservableObject {
 		guard [windowStart, windowEnd, updatedAt].allSatisfy({
 			$0.timeIntervalSince1970.isFinite && $0 >= .distantPast && $0 <= .distantFuture
 		}) else { return [] }
+        var nextReviews = reviews
 		let validEvents = events.filter { $0.timestamp.timeIntervalSince1970.isFinite &&
 			$0.timestamp >= .distantPast && $0.timestamp <= .distantFuture }
 		let grouped = Dictionary(grouping: validEvents) { calendar.startOfDay(for: $0.timestamp) }
-		let replacedIDs = Set(reviews.compactMap(\.parentReviewID))
+		let replacedIDs = Set(nextReviews.compactMap(\.parentReviewID))
 		var result: [DetectionReview] = []
 		for day in grouped.keys.sorted() {
 			guard let dailyEvents = grouped[day]?.sorted(by: { $0.timestamp < $1.timestamp }),
@@ -89,27 +146,32 @@ public final class DetectionReviewStore: ObservableObject {
 			let start = min(first.timestamp, max(day, min(windowStart, windowEnd)))
 			let end = max(last.timestamp, min(nextDay.addingTimeInterval(-0.001), max(windowStart, windowEnd)))
 			let ids = dailyEvents.map(\.id)
-			if mergeWithPending, let index = reviews.lastIndex(where: {
+			if mergeWithPending, let index = nextReviews.lastIndex(where: {
 				$0.decision == .pending && $0.origin == origin && $0.dayStart == day &&
 				replacedIDs.contains($0.id) == false
 			}) {
-				var review = reviews[index]
+				var review = nextReviews[index]
 				var seen = Set(review.eventIDs)
 				review.eventIDs.append(contentsOf: ids.filter { seen.insert($0).inserted })
+                review.eventSnapshots = Self.mergeSnapshots(review.eventSnapshots, dailyEvents, scope: review.eventIDs)
 				review.windowStart = min(review.windowStart, start)
 				review.windowEnd = max(review.windowEnd, end)
 				review.updatedAt = updatedAt
 				if review.revision < Int.max { review.revision += 1 }
-				reviews[index] = review
+				nextReviews[index] = review
 				result.append(review)
 			} else {
 				let review = DetectionReview(eventIDs: ids, origin: origin, windowStart: start,
-				                             windowEnd: end, updatedAt: updatedAt, dayStart: day)
-				reviews.append(review)
+				                             windowEnd: end, updatedAt: updatedAt, dayStart: day, eventSnapshots: dailyEvents)
+				nextReviews.append(review)
 				result.append(review)
 			}
 		}
-		if result.isEmpty == false { sortAndSave() }
+		if result.isEmpty == false {
+            let pending = pendingTransmissionIDs.union(result.map(\.id))
+            guard persist(nextReviews, pending: pending) else { return [] }
+            if correctionRepository != nil { _ = retryPendingCorrections() }
+        }
 		return result
 	}
 
@@ -119,6 +181,7 @@ public final class DetectionReviewStore: ObservableObject {
 	public func normalizePendingReviews(events: [SmokingEvent], calendar: Calendar = .current) -> [DetectionReview] {
 		let byID = Dictionary(events.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 		var created: [DetectionReview] = []
+        var nextReviews = reviews
 		for legacy in activeReviews where legacy.dayStart == nil && legacy.decision == .pending {
 			let resolved = legacy.eventIDs.compactMap { byID[$0] }
 			guard resolved.count == legacy.eventIDs.count, resolved.isEmpty == false else { continue }
@@ -132,13 +195,16 @@ public final class DetectionReviewStore: ObservableObject {
 				                            eventIDs: ids, origin: legacy.origin,
 				                            windowStart: min(first.timestamp, max(day, legacy.windowStart)),
 				                            windowEnd: max(last.timestamp, min(nextDay.addingTimeInterval(-0.001), legacy.windowEnd)),
-				                            updatedAt: legacy.updatedAt, dayStart: day, parentReviewID: legacy.id)
-				guard reviews.contains(where: { $0.id == child.id }) == false else { continue }
-				reviews.append(child)
+				                            updatedAt: legacy.updatedAt, dayStart: day, parentReviewID: legacy.id, eventSnapshots: daily)
+				guard nextReviews.contains(where: { $0.id == child.id }) == false else { continue }
+				nextReviews.append(child)
 				created.append(child)
 			}
 		}
-		if created.isEmpty == false { sortAndSave() }
+		if created.isEmpty == false {
+            guard persist(nextReviews, pending: pendingTransmissionIDs.union(created.map(\.id))) else { return [] }
+            if correctionRepository != nil { _ = retryPendingCorrections() }
+        }
 		return created
 	}
 
@@ -174,170 +240,199 @@ public final class DetectionReviewStore: ObservableObject {
 		)
 	}
 
-	/// Merges a remote revision without duplicating an at-least-once delivery.
-	@discardableResult
-	public func upsert(_ incoming: DetectionReview) -> Bool {
-		guard incoming.hasValidDates else { return false }
-		guard let index = reviews.firstIndex(where: { $0.id == incoming.id }) else {
-			reviews.append(incoming)
-			sortAndSave()
-			return true
-		}
-		let current = reviews[index]
-		if current.decision == .pending && incoming.decision == .pending {
-			// Pending summaries only gain detections. A delayed parent can extend
-			// a continuation after that continuation gained newer Watch events.
-			// Keep both sets instead of letting last-writer-wins drop either one.
-			let currentIDs = Set(current.eventIDs)
-			let incomingIDs = Set(incoming.eventIDs)
-			var merged = incoming.revision > current.revision ||
-				(incoming.revision == current.revision && incoming.updatedAt > current.updatedAt) ? incoming : current
-			if incomingIDs.isSubset(of: currentIDs) {
-				merged.eventIDs = current.eventIDs
-			} else if currentIDs.isSubset(of: incomingIDs) {
-				merged.eventIDs = incoming.eventIDs
-			} else {
-				// Concurrent, non-nested lists have no common chronological ordering.
-				// Use a stable order so both devices make the same selection on review.
-				merged.eventIDs = currentIDs.union(incomingIDs).sorted { $0.uuidString < $1.uuidString }
-			}
-			merged.windowStart = min(current.windowStart, incoming.windowStart)
-			merged.windowEnd = max(current.windowEnd, incoming.windowEnd)
-			merged.updatedAt = max(current.updatedAt, incoming.updatedAt)
-			guard merged != current else { return false }
-			reviews[index] = merged
-			sortAndSave()
-			return true
-		}
-		if (current.decision == .pending) != (incoming.decision == .pending) {
-			// A user can review on iPhone while an offline Watch is still extending
-			// the same summary. A higher pending revision must not reopen a saved
-			// decision, and the decision must not hide the Watch's new detections.
-			let decided = current.decision == .pending ? incoming : current
-			let pending = current.decision == .pending ? current : incoming
-			var changed = current.decision == .pending
-			if changed { reviews[index] = decided }
-			let reviewedIDs = Set(decided.eventIDs)
-			let extraIDs = pending.eventIDs.filter { reviewedIDs.contains($0) == false }
-			if extraIDs.isEmpty == false {
-				// Derive the same continuation on both devices, regardless of delivery
-				// order. Replaying an older parent follows this chain without reviving
-				// a continuation that the user has already reviewed, either.
-				let continuation = DetectionReview(
-					id: Self.stableID(for: "ciggy-review-continuation-v1:\(decided.id.uuidString)"),
-					eventIDs: extraIDs, origin: pending.origin,
-					windowStart: pending.windowStart, windowEnd: pending.windowEnd,
-					updatedAt: pending.updatedAt, revision: pending.revision,
-					dayStart: pending.dayStart
-				)
-				if upsert(continuation) { changed = true }
-			}
-			if changed { sortAndSave() }
-			return changed
-		}
-		guard incoming.revision > current.revision ||
-			(incoming.revision == current.revision && incoming.updatedAt > current.updatedAt) else {
-			return false
-		}
-		reviews[index] = incoming
-		sortAndSave()
-		return true
-	}
+    /// Legacy changed/not-changed API. Runtime delivery uses receive, which
+    /// distinguishes a durable duplicate from a failed save.
+    @discardableResult
+    public func upsert(_ incoming: DetectionReview) -> Bool {
+        let before = reviews
+        guard receive(incoming) else { return false }
+        return before != reviews
+    }
 
-	public func removeAll() {
-		reviews.removeAll()
-		save()
-	}
+    /// True means the canonical journal and derived repository are durable.
+    /// Failed derivation keeps the transport inbox entry retryable.
+    @discardableResult
+    public func receive(_ incoming: DetectionReview) -> Bool {
+        guard incoming.hasValidDates else {
+            lastPersistenceError = "The received review contains an invalid date."
+            return false
+        }
+        var next = reviews
+        Self.merge(incoming, into: &next)
+        let changedIDs = Set(next.filter { item in reviews.first(where: { $0.id == item.id }) != item }.map(\.id))
+        var pending = pendingTransmissionIDs.union(changedIDs)
+        if let canonical = next.first(where: { $0.id == incoming.id }), canonical != incoming {
+            pending.insert(canonical.id)
+        }
+        if next != reviews || pending != pendingTransmissionIDs {
+            guard persist(next, pending: pending) else { return false }
+        }
+        guard correctionRepository != nil else { return loadFailed == false }
+        return retryPendingCorrections()
+    }
 
-	private func updatePending(
-		reviewID: UUID,
-		decision: DetectionReviewDecision,
-		correctedCount: Int?,
-		at date: Date
-	) -> DetectionReview? {
-		guard date.timeIntervalSince1970.isFinite, date >= .distantPast, date <= .distantFuture else { return nil }
-		guard activeReviews.contains(where: { $0.id == reviewID }),
-		      let index = reviews.firstIndex(where: { $0.id == reviewID }),
-		      reviews[index].decision == .pending else { return nil }
-		var review = reviews[index]
-		review.decision = decision
-		review.correctedCount = correctedCount
-		review.reviewedAt = date
-		review.updatedAt = date
-		if review.revision < Int.max { review.revision += 1 }
-		reviews[index] = review
-		sortAndSave()
-		return review
-	}
+    private static func mergeSnapshots(_ first: [SmokingEvent], _ second: [SmokingEvent], scope: [UUID]) -> [SmokingEvent] {
+        let ids = Set(scope)
+        var byID = Dictionary(first.filter { ids.contains($0.id) }.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for event in second where ids.contains(event.id) {
+            if let current = byID[event.id] {
+                // Original records are immutable. Resolve malformed conflicting
+                // copies consistently without making message arrival significant.
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .sortedKeys
+                let a = (try? encoder.encode(current)) ?? Data()
+                let b = (try? encoder.encode(event)) ?? Data()
+                if a.lexicographicallyPrecedes(b) { byID[event.id] = event }
+            } else { byID[event.id] = event }
+        }
+        return byID.values.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
 
-	private func load() {
-		guard let data = userDefaults.data(forKey: storageKey),
-		      let decoded = try? JSONDecoder().decode([DetectionReview].self, from: data) else {
-			reviews = []
-			return
-		}
-		reviews = decoded.filter(\.hasValidDates).sorted { $0.updatedAt < $1.updatedAt }
-	}
+    private static func merge(_ incoming: DetectionReview, into result: inout [DetectionReview]) {
+        guard let index = result.firstIndex(where: { $0.id == incoming.id }) else {
+            var normalized = incoming
+            normalized.eventSnapshots = mergeSnapshots(incoming.eventSnapshots, [], scope: incoming.eventIDs)
+            result.append(normalized)
+            return
+        }
+        let current = result[index]
+        if current.decision == .pending && incoming.decision == .pending {
+            let currentIDs = Set(current.eventIDs)
+            let incomingIDs = Set(incoming.eventIDs)
+            var merged = incoming.isPreferred(to: current) ? incoming : current
+            if currentIDs == incomingIDs, current.eventIDs != incoming.eventIDs {
+                merged.eventIDs = currentIDs.sorted { $0.uuidString < $1.uuidString }
+            } else if incomingIDs.isSubset(of: currentIDs) { merged.eventIDs = current.eventIDs }
+            else if currentIDs.isSubset(of: incomingIDs) { merged.eventIDs = incoming.eventIDs }
+            else { merged.eventIDs = currentIDs.union(incomingIDs).sorted { $0.uuidString < $1.uuidString } }
+            merged.windowStart = min(current.windowStart, incoming.windowStart)
+            merged.windowEnd = max(current.windowEnd, incoming.windowEnd)
+            merged.updatedAt = max(current.updatedAt, incoming.updatedAt)
+            merged.eventSnapshots = mergeSnapshots(current.eventSnapshots, incoming.eventSnapshots, scope: merged.eventIDs)
+            result[index] = merged
+            return
+        }
+        let winner: DetectionReview
+        let other: DetectionReview
+        if current.decision == .pending || (incoming.decision != .pending && incoming.isPreferred(to: current)) {
+            winner = incoming; other = current
+        } else { winner = current; other = incoming }
+        var canonical = winner
+        canonical.eventSnapshots = mergeSnapshots(current.eventSnapshots, incoming.eventSnapshots, scope: winner.eventIDs)
+        result[index] = canonical
+        let scope = Set(winner.eventIDs)
+        let extraIDs = other.eventIDs.filter { scope.contains($0) == false }
+        if extraIDs.isEmpty == false {
+            let continuation = DetectionReview(
+                id: stableID(for: "ciggy-review-continuation-v1:\(winner.id.uuidString)"),
+                eventIDs: extraIDs, origin: other.origin,
+                windowStart: other.windowStart, windowEnd: other.windowEnd,
+                updatedAt: other.updatedAt, revision: other.revision, dayStart: other.dayStart,
+                eventSnapshots: mergeSnapshots(other.eventSnapshots, [], scope: extraIDs),
+                continuationOf: winner.id
+            )
+            merge(continuation, into: &result)
+        }
+    }
 
-	private func sortAndSave() {
-		reviews.sort { $0.updatedAt < $1.updatedAt }
-		save()
-	}
+    private func updatePending(
+        reviewID: UUID, decision: DetectionReviewDecision, correctedCount: Int?, at date: Date
+    ) -> DetectionReview? {
+        guard date.timeIntervalSince1970.isFinite, date >= .distantPast, date <= .distantFuture else { return nil }
+        guard let effective = activeReviews.first(where: { $0.id == reviewID }),
+              let index = reviews.firstIndex(where: { $0.id == reviewID }) else {
+            lastPersistenceError = "This review has been replaced by a newer summary."
+            return nil
+        }
+        if effective.decision != .pending {
+            if effective.correction != nil, effective.decision == decision, effective.correctedCount == correctedCount {
+                return reviews[index] // Retry an already journaled decision; never invent a second operation.
+            }
+            lastPersistenceError = "This summary was already reviewed on another device. Close it and check the saved count."
+            return nil
+        }
+        var review = effective
+        review.decision = decision
+        review.correctedCount = correctedCount
+        review.reviewedAt = date
+        review.updatedAt = date
+        review.correction = DetectionCorrection(decidedAt: date)
+        if review.revision < Int.max { review.revision += 1 }
+        review.eventSnapshots = Self.mergeSnapshots(review.eventSnapshots,
+            correctionRepository?.originalEvents(for: review.eventIDs) ?? [], scope: review.eventIDs)
+        var next = reviews
+        next[index] = review
+        guard persist(next, pending: pendingTransmissionIDs.union([review.id])) else { return nil }
+        return review
+    }
 
-	private func save() {
-		guard let data = try? JSONEncoder().encode(reviews) else { return }
-		userDefaults.set(data, forKey: storageKey)
-	}
+    private func load() {
+        do {
+            let fileData = try snapshotFile?.load()
+            guard let data = fileData ?? userDefaults.data(forKey: storageKey) else { return }
+            if let saved = try? JSONDecoder().decode(Snapshot.self, from: data) {
+                guard saved.reviews.allSatisfy(\.hasValidDates) else { throw CocoaError(.fileReadCorruptFile) }
+                reviews = Self.sorted(saved.reviews)
+                pendingTransmissionIDs = saved.pendingTransmissionIDs
+            } else if fileData == nil, let legacy = try? JSONDecoder().decode([DetectionReview].self, from: data) {
+                reviews = Self.sorted(legacy.filter(\.hasValidDates))
+                // Legacy terminal decisions already changed individual events.
+                // Do not replay or reverse them as new correction transactions.
+            } else { throw CocoaError(.fileReadCorruptFile) }
+        } catch {
+            loadFailed = true
+            lastPersistenceError = "Could not read saved reviews: \(error.localizedDescription)"
+        }
+    }
+
+    private static func sorted(_ items: [DetectionReview]) -> [DetectionReview] {
+        items.sorted { $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt < $1.updatedAt }
+    }
+
+    @discardableResult
+    private func persist(_ items: [DetectionReview], pending: Set<UUID>) -> Bool {
+        guard loadFailed == false else { return false }
+        do {
+            let sorted = Self.sorted(items)
+            let data = try JSONEncoder().encode(Snapshot(reviews: sorted, pendingTransmissionIDs: pending))
+            if let snapshotWriter { try snapshotWriter(data) }
+            else if let snapshotFile { try snapshotFile.write(data) }
+            else { userDefaults.set(data, forKey: storageKey) }
+            pendingTransmissionIDs = pending
+            if reviews != sorted { reviews = sorted }
+            lastPersistenceError = nil
+            return true
+        } catch {
+            lastPersistenceError = "Could not save the review: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    fileprivate func prepareWorkflow(repository: EventRepository? = nil) {
+        if let repository { correctionRepository = repository }
+        if enqueueReview == nil { enqueueReview = { ConnectivityManager.shared.send(review: $0) } }
+    }
+
 }
 
-/// Applies review feedback to the event log and synchronizes every resulting mutation.
+/// Journals review feedback, derives its event effects, and queues the complete decision.
 public enum DetectionReviewWorkflow {
-	@MainActor
-	public static func markAccurate(
-		_ review: DetectionReview,
-		store: DetectionReviewStore
-	) {
-		guard let updated = store.markAccurate(reviewID: review.id) else { return }
-		ConnectivityManager.shared.send(review: updated)
-	}
+    @MainActor
+    @discardableResult
+    public static func markAccurate(_ review: DetectionReview, store: DetectionReviewStore) -> Bool {
+        store.prepareWorkflow()
+        guard store.markAccurate(reviewID: review.id) != nil else { return false }
+        return store.retryPendingCorrections()
+    }
 
-	@MainActor
-	public static func adjust(
-		_ review: DetectionReview,
-		to correctedCount: Int,
-		repository: EventRepository,
-		store: DetectionReviewStore
-	) {
-		let correctedCount = max(0, min(100, correctedCount))
-		guard let updated = store.markAdjusted(
-			reviewID: review.id,
-			correctedCount: correctedCount
-		) else { return }
-
-		// The summary may have merged new detections while its adjustment sheet was open.
-		// Apply the decision to the latest persisted revision returned by the store.
-		if correctedCount < updated.originalCount {
-			for eventID in updated.eventIDs.suffix(updated.originalCount - correctedCount) {
-				repository.removeEvent(id: eventID)
-				ConnectivityManager.shared.sendDeletedEvent(id: eventID)
-			}
-		} else if correctedCount > updated.originalCount {
-			let additionalCount = correctedCount - updated.originalCount
-			let duration = max(0, updated.windowEnd.timeIntervalSince(updated.windowStart))
-			for index in 0..<additionalCount {
-				let fraction = Double(index + 1) / Double(additionalCount + 1)
-				let event = SmokingEvent(
-					timestamp: updated.windowStart.addingTimeInterval(duration * fraction),
-					source: .manual,
-					notes: "Added while adjusting a Watch detection summary."
-				)
-				repository.addEvent(event)
-				ConnectivityManager.shared.send(event: event)
-			}
-		}
-
-		ConnectivityManager.shared.send(review: updated)
-	}
+    @MainActor
+    @discardableResult
+    public static func adjust(_ review: DetectionReview, to correctedCount: Int,
+                              repository: EventRepository, store: DetectionReviewStore) -> Bool {
+        store.prepareWorkflow(repository: repository)
+        guard store.markAdjusted(reviewID: review.id, correctedCount: correctedCount) != nil else { return false }
+        return store.retryPendingCorrections()
+    }
 
 	/// Creates an intentional debug-only experience without waiting eight hours for sensors.
 	@MainActor
@@ -362,12 +457,9 @@ public enum DetectionReviewWorkflow {
 				notes: "Historical detection preview"
 			)
 		}
-		for event in events {
-			repository.addEvent(event)
-			ConnectivityManager.shared.send(event: event)
-		}
+        let accepted = events.filter { repository.addEvent($0) }
 		let reviews = store.recordDaily(
-			events: events,
+			events: accepted,
 			origin: .watchHistory,
 			windowStart: now.addingTimeInterval(-8 * 3_600),
 			windowEnd: now,

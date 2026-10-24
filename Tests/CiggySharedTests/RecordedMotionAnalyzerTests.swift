@@ -49,6 +49,7 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         var analyzer = RecordedMotionAnalyzer()
         var detected = samples(cycles: 5).compactMap { analyzer.record($0) }
         analyzer = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(analyzer))
+        for sample in rest(from: 100, to: 275) { XCTAssertNil(analyzer.record(sample)) }
         detected += samples(cycles: 5, offset: 275).compactMap { analyzer.record($0) }
         XCTAssertEqual(detected.count, 2)
         XCTAssertEqual(Set(detected.map(\.id)).count, 2)
@@ -78,6 +79,7 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
             if let candidate = analyzer.record(input) { detected.append(candidate) }
         }
         XCTAssertTrue(detected.isEmpty, "Four intact cycles cannot become a five-cycle session")
+        for sample in rest(from: 100, to: 300) { XCTAssertNil(analyzer.record(sample)) }
         let recovered = samples(cycles: 5, offset: 300).compactMap { analyzer.record($0) }
         XCTAssertEqual(recovered.count, 1)
     }
@@ -87,6 +89,12 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         XCTAssertEqual(analyzer.sampleInterval, 0.1)
         XCTAssertEqual(analyzer.gravityTimeConstant, 0.25)
         XCTAssertEqual(samples(cycles: 5).compactMap { analyzer.record($0) }.count, 1)
+    }
+
+    private func rest(from lower: Double, to upper: Double) -> [RecordedAccelerationSample] {
+        (0..<Int((upper - lower) * 10)).map {
+            .init(timestamp: start.addingTimeInterval(lower + Double($0) / 10), x: 0, y: 0, z: -1)
+        }
     }
 
     private func samples(cycles: Int, offset: Double = 0) -> [RecordedAccelerationSample] {

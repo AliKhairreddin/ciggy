@@ -117,8 +117,9 @@ final class CiggyAdaptiveUITests: XCTestCase {
 		XCTAssertTrue(controls.waitForExistence(timeout: 5))
 		XCTAssertFalse(app.buttons["save-phone-log"].exists)
 		let log = app.buttons["phone-log-button"]
-		for _ in 0..<16 where !log.isHittable { controls.swipeUp(velocity: .slow) }
+		scrollTo(log, in: controls)
 		XCTAssertTrue(log.isHittable)
+		XCTAssertTrue(controls.frame.insetBy(dx: 0, dy: 12).contains(log.frame))
 		capture(app, "Tabletop with large text")
 		log.tap()
 		let save = app.buttons["save-phone-log"]

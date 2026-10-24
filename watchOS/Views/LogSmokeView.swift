@@ -9,6 +9,7 @@ struct LogSmokeView: View {
 	@EnvironmentObject private var repository: EventRepository
 	@State private var notes = ""
 	@State private var didSave = false
+	@State private var saveError: String?
 
 	var body: some View {
 		ScrollView {
@@ -33,8 +34,12 @@ struct LogSmokeView: View {
 					.padding(6)
 					.background(palette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
+				if let saveError {
+					Text(saveError).font(.caption2).foregroundStyle(palette.secondaryText)
+						.accessibilityIdentifier("watch-log-save-error")
+				}
 				Button(action: save) {
-					Label("Save 1", systemImage: "checkmark")
+					Label(saveError == nil ? "Save 1" : "Retry save", systemImage: "checkmark")
 						.font(.system(size: 14, weight: .bold))
 						.foregroundStyle(CiggyTheme.deepInk)
 						.frame(maxWidth: .infinity)
@@ -56,7 +61,6 @@ struct LogSmokeView: View {
 
 	private func save() {
 		guard !didSave else { return }
-		didSave = true
 		let now = Date()
 		let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 		let event = SmokingEvent(
@@ -65,8 +69,12 @@ struct LogSmokeView: View {
 			heartRate: HealthKitManager.shared.freshHeartRate(at: now),
 			notes: trimmedNotes.isEmpty ? nil : trimmedNotes
 		)
-		repository.addEvent(event)
-		ConnectivityManager.shared.send(event: event)
+		guard repository.addEvent(event) else {
+			saveError = repository.lastPersistenceError ?? "Couldn't save your cigarette. Your note is still here; try again."
+			return
+		}
+		didSave = true
+		saveError = nil
 		dismiss()
 	}
 }

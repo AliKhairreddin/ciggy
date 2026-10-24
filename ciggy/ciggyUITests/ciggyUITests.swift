@@ -74,6 +74,46 @@ final class ciggyUITests: XCTestCase {
     }
 
     @MainActor
+    func testHistoricalCorrectionPersistsAcrossRelaunch() throws {
+        let app = XCUIApplication()
+        app.launch()
+        openSettings(app)
+        let preview = app.buttons["Preview 6 detected in 8 hours"]
+        for _ in 0..<8 where !preview.isHittable { app.swipeUp() }
+        XCTAssertTrue(preview.isHittable)
+        preview.tap()
+        closeSettings(app)
+
+        let total = app.descendants(matching: .any)["today-count"].firstMatch
+        XCTAssertTrue(total.waitForExistence(timeout: 5))
+        let countBefore = try XCTUnwrap(Int(total.label.split(separator: " ").first ?? ""))
+        let adjust = app.buttons["Adjust count"].firstMatch
+        for _ in 0..<10 where !adjust.isHittable { app.swipeUp() }
+        XCTAssertTrue(adjust.isHittable)
+        adjust.tap()
+
+        let stepper = app.steppers["review-count-stepper"]
+        XCTAssertTrue(stepper.waitForExistence(timeout: 3))
+        let originalCount = try XCTUnwrap(Int(stepper.value as? String ?? ""))
+        XCTAssertGreaterThan(originalCount, 0)
+        stepper.buttons["review-count-stepper-Decrement"].tap()
+        XCTAssertEqual(stepper.value as? String, "\(originalCount - 1)")
+        let save = app.buttons["save-review-correction"]
+        for _ in 0..<5 where !save.isHittable { app.swipeUp() }
+        save.tap()
+
+        XCTAssertTrue(stepper.waitForNonExistence(timeout: 5), "A successful durable correction dismisses its sheet.")
+        for _ in 0..<10 where !total.isHittable { app.swipeDown() }
+        let expected = "\(countBefore - 1) cigarettes today"
+        expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: total)
+        waitForExpectations(timeout: 5)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(total.waitForExistence(timeout: 5))
+        XCTAssertEqual(total.label, expected)
+    }
+
+    @MainActor
     func testPhoneLoggingAndUndo() throws {
         let app = XCUIApplication()
         app.launch()
@@ -151,8 +191,11 @@ final class ciggyUITests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         let log = app.buttons["phone-log-button"]
-        for _ in 0..<8 where !log.isHittable { app.swipeUp() }
+        let pane = app.scrollViews["compact-pane"]
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        scrollTo(log, in: pane)
         XCTAssertTrue(log.isHittable)
+        XCTAssertTrue(pane.frame.insetBy(dx: 0, dy: 12).contains(log.frame))
         capture(app, name: "Today with large text")
         log.tap()
         XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 3))
@@ -238,6 +281,21 @@ final class ciggyUITests: XCTestCase {
         let back = app.navigationBars.buttons.firstMatch
         XCTAssertTrue(back.waitForExistence(timeout: 3))
         back.tap()
+    }
+
+    @MainActor
+    private func scrollTo(_ target: XCUIElement, in pane: XCUIElement) {
+        // Short bidirectional drags cannot skip a control and keep moving away.
+        for _ in 0..<40 {
+            let targetFrame = target.frame
+            let viewport = pane.frame.insetBy(dx: 0, dy: 12)
+            if viewport.contains(targetFrame), target.isHittable { return }
+            let start = pane.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+            let end = pane.coordinate(withNormalizedOffset: CGVector(
+                dx: 0.85, dy: targetFrame.midY < viewport.minY ? 0.7 : 0.3
+            ))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        }
     }
 
     @MainActor

@@ -10,13 +10,14 @@ struct PhoneLogSmokeView: View {
 	@State private var localNotes = ""
 	var notes: Binding<String>? = nil
 	@State private var didSave = false
+	@State private var saveError: String?
 	let onSave: (SmokingEvent) -> Void
 
 	var body: some View {
 		NavigationStack {
 			ScrollView {
 				VStack(alignment: .leading, spacing: 20) {
-					PhoneLogSmokeForm(notes: notes ?? $localNotes, didSave: didSave, onSave: save)
+					PhoneLogSmokeForm(notes: notes ?? $localNotes, didSave: didSave, saveError: saveError, onSave: save)
 				}.padding(24)
 			}
 			.foregroundStyle(palette.primaryText)
@@ -30,8 +31,12 @@ struct PhoneLogSmokeView: View {
 
 	private func save() {
 		guard !didSave else { return }
+		guard let event = PhoneSmokingLog.save(notes: notes?.wrappedValue ?? localNotes, repository: repository) else {
+			saveError = repository.lastPersistenceError ?? "Couldn't save your cigarette. Your note is still here; try again."
+			return
+		}
 		didSave = true
-		let event = PhoneSmokingLog.save(notes: notes?.wrappedValue ?? localNotes, repository: repository)
+		saveError = nil
 		notes?.wrappedValue = ""
 		localNotes = ""
 		onSave(event)
@@ -44,6 +49,7 @@ struct PhoneLogSmokeForm: View {
 	@FocusState private var isEditingNotes: Bool
 	@Binding var notes: String
 	let didSave: Bool
+	let saveError: String?
 	let onSave: () -> Void
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 
@@ -63,12 +69,16 @@ struct PhoneLogSmokeForm: View {
 				.accessibilityIdentifier("phone-log-note")
 				.disabled(didSave)
 				.focused($isEditingNotes)
+			if let saveError {
+				Text(saveError).font(.caption).foregroundStyle(palette.secondaryText)
+					.accessibilityIdentifier("phone-log-save-error")
+			}
 			Button(action: onSave) {
-				Label(didSave ? "Cigarette logged" : "Save 1 cigarette", systemImage: "checkmark")
+				Label(didSave ? "Cigarette logged" : (saveError == nil ? "Save 1 cigarette" : "Retry saving cigarette"), systemImage: "checkmark")
 					.font(.headline).frame(maxWidth: .infinity).padding(18)
 					.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
 			}.buttonStyle(.plain).disabled(didSave).accessibilityIdentifier("save-phone-log")
-			Text("Added to today and sent to your paired Watch.").font(.caption).foregroundStyle(palette.secondaryText)
+			Text("Saves to today and syncs with your paired Watch.").font(.caption).foregroundStyle(palette.secondaryText)
 		}.foregroundStyle(palette.primaryText)
 		.toolbar {
 			ToolbarItemGroup(placement: .keyboard) {
@@ -81,11 +91,10 @@ struct PhoneLogSmokeForm: View {
 
 @MainActor
 enum PhoneSmokingLog {
-	static func save(notes: String, repository: EventRepository) -> SmokingEvent {
+	static func save(notes: String, repository: EventRepository) -> SmokingEvent? {
 		let note = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 		let event = SmokingEvent(source: .manual, notes: note.isEmpty ? nil : note)
-		repository.addEvent(event)
-		ConnectivityManager.shared.send(event: event)
+		guard repository.addEvent(event) else { return nil }
 		return event
 	}
 }

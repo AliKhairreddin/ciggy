@@ -19,6 +19,7 @@ struct DashboardView: View {
 	@State private var reviewToAdjust: DetectionReview?
 	@State private var isLogging = false
 	@State private var lastLoggedEvent: SmokingEvent?
+	@State private var undoError: String?
 	@State private var loggingNotes = ""
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -78,10 +79,12 @@ struct DashboardView: View {
 		.refreshable { ConnectivityManager.shared.requestHistoryRefresh() }
 		.onReceive(NotificationCenter.default.publisher(for: Notification.Name("Ciggy.widgetLogSaved"))) { notification in
 			lastLoggedEvent = notification.object as? SmokingEvent
+			undoError = nil
 		}
 		.sheet(isPresented: $isLogging) {
 			PhoneLogSmokeView(notes: $loggingNotes) { event in
 				lastLoggedEvent = event
+				undoError = nil
 			}
 			.presentationDetents([.medium, .large])
 			.presentationDragIndicator(.visible)
@@ -107,15 +110,23 @@ struct DashboardView: View {
 				Label("Logged. No judgment.", systemImage: "checkmark.circle.fill")
 				HStack {
 					Button("Undo") {
-						repository.removeEvent(id: event.id)
-						ConnectivityManager.shared.sendDeletedEvent(id: event.id)
-						lastLoggedEvent = nil
+						let removed = repository.removeEvent(id: event.id)
+						if removed || repository.lastPersistenceError == nil {
+							lastLoggedEvent = nil
+							undoError = nil
+						} else {
+							undoError = repository.lastPersistenceError
+						}
 					}.fontWeight(.bold).accessibilityIdentifier("undo-phone-log")
 						.frame(minHeight: 44)
 					Spacer()
-					Button { lastLoggedEvent = nil } label: {
+					Button { lastLoggedEvent = nil; undoError = nil } label: {
 						Image(systemName: "xmark").frame(width: 44, height: 44)
 					}.accessibilityLabel("Dismiss log confirmation")
+				}
+				if let undoError {
+					Text(undoError).font(.caption)
+						.accessibilityIdentifier("phone-undo-save-error")
 				}
 			}
 			.font(.subheadline).padding(16)
@@ -323,14 +334,32 @@ struct DashboardView: View {
 
 	private var detectionExperience: some View {
 		VStack(alignment: .leading, spacing: 2) {
-			detectionStatus
+			trackingFreshnessCard
 			manualLogButton
+			detectionReviews
 		}
 	}
 
 	@ViewBuilder
 	private var detectionStatus: some View {
 		trackingFreshnessCard
+		detectionReviews
+	}
+
+	@ViewBuilder
+	private var detectionReviews: some View {
+		if let error = reviewStore.lastPersistenceError {
+			CiggyPanel {
+				VStack(alignment: .leading, spacing: 10) {
+					Text(error).font(.caption).foregroundStyle(palette.secondaryText)
+					if reviewStore.pendingTransmissions.isEmpty == false {
+						Button("Retry saved review") { _ = reviewStore.retryPendingCorrections() }
+							.font(.subheadline.weight(.semibold))
+					}
+				}
+				.accessibilityIdentifier("review-recovery-status")
+			}
+		}
 		let todayReviews = reviewStore.reviews(on: Date())
 		if todayReviews.isEmpty {
 			detectionReadyCard
@@ -482,9 +511,9 @@ struct DashboardView: View {
 		case .pending:
 			return ""
 		case .accurate:
-			return "Marked accurate on your devices"
+			return "Marked accurate · syncs with your paired Watch"
 		case .adjusted:
-			return "Count adjusted to \(review.displayCount) on your devices"
+			return "Count adjusted to \(review.displayCount) · syncs with your paired Watch"
 		}
 	}
 
@@ -544,11 +573,13 @@ private struct DetectionCountAdjustmentView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@Environment(\.dismiss) private var dismiss
+	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	let review: DetectionReview
-	let onSave: (Int) -> Void
+	let onSave: (Int) -> Bool
 	@State private var count: Int
+	@State private var saveFailed = false
 
-	init(review: DetectionReview, onSave: @escaping (Int) -> Void) {
+	init(review: DetectionReview, onSave: @escaping (Int) -> Bool) {
 		self.review = review
 		self.onSave = onSave
 		_count = State(initialValue: review.displayCount)
@@ -572,19 +603,28 @@ private struct DetectionCountAdjustmentView: View {
 								Text("\(count)")
 									.font(.title.weight(.black))
 									.foregroundStyle(palette.mint)
+									.accessibilityIdentifier("review-corrected-count")
 							}
 						}
 						.padding()
 						.background(palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+						.accessibilityIdentifier("review-count-stepper")
+						.accessibilityValue("\(count)")
 
 						Text("Corrects these detections on iPhone and Apple Watch, not your entire daily total. Times stay within this summary's date and window.")
 							.font(.caption)
 							.foregroundStyle(palette.secondaryText)
 							.multilineTextAlignment(.center)
 
-						Button("Save corrected count") {
-							onSave(count)
-							dismiss()
+						if saveFailed {
+							Text(reviewStore.lastPersistenceError ?? "Couldn't finish saving. Your count is still here; try again.")
+								.font(.caption).foregroundStyle(palette.secondaryText)
+								.accessibilityIdentifier("review-save-error")
+						}
+
+						Button(saveFailed ? "Retry corrected count" : "Save corrected count") {
+							if onSave(count) { dismiss() }
+							else { saveFailed = true }
 						}
 						.font(.headline)
 						.foregroundStyle(CiggyTheme.deepInk)
@@ -592,6 +632,7 @@ private struct DetectionCountAdjustmentView: View {
 						.padding(.vertical, 15)
 						.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 						.buttonStyle(.plain)
+						.accessibilityIdentifier("save-review-correction")
 					}
 					.padding(22)
 				}

@@ -15,6 +15,8 @@ This review covered the shared repositories, synchronization and review workflow
 
 ## Remaining risks and validation limits
 
+The code-level risks below describe build 10. Their build 11 resolution and new validation are documented in the [reliability follow-up](reliability-build-11.md).
+
 These changes do not establish that the app is free of bugs or that wrist-motion recognition is accurate in daily use.
 
 1. **Concurrent corrections:** independently adjusting the same review on both devices while disconnected can create conflicting event mutations. Added correction events currently have random IDs, so two independent increases can both survive while only one review decision wins. A durable correction transaction with deterministic mutation identity and reconciliation is still required.

@@ -25,6 +25,15 @@ struct WatchDashboardView: View {
 					todayRing(size: min(106, max(76, geometry.size.height - 100)))
 					motionStatus
 					syncStatus
+					if let error = reviewStore.lastPersistenceError {
+						VStack(alignment: .leading, spacing: 6) {
+							Text(error).font(.system(size: 9)).foregroundStyle(palette.secondaryText)
+							if reviewStore.pendingTransmissions.isEmpty == false {
+								Button("Retry saved review") { _ = reviewStore.retryPendingCorrections() }
+									.font(.system(size: 10, weight: .semibold))
+							}
+						}.accessibilityIdentifier("review-recovery-status")
+					}
 					ForEach(reviewStore.reviews(on: Date())) { review in
 						detectionReviewCard(review)
 					}
@@ -315,11 +324,13 @@ private struct WatchDetectionCountAdjustmentView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	@Environment(\.dismiss) private var dismiss
+	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	let review: DetectionReview
-	let onSave: (Int) -> Void
+	let onSave: (Int) -> Bool
 	@State private var count: Int
+	@State private var saveFailed = false
 
-	init(review: DetectionReview, onSave: @escaping (Int) -> Void) {
+	init(review: DetectionReview, onSave: @escaping (Int) -> Bool) {
 		self.review = review
 		self.onSave = onSave
 		_count = State(initialValue: review.displayCount)
@@ -343,9 +354,14 @@ private struct WatchDetectionCountAdjustmentView: View {
 					Text("Changes this summary on both devices, not your whole daily total.")
 						.font(.system(size: 9))
 						.foregroundStyle(palette.secondaryText)
-					Button("Save") {
-						onSave(count)
-						dismiss()
+					if saveFailed {
+						Text(reviewStore.lastPersistenceError ?? "Couldn't finish saving. Your count is still here; try again.")
+							.font(.system(size: 9)).foregroundStyle(palette.secondaryText)
+							.accessibilityIdentifier("review-save-error")
+					}
+					Button(saveFailed ? "Retry" : "Save") {
+						if onSave(count) { dismiss() }
+						else { saveFailed = true }
 					}
 					.font(.headline)
 					.foregroundStyle(CiggyTheme.deepInk)
@@ -353,6 +369,7 @@ private struct WatchDetectionCountAdjustmentView: View {
 					.padding(.vertical, 9)
 					.background(CiggyTheme.brandGradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 					.buttonStyle(.plain)
+					.accessibilityIdentifier("save-watch-review-correction")
 					Button("Cancel") { dismiss() }
 						.font(.system(size: 11, weight: .semibold))
 						.foregroundStyle(palette.secondaryText)

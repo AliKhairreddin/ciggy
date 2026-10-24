@@ -15,6 +15,10 @@ public struct SmokingEvent: Identifiable, Codable, Equatable, Sendable {
 	/// First completed gesture supporting an automatic event; nil for older events.
 	public let motionSessionStartedAt: Date?
 	public var notes: String?
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, source, heartRate, motionSessionStartedAt, notes
+        case timestampReferenceTime, motionSessionReferenceTime
+    }
 
 	public init(
 		id: UUID = UUID(),
@@ -31,6 +35,30 @@ public struct SmokingEvent: Identifiable, Codable, Equatable, Sendable {
 		self.notes = notes
 		self.motionSessionStartedAt = motionSessionStartedAt
 	}
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let timestamp = try values.decodeIfPresent(Double.self, forKey: .timestampReferenceTime)
+            .map { Date(timeIntervalSinceReferenceDate: $0) } ?? values.decode(Date.self, forKey: .timestamp)
+        let sessionStart = try values.decodeIfPresent(Double.self, forKey: .motionSessionReferenceTime)
+            .map { Date(timeIntervalSinceReferenceDate: $0) } ?? values.decodeIfPresent(Date.self, forKey: .motionSessionStartedAt)
+        self.init(id: try values.decode(UUID.self, forKey: .id), timestamp: timestamp,
+                  source: try values.decode(SmokingEventSource.self, forKey: .source),
+                  heartRate: try values.decodeIfPresent(Double.self, forKey: .heartRate),
+                  notes: try values.decodeIfPresent(String.self, forKey: .notes), motionSessionStartedAt: sessionStart)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(timestamp, forKey: .timestamp)
+        try values.encode(timestamp.timeIntervalSinceReferenceDate, forKey: .timestampReferenceTime)
+        try values.encode(source, forKey: .source)
+        try values.encodeIfPresent(heartRate, forKey: .heartRate)
+        try values.encodeIfPresent(notes, forKey: .notes)
+        try values.encodeIfPresent(motionSessionStartedAt, forKey: .motionSessionStartedAt)
+        try values.encodeIfPresent(motionSessionStartedAt?.timeIntervalSinceReferenceDate, forKey: .motionSessionReferenceTime)
+    }
+
 }
 
 public extension SmokingEvent {

@@ -12,19 +12,9 @@ struct HistoricalMotionBatch: Sendable {
 	let analyzer: RecordedMotionAnalyzer
 	let latestSampleAt: Date?
 	let pendingRanges: [MotionHistoryRange]
+	let replayCheckpoints: [MotionHistoryReplayCheckpoint]
 	let didExpireHistory: Bool
 	let recentPending: Bool
-}
-
-private struct MotionHistoryCheckpoint: Codable {
-	let processedThrough: Date
-	let analyzer: RecordedMotionAnalyzer
-	// Optional fields preserve checkpoints written before reconciliation existed.
-	let latestSampleAt: Date?
-	let pendingRanges: [MotionHistoryRange]?
-	let hasExpiredHistory: Bool?
-	let checkedAt: Date?
-	let backlogPending: Bool?
 }
 
 /// Arms watchOS historical accelerometer capture and analyzes the recorded backlog during
@@ -38,6 +28,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 	@Published private(set) var isCaptureArmed = false
 	@Published private(set) var isProcessingHistory = false
 	@Published private(set) var lastError: String?
+	private var runtimePersistenceError: String?
 	@Published private(set) var lastHistorySampleAt: Date?
 	@Published private(set) var lastHistoryCheckedAt: Date?
 	@Published private(set) var hasPendingHistory = false
@@ -45,8 +36,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 
 	private let recorder = CMSensorRecorder()
 	private let userDefaults: UserDefaults
-	private let cursorKey = "BackgroundMotionMonitor.processedThrough.v1"
-	private let checkpointKey = "BackgroundMotionMonitor.checkpoint.v2"
+	private let checkpointStore: MotionHistoryCheckpointStore
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
 	private let scheduledRefreshKey = "BackgroundMotionMonitor.scheduledRefresh.v1"
 	private let captureDuration: TimeInterval = 12 * 60 * 60
@@ -58,15 +48,17 @@ final class BackgroundMotionMonitor: ObservableObject {
 
 	private init(userDefaults: UserDefaults = .standard) {
 		self.userDefaults = userDefaults
+		checkpointStore = MotionHistoryCheckpointStore(userDefaults: userDefaults)
 		lastHistorySampleAt = checkpoint?.latestSampleAt
 		lastHistoryCheckedAt = checkpoint?.checkedAt
 		hasPendingHistory = checkpoint?.pendingRanges?.isEmpty == false || checkpoint?.backlogPending == true
 		hasExpiredHistory = checkpoint?.hasExpiredHistory ?? false
+		lastError = checkpointStore.lastError
 		refreshStatus()
 	}
 
 	var statusDetail: String {
-		if let lastError { return lastError }
+		if let error = runtimePersistenceError ?? lastError { return error }
 		if hasPendingHistory { return "Some motion history is unavailable. Ciggy retries it while watchOS retains the recording; recent available activity still updates." }
 		if hasExpiredHistory { return "Some older motion history expired before it could be checked, so past totals may be incomplete. Recent available activity still updates." }
 		if isCaptureAvailable == false { return "Automatic detection needs a physical Apple Watch with motion access." }
@@ -115,7 +107,11 @@ final class BackgroundMotionMonitor: ObservableObject {
 		}
 
 		let now = Date()
-		if processedThrough == nil { userDefaults.set(now, forKey: cursorKey) }
+		guard checkpointStore.beginCapture(at: now) else {
+			lastError = checkpointStore.lastError
+			publishStatus()
+			return
+		}
 		let armedUntil = userDefaults.object(forKey: armedUntilKey) as? Date
 		if MotionCapturePolicy.shouldRenew(at: now, armedUntil: armedUntil) {
 			recorder.recordAccelerometer(forDuration: captureDuration)
@@ -133,6 +129,12 @@ final class BackgroundMotionMonitor: ObservableObject {
 		userDefaults.removeObject(forKey: scheduledRefreshKey)
 	}
 
+	func reportPersistenceError(_ error: String?) {
+		guard runtimePersistenceError != error else { return }
+		runtimePersistenceError = error
+		publishStatus()
+	}
+
 	func publishStatus() {
 		let status = TrackingStatus(
 			historyCheckedAt: lastHistoryCheckedAt,
@@ -142,7 +144,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 			expiredHistory: hasExpiredHistory,
 			captureAvailable: isCaptureAvailable,
 			permissionGranted: CMSensorRecorder.authorizationStatus() == .authorized,
-			lastError: lastError,
+			lastError: runtimePersistenceError ?? lastError,
 			isProcessing: isProcessingHistory,
 			calibration: BackgroundCalibrationCollector.shared.status
 		)
@@ -155,6 +157,10 @@ final class BackgroundMotionMonitor: ObservableObject {
 	func processAvailableHistory(sensitivity: Double, maximumProcessingTime: TimeInterval = 20) async -> HistoricalMotionBatch? {
 		refreshStatus()
 		guard isCaptureAvailable, isProcessingHistory == false else { return nil }
+		guard checkpointStore.loadFailed == false else {
+			lastError = checkpointStore.lastError
+			return nil
+		}
 		guard CMSensorRecorder.authorizationStatus() == .authorized else { return nil }
 		guard let storedCursor = processedThrough else { return nil }
 
@@ -171,12 +177,16 @@ final class BackgroundMotionMonitor: ObservableObject {
 		analyzer.updateSensitivity(sensitivity)
 		let initialAnalyzer = analyzer
 		let pendingRanges = checkpoint?.pendingRanges ?? []
+		let replayCheckpoints = checkpoint?.replayCheckpoints ?? []
+		let sourceStartedAt = checkpoint?.sourceStartedAt
 		let processing = Task.detached(priority: .utility) {
 			HistoricalMotionProcessor.process(
 				from: start,
 				to: end,
 				analyzer: initialAnalyzer,
 				pendingRanges: pendingRanges,
+				replayCheckpoints: replayCheckpoints,
+				sourceStartedAt: sourceStartedAt,
 				sensitivity: sensitivity,
 				queryChunkDuration: queryChunkDuration,
 				maximumProcessingTime: maximumProcessingTime
@@ -195,40 +205,45 @@ final class BackgroundMotionMonitor: ObservableObject {
 			analyzer: result.history.analyzer,
 			latestSampleAt: [result.recent.latestSampleAt, result.history.latestSampleAt].compactMap { $0 }.max(),
 			pendingRanges: result.history.pendingRanges,
+			replayCheckpoints: result.history.replayCheckpoints,
 			didExpireHistory: result.history.expiredRangeCount > 0 || storedCursor < start,
 			recentPending: result.recent.isComplete == false || result.history.processedThrough < end
 		)
 	}
 
-	func commit(_ batch: HistoricalMotionBatch) {
-		guard processedThrough.map({ batch.processedThrough >= $0 }) ?? true else { return }
+	@discardableResult func commit(_ batch: HistoricalMotionBatch) -> Bool {
+		guard processedThrough.map({ batch.processedThrough >= $0 }) ?? true else { return false }
 		let latestSample = [lastHistorySampleAt, batch.latestSampleAt].compactMap { $0 }.max()
 		let checkpoint = MotionHistoryCheckpoint(processedThrough: batch.processedThrough, analyzer: batch.analyzer,
 		                                        latestSampleAt: latestSample,
 		                                        pendingRanges: batch.pendingRanges,
 		                                        hasExpiredHistory: hasExpiredHistory || batch.didExpireHistory,
-		                                        checkedAt: lastHistoryCheckedAt, backlogPending: batch.recentPending)
+		                                        checkedAt: lastHistoryCheckedAt, backlogPending: batch.recentPending,
+		                                        replayCheckpoints: batch.replayCheckpoints,
+		                                        sourceStartedAt: self.checkpoint?.sourceStartedAt)
 		// Cursor and classifier state are one value: a relaunch must not lose a
 		// partial or already counted smoking session from the previous batch.
-		guard let data = try? JSONEncoder().encode(checkpoint) else { return }
-		userDefaults.set(data, forKey: checkpointKey)
+		guard checkpointStore.save(checkpoint) else {
+			lastError = checkpointStore.lastError
+			publishStatus()
+			return false
+		}
 		lastHistorySampleAt = checkpoint.latestSampleAt
 		hasPendingHistory = batch.pendingRanges.isEmpty == false || batch.recentPending
 		hasExpiredHistory = checkpoint.hasExpiredHistory ?? false
+		lastError = nil
 		publishStatus()
+		return true
 	}
 
 	private var processedThrough: Date? {
-		guard let cursor = checkpoint?.processedThrough ?? userDefaults.object(forKey: cursorKey) as? Date,
+		guard let cursor = checkpoint?.processedThrough,
 		      MotionHistoryProcessor.isSupportedDate(cursor) else { return nil }
 		return cursor
 	}
 
 	private var checkpoint: MotionHistoryCheckpoint? {
-		guard let data = userDefaults.data(forKey: checkpointKey) else { return nil }
-		guard let checkpoint = try? JSONDecoder().decode(MotionHistoryCheckpoint.self, from: data),
-		      MotionHistoryProcessor.isSupportedDate(checkpoint.processedThrough) else { return nil }
-		return checkpoint
+		checkpointStore.checkpoint
 	}
 
 	private func refreshStatus() {
@@ -267,6 +282,8 @@ private enum HistoricalMotionProcessor {
 		to end: Date,
 		analyzer initialAnalyzer: RecordedMotionAnalyzer,
 		pendingRanges: [MotionHistoryRange],
+		replayCheckpoints: [MotionHistoryReplayCheckpoint],
+		sourceStartedAt: Date?,
 		sensitivity: Double,
 		queryChunkDuration: TimeInterval,
 		maximumProcessingTime: TimeInterval
@@ -287,11 +304,12 @@ private enum HistoricalMotionProcessor {
 			} }
 		}
 		let recent = MotionHistoryProcessor.processRecent(
-			from: start, to: end, analyzer: initialAnalyzer, sensitivity: sensitivity, query: query,
+			from: start, to: end, analyzer: initialAnalyzer, sourceStartedAt: sourceStartedAt, sensitivity: sensitivity, query: query,
 			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < recentDeadline }
 		)
 		let history = MotionHistoryProcessor.process(
 			from: start, to: end, analyzer: initialAnalyzer, pendingRanges: pendingRanges,
+			replayCheckpoints: replayCheckpoints, sourceStartedAt: sourceStartedAt,
 			sensitivity: sensitivity, queryChunkDuration: queryChunkDuration,
 			query: query,
 			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline }
