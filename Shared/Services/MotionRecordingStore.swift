@@ -26,6 +26,7 @@ public final class MotionRecordingStore: ObservableObject {
     @Published public private(set) var latestRecordingURL: URL?
     @Published public private(set) var lastError: String?
     public let completedRecording = PassthroughSubject<URL, Never>()
+    public var lastReceivedAt: Date? { UserDefaults.standard.object(forKey: "Ciggy.calibration.lastReceivedAt") as? Date }
     private var recording: MotionRecording?
     private var duration: TimeInterval = 5 * 60
     private let maximumSamples = 18_000
@@ -53,7 +54,8 @@ public final class MotionRecordingStore: ObservableObject {
         guard data.count <= 10 * 1_024 * 1_024 else { throw RecordingError.invalidRecording }
         let inbox = inboxDirectory ?? incomingDirectory
         try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
-        try data.write(to: inbox.appendingPathComponent("\(UUID().uuidString).json"), options: .atomic)
+        try data.write(to: inbox.appendingPathComponent("\(UUID().uuidString).json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        if inboxDirectory == nil { UserDefaults.standard.set(Date(), forKey: "Ciggy.calibration.lastReceivedAt") }
     }
 
     private nonisolated static var incomingDirectory: URL {
@@ -141,7 +143,7 @@ public final class MotionRecordingStore: ObservableObject {
         let imported = try Self.decodeValidatedRecording(data)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("motion-\(imported.id.uuidString).json")
-        try data.write(to: url, options: .atomic)
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         latestRecordingURL = url
         lastError = nil
         return url

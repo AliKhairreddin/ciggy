@@ -272,7 +272,7 @@ final class WatchAppCoordinator: ObservableObject {
 			// Keep the live buffer continuous across ordinary history checks.
 			await BackgroundCalibrationCollector.shared.collect(
 				enabledAt: self?.settingsStore?.settings.calibrationEnabledAt,
-				maximumProcessingTime: WKApplication.shared().applicationState == .active ? 6 : 1
+				maximumProcessingTime: 6
 			)
 			guard Task.isCancelled == false else { return }
 			await self?.processHistory()

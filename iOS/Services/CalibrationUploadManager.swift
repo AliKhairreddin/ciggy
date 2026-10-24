@@ -11,10 +11,16 @@ import UIKit
 final class CalibrationUploadManager: NSObject, ObservableObject {
     static let shared = CalibrationUploadManager()
     static let origin = URL(string: "https://ciggy.thatcanadian.dev")!
+    nonisolated static let statusTaskName = "delivery-status-v1:="
+    nonisolated static func isDeliveryReport(_ name: String?) -> Bool { name?.hasPrefix(statusTaskName) == true }
+    private var preparationLease: UIBackgroundTaskIdentifier = .invalid
+    private let statusDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("CiggyDeliveryStatus", isDirectory: true)
     static let sessionIdentifier = "dev.thatcanadian.ciggy.calibration.upload.v1"
     @Published private(set) var alias: String
     @Published private(set) var isEnrolled = false
     @Published private(set) var pendingCount = 0
+    @Published private(set) var scheduledCount = 0
+    @Published private(set) var nextRetryAt: Date?
     @Published private(set) var lastUploadedAt: Date?
     @Published private(set) var lastError: String?
     @Published private(set) var isWorking = false
@@ -82,6 +88,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
     func bind(settings: UserSettingsStore) {
         guard self.settings == nil else { return }
         self.settings = settings
+        beginPreparationLease()
         _ = ensureSession()
         settings.$settings.map(\.calibrationEnabledAt).removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -93,7 +100,10 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         MotionRecordingStore.shared.$latestRecordingURL
             .sink { @MainActor [weak self] _ in self?.flush() }
             .store(in: &subscriptions)
-        if requiresPairing { stopSharing() } else { flush() }
+        TrackingStatusStore.shared.$status
+            .dropFirst().debounce(for: .seconds(2), scheduler: DispatchQueue.main)
+            .sink { @MainActor [weak self] _ in self?.flush() }.store(in: &subscriptions)
+        if requiresPairing { stopSharing(); endPreparationLease() } else { flush() }
     }
 
     func enroll(code: String, alias: String) async throws {
@@ -198,9 +208,14 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
     func flush() {
         pruneExpiredHistory()
         guard isWorking == false, requiresPairing == false,
-              let enabledAt = settings?.settings.calibrationEnabledAt, let token = credential() else { return }
+              let enabledAt = settings?.settings.calibrationEnabledAt, let token = credential() else {
+            if !isFlushing { endPreparationLease() }
+            return
+        }
         guard !isFlushing else { needsFlush = true; return }
         isFlushing = true
+        beginPreparationLease()
+        CalibrationBackgroundDelivery.shared.schedule()
         let currentGeneration = generation
         let uploadSession = ensureSession()
         uploadSession.getAllTasks { [weak self] tasks in
@@ -210,6 +225,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                     self.preparation = nil
                     self.isFlushing = false
                     if self.needsFlush { self.needsFlush = false; self.flush() }
+                    else { self.endPreparationLease() }
                     self.finishBackgroundEventsIfReady()
                 }
                 guard self.generation == currentGeneration, self.isWorking == false,
@@ -218,7 +234,8 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 let consentHeader = String(enabledAt.timeIntervalSince1970)
                 for task in tasks where task.originalRequest?.value(forHTTPHeaderField: "X-Ciggy-Consent") != consentHeader ||
                     task.originalRequest?.value(forHTTPHeaderField: "Authorization") != "Bearer \(token)" { task.cancel() }
-                let activeNames = Set(tasks.filter {
+                let motionTasks = tasks.filter { !Self.isDeliveryReport($0.taskDescription) }
+                let activeNames = Set(motionTasks.filter {
                     ($0.state == .running || $0.state == .suspended) &&
                     $0.originalRequest?.value(forHTTPHeaderField: "X-Ciggy-Consent") == consentHeader &&
                     $0.originalRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)"
@@ -242,7 +259,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 }
                 let valid = Set(prepared.eligible.map(\.name))
                 var active = Set<String>()
-                for task in tasks {
+                for task in motionTasks {
                     let name = task.taskDescription ?? ""
                     guard valid.contains(name), task.state != .canceling, task.state != .completed,
                           task.originalRequest?.value(forHTTPHeaderField: "X-Ciggy-Consent") == String(enabledAt.timeIntervalSince1970),
@@ -252,10 +269,10 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 self.backoff.prune(keeping: valid, at: Date())
                 self.saveBackoff()
                 self.pendingCount = prepared.eligible.count
-                var capacity = max(0, 2 - active.count)
+                var capacity = max(0, CalibrationUploadPolicy.maximumScheduledFiles - active.count)
                 for item in prepared.staged {
                     guard capacity > 0, active.contains(item.name) == false,
-                          self.backoff.allows(item.name, at: Date()), item.expiresAt > Date() else {
+                          item.expiresAt > Date() else {
                         Self.removeStaged([item.body])
                         continue
                     }
@@ -266,10 +283,15 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                     request.setValue(String(enabledAt.timeIntervalSince1970), forHTTPHeaderField: "X-Ciggy-Consent")
                     let task = uploadSession.uploadTask(with: request, fromFile: item.body)
                     task.taskDescription = item.name
+                    task.earliestBeginDate = self.backoff.nextAttempt(for: item.name, at: Date())
+                    task.countOfBytesClientExpectsToSend = Int64((try? item.body.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
                     task.resume()
                     active.insert(item.name)
                     capacity -= 1
                 }
+                self.scheduledCount = active.count
+                self.nextRetryAt = prepared.eligible.map { self.backoff.nextAttempt(for: $0.name, at: now) }.filter { $0 > now }.min()
+                self.scheduleDeliveryReport(tasks: tasks, consent: enabledAt, token: token)
                 if prepared.failed { self.lastError = "Could not queue a motion recording. The original remains saved for retry." }
             }
         }
@@ -289,7 +311,71 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
             }
         }
         try? FileManager.default.removeItem(at: queueDirectory)
+        try? FileManager.default.removeItem(at: statusDirectory)
+        UserDefaults.standard.removeObject(forKey: "Ciggy.calibration.statusQueuedAt")
         pendingCount = 0
+        scheduledCount = 0
+        nextRetryAt = nil
+        CalibrationBackgroundDelivery.shared.cancel()
+    }
+
+    private func beginPreparationLease() {
+        guard preparationLease == .invalid else { return }
+        preparationLease = UIApplication.shared.beginBackgroundTask(withName: "Prepare saved motion uploads") { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.preparation?.cancel()
+                self?.needsFlush = false
+                self?.endPreparationLease()
+            }
+        }
+    }
+
+    private func endPreparationLease() {
+        guard preparationLease != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(preparationLease)
+        preparationLease = .invalid
+    }
+
+    /// A recovery wake only prepares optional calibration; no history/detection
+    /// request or cigarette mutation is involved.
+    func recoverInBackground() async -> Bool {
+        MotionRecordingStore.shared.recoverIncomingRecordings()
+        flush()
+        let deadline = Date().addingTimeInterval(20)
+        while isFlushing && Date() < deadline && !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if Task.isCancelled { preparation?.cancel() }
+        return !isFlushing && !Task.isCancelled
+    }
+
+    private func scheduleDeliveryReport(tasks: [URLSessionTask], consent: Date, token: String) {
+        guard !tasks.contains(where: { Self.isDeliveryReport($0.taskDescription) && ($0.state == .running || $0.state == .suspended) }) else { return }
+        let now = Date()
+        let last = UserDefaults.standard.object(forKey: "Ciggy.calibration.statusQueuedAt") as? Date
+        guard last.map({ $0 > now || now.timeIntervalSince($0) >= 30 * 60 }) ?? true else { return }
+        let report = CalibrationDeliveryReport(observedAt: now, consentAt: consent,
+            phoneBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
+            phoneLastReceivedAt: MotionRecordingStore.shared.lastReceivedAt, phoneLastUploadedAt: lastUploadedAt,
+            phonePendingCount: pendingCount, phoneScheduledCount: scheduledCount, phoneRetryAt: nextRetryAt,
+            watchStatus: TrackingStatusStore.shared.status?.calibration)
+        do {
+            try FileManager.default.createDirectory(at: statusDirectory, withIntermediateDirectories: true)
+            let reportID = UUID().uuidString
+            let body = statusDirectory.appendingPathComponent(reportID + ".json")
+            try report.encoded().write(to: body, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            var request = URLRequest(url: Self.origin.appendingPathComponent("api/upload"))
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(String(consent.timeIntervalSince1970), forHTTPHeaderField: "X-Ciggy-Consent")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("delivery-status", forHTTPHeaderField: "X-Ciggy-Payload")
+            let task = ensureSession().uploadTask(with: request, fromFile: body)
+            task.taskDescription = Self.statusTaskName + reportID
+            task.earliestBeginDate = backoff.providerRetryAt
+            task.resume()
+            UserDefaults.standard.set(now, forKey: "Ciggy.calibration.statusQueuedAt")
+        } catch { /* Saved recordings and their upload state are unaffected. */ }
     }
 
     private struct QueueEntry: Sendable {
@@ -369,10 +455,13 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
             let name = url.lastPathComponent
             if valid.contains(name) == false { try? FileManager.default.removeItem(at: url) }
         }
-        let capacity = max(0, 2 - activeNames.intersection(valid).count)
+        let capacity = max(0, CalibrationUploadPolicy.maximumScheduledFiles - activeNames.intersection(valid).count)
         let choices = result.eligible.sorted { $0.startedAt > $1.startedAt }.filter {
-            activeNames.contains($0.name) == false && backoff.allows($0.name, at: now)
+            activeNames.contains($0.name) == false
         }.prefix(capacity)
+        var scheduledBytes = activeNames.reduce(0) { total, name in
+            total + ((try? directory.appendingPathComponent(name).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
         for item in choices {
             guard Task.isCancelled == false else {
                 removeStaged(result.staged.map(\.body)); result.staged = []; result.cancelled = true; return result
@@ -392,6 +481,8 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 // Imports can contain unknown JSON keys. Only the declared motion
                 // fields may leave this iPhone, never unrelated attached metadata.
                 let payload = try JSONEncoder().encode(recording)
+                guard scheduledBytes + payload.count <= CalibrationUploadPolicy.maximumScheduledBytes else { continue }
+                scheduledBytes += payload.count
                 try payload.write(to: body, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
                 result.staged.append(.init(name: item.name, body: body, expiresAt: item.expiresAt))
             } catch { result.failed = true }
@@ -438,10 +529,16 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         }
     }
 
-    private func completed(taskID: Int, name: String?, response: HTTPURLResponse?, error: String?,
+    private func completed(taskID: Int, name: String?, response: HTTPURLResponse?, error: String?, errorCode: Int?,
                            authorization: String?, consent: String?) {
         let body = responses.removeValue(forKey: taskID) ?? Data()
         guard let name else { return }
+        if Self.isDeliveryReport(name) {
+            let id = String(name.dropFirst(Self.statusTaskName.count))
+            if UUID(uuidString: id) != nil { try? FileManager.default.removeItem(at: statusDirectory.appendingPathComponent(id + ".json")) }
+            return
+        }
+        if errorCode == NSURLErrorCancelled { flush(); return }
         let original = MotionRecordingStore.shared.savedRecordingURLs().first { $0.lastPathComponent == name }
         if error == nil, let response, (200..<300).contains(response.statusCode),
            CalibrationUploadPolicy.receiptMatches(body, filename: name) {
@@ -477,7 +574,14 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 lastError = "This pairing can no longer upload. Forget this pairing and use a new dashboard code. Previously shared data remains until deleted or its retention expires."
             } else {
                 lastError = "Upload pending. Ciggy retries eligible saved recordings over Wi-Fi when it can run."
-                flush()
+                if response?.statusCode == 429 || response?.statusCode == 503 {
+                    // Re-stage not-yet-finished tasks with the provider's shared
+                    // deadline instead of letting queued files bypass Retry-After.
+                    ensureSession().getAllTasks { [weak self] tasks in
+                        for task in tasks where !Self.isDeliveryReport(task.taskDescription) { task.cancel() }
+                        Task { @MainActor [weak self] in self?.flush() }
+                    }
+                } else { flush() }
             }
         }
     }
@@ -520,7 +624,7 @@ extension CalibrationUploadManager: URLSessionDataDelegate {
         let authorization = task.originalRequest?.value(forHTTPHeaderField: "Authorization")
         let consent = task.originalRequest?.value(forHTTPHeaderField: "X-Ciggy-Consent")
         MainActor.assumeIsolated {
-            self.completed(taskID: id, name: name, response: response, error: message,
+            self.completed(taskID: id, name: name, response: response, error: message, errorCode: (error as NSError?)?.code,
                            authorization: authorization, consent: consent)
         }
     }

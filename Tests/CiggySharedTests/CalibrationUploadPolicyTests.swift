@@ -3,6 +3,18 @@ import XCTest
 @testable import CiggyShared
 
 final class CalibrationUploadPolicyTests: XCTestCase {
+    func testSystemRetryDeadlineSurvivesRelaunchAndIncludesProviderPause() throws {
+        let name = filename(UUID()), another = filename(UUID())
+        var backoff = CalibrationUploadPolicy.Backoff()
+        XCTAssertEqual(backoff.nextAttempt(for: name, at: now), now)
+        backoff.failed(name, status: 503, retryAfter: "7200", at: now)
+        backoff = try JSONDecoder().decode(CalibrationUploadPolicy.Backoff.self, from: JSONEncoder().encode(backoff))
+        XCTAssertEqual(backoff.nextAttempt(for: another, at: now), now.addingTimeInterval(7200))
+        backoff.failed(another, status: 500, retryAfter: nil, at: now.addingTimeInterval(7190))
+        XCTAssertEqual(backoff.nextAttempt(for: another, at: now), now.addingTimeInterval(7250))
+        XCTAssertEqual(backoff.nextAttempt(for: name, at: now.addingTimeInterval(8000)), now.addingTimeInterval(8000))
+    }
+
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     func testEverySampleMustBeAfterConsentNotOnlyTheRecordingHeader() {

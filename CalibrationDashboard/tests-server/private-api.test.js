@@ -37,7 +37,7 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  await env.DB.batch(['recordings', 'pairing_codes', 'request_limits', 'participants'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(['delivery_reports', 'recordings', 'pairing_codes', 'request_limits', 'participants'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
 });
 after(async () => {
   await platform?.dispose();
@@ -74,7 +74,7 @@ async function upload(person, raw = recording()) {
 test('private pages and recording APIs fail closed without Access; upload tokens cannot browse', async () => {
   const person = await participant();
   await upload(person);
-  for (const path of ['/', '/api/recordings', '/api/session']) {
+  for (const path of ['/', '/api/recordings', '/api/session', '/api/delivery']) {
     const response = await call(path, 'GET', undefined, { authorization: `Bearer ${person.token}` }, worker.default);
     assert.equal(response.status, path === '/' ? 303 : 401);
     if (path === '/') assert.equal(response.headers.get('location'), '/login');
@@ -372,13 +372,13 @@ test('upload limits count reserved and deleted chunks so retries and deletions c
   const boundedDB = { prepare(...args) { prepared++; return env.DB.prepare(...args); },
     batch: statements => env.DB.batch(statements) };
   await worker.purgeExpired({ ...env, DB: boundedDB });
-  assert.ok(prepared <= 6, 'Large cleanup batches must fit the Free-plan D1 query budget.');
+  assert.ok(prepared <= 7, 'Cleanup including delivery-report expiry stays bounded at seven queries, independent of row count.');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 7192,
     'Cleanup stays bounded at 1000 rows per call even when the upload budget is larger');
   for (let index = 0; index < 8; index++) {
     prepared = 0;
     await worker.purgeExpired({ ...env, DB: boundedDB });
-    assert.ok(prepared <= 6);
+    assert.ok(prepared <= 7);
   }
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 0);
 });
@@ -419,4 +419,54 @@ test('chart overviews preserve measured peaks and gaps, are saved once, and rema
   await call(`/api/recordings/${saved.id}`, 'DELETE');
   assert.equal((await env.DB.prepare('SELECT overview_json FROM recordings WHERE id = ?1').bind(saved.id).first()).overview_json, null);
   assert.equal((await call(path)).status, 404);
+});
+
+function delivery(person, patch = {}) {
+  const now = Date.now();
+  return { kind: 'deliveryStatus', observedAt: now, consentAt: now, phoneBuild: '13',
+    phoneLastReceivedAt: now, phoneLastUploadedAt: now, phonePendingCount: 4, phoneScheduledCount: 4,
+    phoneRetryAt: null, watch: { checkedAt: now, latestQueuedMotionAt: now, queuedTransferCount: 2,
+      pendingWindowCount: 3, nextBatchAt: now + 3600000, lastBatchAt: now, lastDeliveredAt: now, build: '13' }, ...patch };
+}
+const reportHeaders = person => ({ authorization: `Bearer ${person.token}`, 'x-ciggy-payload': 'delivery-status' });
+
+test('delivery reports are private, allowlisted, and cannot replace newer state with late uploads', async () => {
+  const person = await participant(), first = delivery(person);
+  first.unknownSecret = 'do-not-save'; first.watch.lastError = 'private-error';
+  assert.equal((await call('/api/upload', 'POST', first, reportHeaders(person))).status, 200);
+  const newer = { ...first, observedAt: first.observedAt + 1000, phonePendingCount: 0, phoneScheduledCount: 0 };
+  assert.equal((await call('/api/upload', 'POST', newer, reportHeaders(person))).status, 200);
+  assert.equal((await call('/api/upload', 'POST', first, reportHeaders(person))).status, 200);
+  const result = (await (await call('/api/delivery')).json()).participants;
+  assert.equal(result.length, 1);
+  assert.equal(result[0].report.phonePendingCount, 0);
+  assert.equal(result[0].report.watch.build, '13');
+  const saved = await env.DB.prepare('SELECT report_json FROM delivery_reports').first();
+  assert.doesNotMatch(saved.report_json, /do-not-save|private-error|token/);
+  assert.equal((await (await call('/api/delivery', 'GET', undefined, { 'x-test-reviewer': 'outsider@example.test' })).json()).participants.length, 0);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 0, 'Status is never counted as motion');
+});
+
+test('delivery reports reject unauthenticated uploads, invalid dates, counts and excessive payloads', async () => {
+  const person = await participant(), payload = delivery(person);
+  assert.equal((await call('/api/upload', 'POST', payload, { 'x-ciggy-payload': 'delivery-status' })).status, 401);
+  for (const patch of [{ phonePendingCount: -1 }, { phoneScheduledCount: 0.5 }, { observedAt: Date.now() + 86400000 },
+      { consentAt: 978307200000 }, { phoneRetryAt: Date.now() + 8 * 86400000 }, { phoneBuild: 'private@email.test' }]) {
+    assert.equal((await call('/api/upload', 'POST', { ...payload, ...patch }, reportHeaders(person))).status, 400);
+  }
+  assert.equal((await call('/api/upload', 'POST', { ...payload, unknown: 'x'.repeat(9000) }, reportHeaders(person))).status, 413);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM delivery_reports').first()).count, 0);
+});
+
+test('delivery expiry and participant deletion remove diagnostics with the shared data', async () => {
+  const person = await participant();
+  await call('/api/upload', 'POST', delivery(person), reportHeaders(person));
+  await env.DB.prepare('UPDATE delivery_reports SET expires_at = ?1').bind(Date.now() - 1).run();
+  assert.equal((await (await call('/api/delivery')).json()).participants[0].report, null);
+  await worker.purgeExpired(env);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM delivery_reports').first()).count, 0);
+  await call('/api/upload', 'POST', delivery(person), reportHeaders(person));
+  assert.equal((await call('/api/participant', 'DELETE', undefined, { authorization: `Bearer ${person.token}` })).status, 200);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM delivery_reports').first()).count, 0);
+  assert.equal((await call('/api/upload', 'POST', delivery(person), reportHeaders(person))).status, 401);
 });

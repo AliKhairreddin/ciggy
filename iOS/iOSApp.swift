@@ -57,6 +57,7 @@ final class IOSAppRuntime: ObservableObject {
 @MainActor
 final class IOSAppDelegate: NSObject, UIApplicationDelegate {
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+		CalibrationBackgroundDelivery.shared.register()
 		IOSAppRuntime.shared.start()
 		return true
 	}

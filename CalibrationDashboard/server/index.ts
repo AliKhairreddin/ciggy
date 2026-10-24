@@ -6,6 +6,7 @@ import { APIError, APPLE_EPOCH_MS, cleanAlias, object, readJSON, RETENTION_DAYS,
   UUID, validateAnnotations, validateRecording, type Annotation } from './validation.ts';
 import { validateNativeUploadWindow } from './validation.ts';
 import { summarizeRecording } from '../public/timeline.js';
+import { listDeliveryReports, saveDeliveryReport } from './delivery.ts';
 
 type Authenticator = (request: Request, env: Env) => Promise<string>;
 const DAY = 86400000;
@@ -62,6 +63,7 @@ async function deleteParticipant(request: Request, env: Env): Promise<Response> 
     .bind(participant.id).all<{ object_key: string }>();
   if (rows.results.length) await deleteObjects(env, rows.results.map(row => row.object_key));
   await env.DB.prepare('DELETE FROM recordings WHERE participant_id = ?1').bind(participant.id).run();
+  await env.DB.prepare('DELETE FROM delivery_reports WHERE participant_id = ?1').bind(participant.id).run();
   return json({ deleted: true, revoked: true });
 }
 
@@ -120,9 +122,13 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
           const now = Date.now();
           // Source-age failures use 410 even when a queued file is older than the
           // reviewer's import window, so the app can discard it permanently.
-          const recording = validateRecording(await readJSON(request), now, Infinity);
-          validateNativeUploadWindow(recording, participant.created_at, now);
-          response = json(await saveRecording(env, participant, recording), 201);
+          if (request.headers.get('X-Ciggy-Payload') === 'delivery-status') {
+            response = await saveDeliveryReport(request, env, participant);
+          } else {
+            const recording = validateRecording(await readJSON(request), now, Infinity);
+            validateNativeUploadWindow(recording, participant.created_at, now);
+            response = json(await saveRecording(env, participant, recording), 201);
+          }
         } else if (pathname === '/api/participant' && method === 'DELETE') response = await deleteParticipant(request, env);
         else {
           // All browsing, raw downloads and reviewer mutations fail closed.
@@ -141,6 +147,7 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
           if (pathname === '/login' && (method === 'GET' || method === 'HEAD')) {
             response = new Response(null, { status: 303, headers: { Location: '/' } });
           } else if (pathname === '/api/session' && method === 'GET') response = json({ email, retentionDays: RETENTION_DAYS });
+          else if (pathname === '/api/delivery' && method === 'GET') response = await listDeliveryReports(env, scope);
           else if (pathname === '/api/pairing' && method === 'POST') response = await pairing(request, env, scope);
           else if (pathname === '/api/import' && method === 'POST') response = await importRecording(request, env, scope);
           else if (pathname === '/api/recordings' && method === 'GET') response = await listRecordings(request, env, scope);

@@ -9,16 +9,24 @@ public struct CalibrationTrackingStatus: Codable, Equatable, Sendable {
     public let retryingWindowCount: Int
     public let queuedTransferCount: Int
     public let lastError: String?
+    public let nextBatchAt: Date?
+    public let lastBatchAt: Date?
+    public let lastDeliveredAt: Date?
+    public let build: String?
 
     public init(enabledAt: Date?, checkedAt: Date?, latestQueuedMotionAt: Date?,
-                pendingWindowCount: Int, retryingWindowCount: Int, queuedTransferCount: Int, lastError: String?) {
+                pendingWindowCount: Int, retryingWindowCount: Int, queuedTransferCount: Int, lastError: String?,
+                nextBatchAt: Date? = nil, lastBatchAt: Date? = nil, lastDeliveredAt: Date? = nil, build: String? = nil) {
         self.enabledAt = enabledAt; self.checkedAt = checkedAt; self.latestQueuedMotionAt = latestQueuedMotionAt
         self.pendingWindowCount = max(0, pendingWindowCount); self.retryingWindowCount = max(0, retryingWindowCount)
         self.queuedTransferCount = max(0, queuedTransferCount); self.lastError = lastError
+        self.nextBatchAt = nextBatchAt; self.lastBatchAt = lastBatchAt
+        self.lastDeliveredAt = lastDeliveredAt; self.build = build
     }
 
     public var hasValidDates: Bool {
-        [enabledAt, checkedAt, latestQueuedMotionAt].compactMap { $0 }.allSatisfy(MotionHistoryProcessor.isSupportedDate)
+        [enabledAt, checkedAt, latestQueuedMotionAt, nextBatchAt, lastBatchAt, lastDeliveredAt]
+            .compactMap { $0 }.allSatisfy(MotionHistoryProcessor.isSupportedDate)
     }
 
     public func detail(consent: Date, now: Date = Date()) -> String {

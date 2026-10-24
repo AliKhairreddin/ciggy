@@ -4,6 +4,10 @@ import Foundation
 public enum CalibrationUploadPolicy {
     public static let retention: TimeInterval = 48 * 3_600
     public static let maximumBytes = 5 * 1_024 * 1_024
+    // Queue a bounded batch with the system, rather than requiring an app wake
+    // after every two files. URLSession still limits network concurrency to two.
+    public static let maximumScheduledFiles = 24
+    public static let maximumScheduledBytes = 32 * 1_024 * 1_024
 
     public enum Eligibility: Equatable, Sendable {
         case eligible(expiresAt: Date)
@@ -68,6 +72,13 @@ public enum CalibrationUploadPolicy {
             guard valid(now) else { return false }
             return (providerRetryAt.map { valid($0) && $0 <= now } ?? true) &&
                 (failures[filename].map { valid($0.nextAttemptAt) && $0.nextAttemptAt <= now } ?? true)
+        }
+
+        /// Hand the retry deadline to URLSession instead of depending on a later
+        /// foreground launch to notice that an in-memory cooldown has elapsed.
+        public func nextAttempt(for filename: String, at now: Date) -> Date {
+            [now, providerRetryAt, failures[filename]?.nextAttemptAt]
+                .compactMap { $0 }.filter(valid).max() ?? now
         }
 
         public mutating func failed(_ filename: String, status: Int?, retryAfter: String?, at now: Date) {

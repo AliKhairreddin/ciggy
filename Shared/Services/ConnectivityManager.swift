@@ -41,6 +41,16 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	private var needsCalibrationMigration = false
 	nonisolated private static let recordingInbox = RecordingTransferInbox()
 	public var pendingMotionRecordingCount: Int { pendingRecordingPaths.count }
+	public var motionNextBatchAt: Date? { calibrationSchedule.nextBatchAt }
+	public var motionLastBatchAt: Date? { calibrationSchedule.lastBatchAt }
+	public var motionLastDeliveredAt: Date? { UserDefaults.standard.object(forKey: "Ciggy.calibration.lastDeliveredAt") as? Date }
+	private var calibrationDirectory: URL {
+		FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+			.appendingPathComponent("CiggyHistoricalCalibration", isDirectory: true)
+	}
+	private func currentRecordingPath(_ path: String) -> String {
+		CalibrationRecordingPath.relocate(path, directory: calibrationDirectory)
+	}
 	private let refreshRequestedKey = "Ciggy.connectivity.historyRefreshRequestedAt.v1"
 
 	private override init() {
@@ -59,6 +69,9 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			// event/settings delivery and already received files are unaffected.
 			needsCalibrationMigration = true
 		}
+		let relocation = Dictionary(pendingRecordingPaths.map { ($0, currentRecordingPath($0)) }, uniquingKeysWith: { first, _ in first })
+		pendingRecordingPaths = Array(Set(relocation.values)).sorted()
+		calibrationSchedule.relocatePaths(relocation)
 		calibrationSchedule.reconcile(pending: pendingRecordingPaths, at: Date())
 		session?.delegate = self
 		session?.activate()
@@ -153,7 +166,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 	}
 
 	/// Caller must have explicit calibration consent. Raw data goes through iPhone.
-	public func sendMotionRecording(at url: URL) {
+	public func sendMotionRecording(at url: URL, deferTransfer: Bool = false) {
 		guard url.isFileURL, FileManager.default.fileExists(atPath: url.path) else { return }
 		if pendingRecordingPaths.contains(url.path) == false {
 			pendingRecordingPaths.append(url.path)
@@ -161,8 +174,11 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 			recordingTransfersChanged.send(pendingRecordingPaths.count)
 		}
-		flushRecordingTransfers()
+		if !deferTransfer { flushRecordingTransfers() }
 	}
+
+	/// Only optional raw calibration, independent of cigarette event delivery.
+	public func resumeMotionTransfers() { flushRecordingTransfers() }
 
 	/// Opting out cancels only calibration files, preserving ordinary event sync.
 	public func cancelMotionRecordings(in directory: URL) {
@@ -171,7 +187,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 		recordingTransfersChanged.send(pendingRecordingPaths.count)
 		for transfer in session?.outstandingFileTransfers ?? [] {
-			let original = transfer.file.metadata?["recordingPath"] as? String ?? transfer.file.fileURL.path
+			let original = currentRecordingPath(transfer.file.metadata?["recordingPath"] as? String ?? transfer.file.fileURL.path)
 			if URL(fileURLWithPath: original).standardizedFileURL.path.hasPrefix(prefix) { transfer.cancel() }
 		}
 	}
@@ -184,7 +200,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 		recordingTransfersChanged.send(pendingRecordingPaths.count)
 		for transfer in session?.outstandingFileTransfers ?? [] {
-			let original = transfer.file.metadata?["recordingPath"] as? String ?? transfer.file.fileURL.path
+			let original = currentRecordingPath(transfer.file.metadata?["recordingPath"] as? String ?? transfer.file.fileURL.path)
 			if URL(fileURLWithPath: original).standardizedFileURL.path == path { transfer.cancel() }
 		}
 	}
@@ -198,17 +214,31 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			}
 		}
 		pendingRecordingPaths.removeAll { FileManager.default.fileExists(atPath: $0) == false }
-		calibrationSchedule.releaseIfDue(pending: pendingRecordingPaths, at: Date())
+		let oldest = pendingRecordingPaths.compactMap {
+			CalibrationRecordingPath.endDate(filename: URL(fileURLWithPath: $0).lastPathComponent)
+		}.min()
+		calibrationSchedule.releaseIfDue(pending: pendingRecordingPaths, at: Date(), oldestRecordingAt: oldest)
 		UserDefaults.standard.set(pendingRecordingPaths, forKey: recordingTransfersKey)
 		if let data = try? JSONEncoder().encode(calibrationSchedule) { UserDefaults.standard.set(data, forKey: calibrationScheduleKey) }
 		#if !targetEnvironment(simulator)
-		let outstanding = Set(session.outstandingFileTransfers.compactMap { $0.file.metadata?["recordingPath"] as? String })
-		var slots = max(0, 2 - outstanding.count)
+		let outstanding = Set(session.outstandingFileTransfers.compactMap {
+			($0.file.metadata?["recordingPath"] as? String).map(currentRecordingPath)
+		})
+		// Give the system a bounded batch in one wake. A two-file outbox required
+		// another app wake for every pair even though WC owns background delivery.
+		var slots = max(0, 12 - outstanding.count)
+		var bytes = outstanding.reduce(0) { total, path in
+			total + ((try? URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+		}
 		for path in pendingRecordingPaths where outstanding.contains(path) == false && calibrationSchedule.releasedPaths.contains(path) {
 			guard slots > 0 else { break }
 			guard FileManager.default.fileExists(atPath: path) else { continue }
+			guard let size = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey]).fileSize,
+			      size <= CalibrationUploadPolicy.maximumBytes else { continue }
+			guard bytes + size <= 16 * 1_024 * 1_024 else { continue }
 			session.transferFile(URL(fileURLWithPath: path), metadata: ["type": "motionRecording", "recordingPath": path])
 			slots -= 1
+			bytes += size
 		}
 		#endif
 		// No raw sendMessage stream: let the system deliver the hourly batch.
@@ -462,7 +492,8 @@ extension ConnectivityManager: WCSessionDelegate {
 		Task { @MainActor [weak self] in
 			guard let self else { return }
 			if let message { self.lastSyncError = message; return }
-			self.pendingRecordingPaths.removeAll { $0 == path }
+			self.pendingRecordingPaths.removeAll { $0 == self.currentRecordingPath(path) }
+			UserDefaults.standard.set(Date(), forKey: "Ciggy.calibration.lastDeliveredAt")
 			UserDefaults.standard.set(self.pendingRecordingPaths, forKey: self.recordingTransfersKey)
 			self.recordingTransfersChanged.send(self.pendingRecordingPaths.count)
 			self.flushRecordingTransfers()
@@ -539,6 +570,9 @@ public final class ConnectivityManager: ObservableObject {
 	@Published public private(set) var lastHistoryRefreshRequestedAt: Date?
 	public var isLiveSyncAvailable: Bool { false }
 	public var pendingMotionRecordingCount: Int { 0 }
+	public var motionNextBatchAt: Date? { nil }
+	public var motionLastBatchAt: Date? { nil }
+	public var motionLastDeliveredAt: Date? { nil }
 
 	private init() {}
 
@@ -553,7 +587,8 @@ public final class ConnectivityManager: ObservableObject {
 	public func activateIncomingDelivery() {}
 	public func resumeSync() {}
 	public func drainPendingBackgroundTransfers(maximumWait: TimeInterval = 2) async {}
-	public func sendMotionRecording(at url: URL) {}
+	public func sendMotionRecording(at url: URL, deferTransfer: Bool = false) {}
+	public func resumeMotionTransfers() {}
 	public func cancelMotionRecordings(in directory: URL) {}
 	public func cancelMotionRecordingTransfers(in directory: URL) {}
 	public func cancelMotionRecordingTransfer(at url: URL) {}

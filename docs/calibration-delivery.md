@@ -2,7 +2,21 @@
 
 Cigarette events and raw calibration recordings are separate. A cigarette can be counted locally before its raw wrist samples are available on the private dashboard. The shared dashboard is https://ciggy.thatcanadian.dev; each iPhone must be paired and explicitly sharing. Only samples at or after that consent boundary are eligible. No heart rate, cigarette notes, location, or upload credential travels from Watch in a motion recording.
 
-## Build 9 delivery path
+## Build 13 delivery recovery
+
+The Watch's reported queue and server receipt are separate evidence. During diagnosis, the server received a delayed background chunk and the tester's settings showed no iPhone upload backlog but one saved file waiting on Watch. This locates the reported remaining backlog on Watch, but cannot establish why an earlier wake was missed or whether an app was opened. Physical queue inspection was unavailable. Keep tester-specific timestamps and motion metadata in the private workspace, not repository documentation.
+
+Only calibration changes in this build:
+
+- Historical calibration gets up to six seconds per existing Watch wake, rather than one second in background. Fully extracted/encoded chunks are persisted even if encoding crosses the time budget. Cancellation and incomplete extraction still do not advance the ledger. The existing detection budgets, classifier, count/review logic and Watch refresh schedule are unchanged.
+- Release deadlines can use saved motion age so late extraction does not add another full hour. A persisted last-release timestamp prevents repeated immediate catch-up batches. The Watch hands at most 12 files / 16 MiB to WatchConnectivity; new batches remain hourly and system scheduled. No raw live-message sender is restored.
+- Calibration paths are relocated when an app update changes the sandbox UUID. Retained, consent-scoped files are requeued once; stable recording IDs make server retries idempotent. Opt-out cancellation also resolves old paths.
+- The iPhone stages up to 24 files / 32 MiB in a single wake, with two network connections and Wi-Fi only. Persisted retry deadlines are passed to background URLSession. Provider-wide Retry-After reschedules queued tasks. A short preparation lease and best-effort BGProcessing recovery protect files not yet handed to URLSession. No timer keeps either app alive.
+- Opt-in delivery reports contain only queue counts, timestamps and build numbers. Background uploads submit at most one report per 30 minutes when runtime is available. Private dashboard summaries show the last reported stage, explicitly mark stale reports, and retain saved motion when a refresh fails. These reports do not prove continuous capture or exact wake times. Only the newest report is stored for at most 14 days.
+
+Apple still controls background wake and network timing. Hourly release eligibility is not a promised hourly server arrival; force-quitting can prevent background work. These fixes need real-device overnight verification after both apps update. Existing gaps cannot be reconstructed after source retention expires.
+
+## Historical build 9 delivery path
 
 Raw calibration now uses the durable file lane only. The immediate multipart sender from build 8 is removed; its receiver remains compatible with older in-flight messages. The first raw file starts an hour-long waiting period, persisted across relaunches. At the next legitimate wake after the deadline, pending files become eligible together. At most two raw file transfers are outstanding; completions admit the next file in that batch. New files wait for the next hourly release. Missed wakes defer delivery rather than starting repeated catch-up timers. Updating from build 8 restages outstanding raw transfers once, preserving saved files. Ordinary cigarette events, settings, detection and counter sync do not use the calibration batch schedule.
 

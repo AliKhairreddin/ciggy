@@ -7,20 +7,50 @@ public struct CalibrationTransferSchedule: Codable, Equatable, Sendable {
     public static let interval: TimeInterval = 60 * 60
     public private(set) var nextBatchAt: Date?
     public private(set) var releasedPaths: Set<String> = []
+    public private(set) var lastBatchAt: Date?
 
     public init() {}
 
-    public mutating func reconcile(pending: [String], at now: Date) {
+    public mutating func reconcile(pending: [String], at now: Date, oldestRecordingAt: Date? = nil) {
         releasedPaths.formIntersection(pending)
         if pending.isEmpty { nextBatchAt = nil }
-        else if nextBatchAt == nil { nextBatchAt = now.addingTimeInterval(Self.interval) }
+        else {
+            let oldest = min(now, oldestRecordingAt ?? now)
+            let due = max(oldest.addingTimeInterval(Self.interval), lastBatchAt?.addingTimeInterval(Self.interval) ?? .distantPast)
+            nextBatchAt = min(nextBatchAt ?? due, due)
+        }
     }
 
-    public mutating func releaseIfDue(pending: [String], at now: Date) {
-        reconcile(pending: pending, at: now)
+    public mutating func releaseIfDue(pending: [String], at now: Date, oldestRecordingAt: Date? = nil) {
+        reconcile(pending: pending, at: now, oldestRecordingAt: oldestRecordingAt)
         guard let nextBatchAt, now >= nextBatchAt else { return }
         releasedPaths.formUnion(pending)
+        lastBatchAt = now
         self.nextBatchAt = now.addingTimeInterval(Self.interval)
+    }
+
+    public mutating func relocatePaths(_ mapping: [String: String]) {
+        releasedPaths = Set(releasedPaths.map { mapping[$0] ?? $0 })
+    }
+}
+
+/// App-container UUIDs can change on update. Only our own calibration filenames
+/// may be relocated; arbitrary paths must never be imported into this outbox.
+public enum CalibrationRecordingPath {
+    public static func relocate(_ path: String, directory: URL) -> String {
+        let old = URL(fileURLWithPath: path)
+        guard old.deletingLastPathComponent().lastPathComponent == "CiggyHistoricalCalibration",
+              endDate(filename: old.lastPathComponent) != nil else { return path }
+        return directory.appendingPathComponent(old.lastPathComponent).path
+    }
+
+    public static func endDate(filename: String) -> Date? {
+        guard filename.hasSuffix(".json") else { return nil }
+        let fields = filename.dropLast(5).split(separator: "_", omittingEmptySubsequences: false)
+        guard fields.count == 3, fields[0] == "calibration", let milliseconds = Double(fields[1]),
+              milliseconds.isFinite, milliseconds >= 0, milliseconds < 32_503_680_000_000,
+              UUID(uuidString: String(fields[2])) != nil else { return nil }
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
     }
 }
 

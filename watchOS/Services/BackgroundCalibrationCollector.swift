@@ -22,12 +22,17 @@ final class BackgroundCalibrationCollector: ObservableObject {
     @Published private(set) var latestQueuedMotionAt: Date?
     private let directory: URL
     private let maximumBytes = 80 * 1_024 * 1_024
+    private let recoveredConsentKey = "Ciggy.calibration.recoveredOutboxConsent.v13"
 
     var status: CalibrationTrackingStatus {
         CalibrationTrackingStatus(enabledAt: activeConsent, checkedAt: lastCheckedAt,
             latestQueuedMotionAt: latestQueuedMotionAt ?? lastCompletedAt,
             pendingWindowCount: pendingChunkCount, retryingWindowCount: retryingChunkCount,
-            queuedTransferCount: ConnectivityManager.shared.pendingMotionRecordingCount, lastError: lastError)
+            queuedTransferCount: ConnectivityManager.shared.pendingMotionRecordingCount, lastError: lastError,
+            nextBatchAt: ConnectivityManager.shared.motionNextBatchAt,
+            lastBatchAt: ConnectivityManager.shared.motionLastBatchAt,
+            lastDeliveredAt: ConnectivityManager.shared.motionLastDeliveredAt,
+            build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
     }
 
     private enum Extraction: Sendable {
@@ -58,6 +63,19 @@ final class BackgroundCalibrationCollector: ObservableObject {
             ledger = .init(enabledAt: consent)
             saveLedger()
         }
+        if UserDefaults.standard.object(forKey: recoveredConsentKey) as? Date != consent {
+            // Build 10 could drop absolute outbox paths after an app update while
+            // the files and extraction ledger survived. Replay retained files
+            // once; recording IDs make already-delivered files idempotent.
+            prune(at: Date())
+            let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+                where CalibrationRecordingPath.endDate(filename: url.lastPathComponent) != nil {
+                ConnectivityManager.shared.sendMotionRecording(at: url, deferTransfer: true)
+            }
+            UserDefaults.standard.set(consent, forKey: recoveredConsentKey)
+            ConnectivityManager.shared.resumeMotionTransfers()
+        }
     }
 
     /// Used by opt-in foreground capture as soon as a count or screen sleep
@@ -67,7 +85,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
         let token = generation
         let data = await Task.detached(priority: .utility) { try? JSONEncoder().encode(recording) }.value
         guard let data, generation == token, activeConsent == consent else { return }
-        do { try enqueue(data, recording: recording) }
+        do { try enqueue(data, recording: recording); ConnectivityManager.shared.resumeMotionTransfers() }
         catch { lastError = "Could not save live calibration: \(error.localizedDescription)" }
         BackgroundMotionMonitor.shared.publishStatus()
     }
@@ -81,15 +99,15 @@ final class BackgroundCalibrationCollector: ObservableObject {
         if !FileManager.default.fileExists(atPath: url.path) {
             try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
-        ConnectivityManager.shared.sendMotionRecording(at: url)
+        ConnectivityManager.shared.sendMotionRecording(at: url, deferTransfer: true)
         latestQueuedMotionAt = max(latestQueuedMotionAt ?? .distantPast, recording.samples.last?.timestamp ?? end)
         UserDefaults.standard.set(latestQueuedMotionAt, forKey: "Ciggy.calibration.latestQueuedMotionAt")
         lastError = nil
         prune(at: Date())
     }
 
-    /// Caller supplies at most six seconds in foreground and one second during
-    /// background runtime. Cancelled/partially-read chunks never advance progress.
+    /// Caller supplies at most six seconds during each legitimate wake.
+    /// Bounded background runtime: Cancelled/partially-read chunks never advance progress.
     func collect(enabledAt: Date?, maximumProcessingTime: Double = 6) async {
         guard let consent = enabledAt, consent.timeIntervalSince1970.isFinite,
               consent >= .distantPast, consent <= Date() else {
@@ -125,6 +143,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
         isCollecting = true
         defer {
             if generation == token {
+                ConnectivityManager.shared.resumeMotionTransfers()
                 worker = nil
                 isCollecting = false
                 updateStatus(at: Date())
@@ -139,7 +158,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
             // Recover an interrupted file->queue->ledger transaction. The stable
             // recording ID makes an at-least-once retry harmless on the iPhone.
             if FileManager.default.fileExists(atPath: url.path) {
-                ConnectivityManager.shared.sendMotionRecording(at: url)
+                ConnectivityManager.shared.sendMotionRecording(at: url, deferTransfer: true)
                 ledger?.didComplete(window)
                 saveLedger()
                 continue
@@ -159,7 +178,6 @@ final class BackgroundCalibrationCollector: ObservableObject {
             worker = nil
             switch result {
             case .recording(let data, let recording, let complete):
-                guard ProcessInfo.processInfo.systemUptime < deadline else { return }
                 do {
                     if complete || ledger?.partialRecordingIDs?[window.id] != recording.id {
                         // Queue persistence precedes ledger progress. A fuller
@@ -179,6 +197,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
             case .missing:
                 ledger?.retry(window, after: now)
             case .interrupted:
+                lastError = "The Watch paused motion preparation; saved progress will resume on its next background opportunity."
                 return
             case .failed(let error):
                 lastError = error
@@ -210,6 +229,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
         lastCheckedAt = nil
         latestQueuedMotionAt = nil
         UserDefaults.standard.removeObject(forKey: "Ciggy.calibration.latestQueuedMotionAt")
+        UserDefaults.standard.removeObject(forKey: recoveredConsentKey)
     }
 
     private func updateStatus(at now: Date) {
@@ -289,13 +309,11 @@ final class BackgroundCalibrationCollector: ObservableObject {
         case .complete(let recording):
             do {
                 let data = try JSONEncoder().encode(recording)
-                guard shouldContinue() else { return .interrupted }
                 return .recording(data, recording, true)
             } catch { return .failed("Could not encode a calibration chunk: \(error.localizedDescription)") }
         case .partial(let recording):
             do {
                 let data = try JSONEncoder().encode(recording)
-                guard shouldContinue() else { return .interrupted }
                 return .recording(data, recording, false)
             } catch { return .failed("Could not encode a calibration fragment: \(error.localizedDescription)") }
         case .missing: return .missing

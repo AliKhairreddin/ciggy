@@ -2,6 +2,7 @@ import { appleSecondsToMs, msToAppleSeconds, cleanAlias, parseImport, mergeSessi
   makeExport, LIMITS, mergeRemotePage } from './data.js';
 import { loadSessions, saveSessions } from './storage.js';
 import { summarizeRecording, mergeCoverage, timelineExtent } from './timeline.js';
+import { deliverySummary } from './delivery.js';
 
 const $ = id => document.getElementById(id);
 const colors = ['#ffb885', '#c2e0b8', '#baa8eb', '#ffc952', '#78c5ce', '#ee8ca1'];
@@ -89,9 +90,36 @@ async function loadRemote({ incremental = false } = {}) {
     state.timelineFailures.clear();
     if (!recentOnly) lastFullRemoteLoad = nowMs;
     $('connectionStatus').textContent = 'Private · connected';
+    await loadDeliveryReports();
   } finally {
     state.loading = false;
     for (const id of ['periodFilter', 'dayFilter', 'refreshButton']) $(id).disabled = false;
+  }
+}
+async function loadDeliveryReports() {
+  try {
+    const result = await api('/api/delivery');
+    if (!Array.isArray(result.participants)) throw new Error('Invalid delivery report');
+    const rows = result.participants.map(({ participant, report, receivedAt }) => {
+      const row = node('article', null, 'delivery-row');
+      row.append(node('h3', participant), node('p', deliverySummary(report)));
+      if (report) {
+        const at = value => value == null ? 'not reported' : timeFormat.format(value);
+        const details = node('details', null, 'advanced-filters');
+        details.append(node('summary', 'Delivery timestamps and queues'));
+        details.append(node('p', `Phone checked ${at(report.observedAt)} · Server received report ${at(receivedAt)} · iPhone build ${report.phoneBuild ?? 'unknown'}`, 'coverage-note'));
+        details.append(node('p', `Watch → iPhone: last received ${at(report.phoneLastReceivedAt)}. iPhone → dashboard: last successful motion upload ${at(report.phoneLastUploadedAt)}. ${report.phonePendingCount} files on iPhone; ${report.phoneScheduledCount} scheduled.`, 'coverage-note'));
+        if (report.watch) details.append(node('p', `Watch build ${report.watch.build ?? 'unknown'} · Last checked ${at(report.watch.checkedAt)} · ${report.watch.queuedTransferCount} saved files waiting · ${report.watch.pendingWindowCount} history windows pending · Last batch released ${at(report.watch.lastBatchAt)} · Next batch eligible ${at(report.watch.nextBatchAt)} · Last transfer completed ${at(report.watch.lastDeliveredAt)}`, 'coverage-note'));
+        row.append(details);
+      }
+      return row;
+    });
+    $('deliveryReports').replaceChildren(...rows);
+    $('deliveryStatus').hidden = !rows.length;
+    $('deliveryError').hidden = true;
+  } catch {
+    $('deliveryError').textContent = 'Delivery status could not refresh. The last report and saved motion are kept.';
+    $('deliveryError').hidden = false;
   }
 }
 async function getSession(id) {

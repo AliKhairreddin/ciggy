@@ -19,11 +19,11 @@ struct CalibrationSettingsView: View {
             Section {
                 Text("Help Ciggy recognize your smoking movements")
                     .font(.headline)
-                Text("Optional calibration shares recorded wrist motion and its timestamps with your private dashboard at ciggy.thatcanadian.dev. You and the other authorized testers can label smoking, eating, drinking, and other activity. No heart rate, notes, or location is uploaded.")
+                Text("Optional calibration shares recorded wrist motion, its timestamps, and delivery status (queue counts, transfer times and app builds) with your private dashboard at ciggy.thatcanadian.dev. You and the other authorized testers can label smoking, eating, drinking, and other activity. No heart rate, notes, or location is uploaded.")
                 Link("Open private dashboard", destination: CalibrationUploadManager.origin)
             }
             Section("What gets shared") {
-                Text("Only motion recorded after you opt in is eligible. The Watch saves motion locally and releases an hourly batch to your iPhone, with at most two files in transfer at once. Your iPhone uploads received files over Wi-Fi. Recordings are motion chunks, not one file per cigarette.")
+                Text("Only motion recorded after you opt in is eligible. The Watch saves motion locally and releases hourly batches to your iPhone. Both devices hand a bounded queue to Apple’s background transfer service, so files can continue while the apps are in the background. Your iPhone uploads over Wi-Fi with two network connections at most. Recordings are motion chunks, not one file per cigarette.")
                 Text("Delivery happens when watchOS gives Ciggy time to run; it can take longer than an hour. Background history also needs time to become available. The dashboard shows the latest received motion and any gaps. Cigarette tracking and count sync keep working independently.")
                 Text("Shared recordings and labels are kept for 14 days. The Watch queue is limited to 80 MB and 48 hours; the oldest unsent files are cleared first when either limit is reached. Pausing stops new sharing; you can also delete data already shared by this iPhone.")
             }
@@ -33,6 +33,13 @@ struct CalibrationSettingsView: View {
                     LabeledContent("Sharing", value: settings.settings.calibrationEnabledAt == nil ? "Paused" : "Enabled")
                     if let date = uploads.lastUploadedAt { LabeledContent("Last upload", value: date.formatted(date: .abbreviated, time: .shortened)) }
                     Text("\(uploads.pendingCount) saved recordings waiting to upload")
+                    Text("\(uploads.scheduledCount) recordings handed to background uploads")
+                    if let received = MotionRecordingStore.shared.lastReceivedAt {
+                        LabeledContent("Last received from Watch", value: received.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    if let retry = uploads.nextRetryAt {
+                        LabeledContent("Retry eligible after", value: retry.formatted(date: .abbreviated, time: .shortened))
+                    }
                     if uploads.requiresPairing {
                         Text("This pairing needs to be replaced. Forget it below, then enter a new code from the dashboard.")
                             .foregroundStyle(.orange)
@@ -46,6 +53,8 @@ struct CalibrationSettingsView: View {
                             if let checked = status.checkedAt {
                                 LabeledContent("Watch last checked", value: checked.formatted(date: .abbreviated, time: .shortened))
                             }
+                            if let batch = status.lastBatchAt { LabeledContent("Watch last batch", value: batch.formatted(date: .abbreviated, time: .shortened)) }
+                            if let due = status.nextBatchAt { LabeledContent("Watch batch eligible after", value: due.formatted(date: .abbreviated, time: .shortened)) }
                         } else {
                             Text("Waiting for sharing status from Watch. Make sure both apps are updated. A check is requested below; watchOS decides when it runs.")
                                 .font(.footnote)
@@ -57,7 +66,10 @@ struct CalibrationSettingsView: View {
                         ConnectivityManager.shared.resumeSync()
                         uploads.flush()
                     }
-                    if let issue = sync.lastSyncError { Text(issue).font(.footnote).foregroundStyle(.orange) }
+                    if let issue = sync.lastSyncError {
+                        Text("Live Watch check: \(issue) Background file delivery can continue without a live connection.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     Button("Delete my shared calibration data", role: .destructive) { deleting = true }
                     Button("Forget pairing and pair again", role: .destructive) { forgetting = true }
                 }
