@@ -11,6 +11,7 @@ This review covered the shared repositories, synchronization and review workflow
 - **Recent motion replay:** when a saved chronological checkpoint falls inside the recent replay context, the priority pass copies its analyzer and resumes from its cursor. This prevents a dense–sparse–dense continuing pattern from being counted again by a fresh analyzer. The chronological checkpoint remains independent and detection thresholds are unchanged.
 - **Missing history:** an interval with an expired prefix now reports lost coverage even if its retained suffix is recovered.
 - **Privacy copy:** the in-app explanation and TestFlight guide now reflect the existing, explicitly consented private motion-upload feature.
+- **Portable Xcode builds:** the shared package reference now points to the repository's parent directory relative to the Xcode project, instead of assuming the checkout folder is named `ciggy`. A clean release snapshot exposed the old path's dependency-resolution failure.
 
 ## Remaining risks and validation limits
 
