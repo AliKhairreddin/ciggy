@@ -1,5 +1,5 @@
 export function deliverySummary(report, now = Date.now()) {
-  if (!report) return 'Waiting for a delivery report from an updated iPhone. Existing motion is still shown below.';
+  if (!report) return 'Waiting for a delivery report from an updated iPhone. Your received motion remains on the graph.';
   const stale = now - report.observedAt > 90 * 60000;
   if (stale) return 'This report is over 90 minutes old. The devices may have progressed since then.';
   if (report.phonePendingCount > 0) {

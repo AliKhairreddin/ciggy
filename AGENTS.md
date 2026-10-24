@@ -29,3 +29,8 @@
 - Treat WatchConnectivity delivery as at-least-once and keep repository writes idempotent by event ID.
 - Use live messages for immediate foreground sync and background user-info transfer for durable delivery.
 - Preserve simulator support: the Watch simulator must be paired with the exact iPhone simulator running the companion app.
+
+## Calibration data privacy
+
+- Keep real tester motion, timestamps, upload/sample totals, private labels, screenshots and account details out of repository files, release notes and test fixtures. This repository is public. Use synthetic fixtures and generic diagnoses; keep tester-specific evidence in the private dashboard or local temporary files.
+- Before committing diagnostic documentation, review staged content for tester data as well as credentials.
