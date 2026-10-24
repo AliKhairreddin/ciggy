@@ -158,6 +158,23 @@ final class EventRepositoryTests: XCTestCase {
         XCTAssertEqual(repository.streakSmokeFreeDays(considering: today), 0)
     }
 
+    func testFutureTimestampLaterTodayDoesNotResetTheCurrentStreak() throws {
+        let (name, defaults) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let repository = EventRepository(userDefaults: defaults)
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let now = try XCTUnwrap(calendar.date(byAdding: .hour, value: 12, to: start))
+        let prior = try XCTUnwrap(calendar.date(byAdding: .day, value: -3, to: now))
+        let future = now.addingTimeInterval(60)
+        repository.addEvent(.init(timestamp: prior, source: .manual))
+        repository.addEvent(.init(timestamp: future, source: .manual))
+
+        XCTAssertEqual(repository.streakSmokeFreeDays(considering: now), 3)
+        XCTAssertEqual(repository.streakSmokeFreeDays(considering: future), 0)
+        XCTAssertEqual(EventRepository(userDefaults: defaults).streakSmokeFreeDays(considering: now), 3)
+    }
+
     func testSavingsAvoidIntegerOverflowAndRejectInvalidCost() {
         let (name, defaults) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: name) }

@@ -14,12 +14,19 @@ final class GoalsViewModel: ObservableObject {
 	func bind(settings: UserSettingsStore) {
 		guard hasBound == false else { return }
 		hasBound = true
-		settings.$settings
+		// Sync each field independently. A Watch sensitivity or notification update
+		// must not discard a goal the user is still editing on this iPhone.
+		settings.$settings.map(\.quitDate)
 			.removeDuplicates()
-			.sink { @MainActor [weak self] updatedSettings in
-				self?.hasQuitDate = updatedSettings.quitDate != nil
-				self?.quitDate = updatedSettings.quitDate
-				self?.dailyLimit = updatedSettings.dailyLimit
+			.sink { @MainActor [weak self] quitDate in
+				self?.hasQuitDate = quitDate != nil
+				self?.quitDate = quitDate
+			}
+			.store(in: &cancellables)
+		settings.$settings.map(\.dailyLimit)
+			.removeDuplicates()
+			.sink { @MainActor [weak self] dailyLimit in
+				self?.dailyLimit = dailyLimit
 			}
 			.store(in: &cancellables)
 	}

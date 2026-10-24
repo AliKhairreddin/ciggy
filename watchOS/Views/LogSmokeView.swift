@@ -57,12 +57,12 @@ struct LogSmokeView: View {
 	private func save() {
 		guard !didSave else { return }
 		didSave = true
-		let currentHeartRate = HealthKitManager.shared.currentHeartRate
+		let now = Date()
 		let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 		let event = SmokingEvent(
-			timestamp: Date(),
+			timestamp: now,
 			source: .manual,
-			heartRate: currentHeartRate.isFinite && (1...300).contains(currentHeartRate) ? currentHeartRate : nil,
+			heartRate: HealthKitManager.shared.freshHeartRate(at: now),
 			notes: trimmedNotes.isEmpty ? nil : trimmedNotes
 		)
 		repository.addEvent(event)

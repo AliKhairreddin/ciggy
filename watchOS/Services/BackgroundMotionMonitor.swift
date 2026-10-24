@@ -287,7 +287,7 @@ private enum HistoricalMotionProcessor {
 			} }
 		}
 		let recent = MotionHistoryProcessor.processRecent(
-			from: start, to: end, sensitivity: sensitivity, query: query,
+			from: start, to: end, analyzer: initialAnalyzer, sensitivity: sensitivity, query: query,
 			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < recentDeadline }
 		)
 		let history = MotionHistoryProcessor.process(

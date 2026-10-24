@@ -106,7 +106,7 @@ public final class EventRepository: ObservableObject {
 		events(on: day).count
 	}
 
-	/// Returns consecutive smoke-free days ending on the supplied day.
+	/// Returns consecutive smoke-free calendar days as of the supplied time.
 	///
 	/// The search is bounded by the oldest stored event. With no history there is not yet
 	/// enough evidence to claim a smoke-free streak, so the result is zero.
@@ -115,7 +115,7 @@ public final class EventRepository: ObservableObject {
 		let calendar = Calendar.current
 		let targetDay = day.startOfDayInCurrentCalendar
 		guard let latestDay = events.reversed().first(where: {
-			$0.timestamp.startOfDayInCurrentCalendar <= targetDay
+			$0.timestamp <= day
 		})?.timestamp.startOfDayInCurrentCalendar else { return 0 }
 		return max(0, calendar.dateComponents([.day], from: latestDay, to: targetDay).day ?? 0)
 	}

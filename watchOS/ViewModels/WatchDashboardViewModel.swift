@@ -33,11 +33,16 @@ final class WatchDashboardViewModel: ObservableObject {
 		repository.$events
 			.combineLatest(Timer.publish(every: 30, on: .main, in: .common).autoconnect().prepend(Date()))
 			.receive(on: DispatchQueue.main)
-			.sink { [weak self] events, now in
+			.sink { [weak self] events, _ in
 				guard let self else { return }
-				self.todayCount = events.filter { Calendar.current.isDate($0.timestamp, inSameDayAs: now) }.count
-				if let last = events.last {
-					self.timeSinceLast = last.timestamp.shortRelativeDescription(to: now)
+				// The timer is only a refresh trigger. Its cached timestamp can precede
+				// a newly logged event, so evaluate every emission at the current time.
+				let now = Date()
+				// Match iPhone/widget totals when a companion's clock is ahead.
+				let snapshot = LiveActivitySnapshot(events: events, dailyLimit: 1, now: now)
+				self.todayCount = snapshot.dailyCount
+				if let last = snapshot.lastLoggedAt {
+					self.timeSinceLast = last.shortRelativeDescription(to: now)
 				} else {
 					self.timeSinceLast = "—"
 				}

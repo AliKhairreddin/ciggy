@@ -13,11 +13,17 @@ final class SettingsViewModel: ObservableObject {
 	func bind(settings: UserSettingsStore) {
 		guard hasBound == false else { return }
 		hasBound = true
-		settings.$settings
+		// Unrelated goal and calibration updates must not reset unsaved controls.
+		settings.$settings.map(\.notificationsEnabled)
 			.removeDuplicates()
-			.sink { @MainActor [weak self] updatedSettings in
-				self?.notificationsEnabled = updatedSettings.notificationsEnabled
-				self?.sensitivity = updatedSettings.sensitivity
+			.sink { @MainActor [weak self] notificationsEnabled in
+				self?.notificationsEnabled = notificationsEnabled
+			}
+			.store(in: &cancellables)
+		settings.$settings.map(\.sensitivity)
+			.removeDuplicates()
+			.sink { @MainActor [weak self] sensitivity in
+				self?.sensitivity = sensitivity
 			}
 			.store(in: &cancellables)
 	}

@@ -10,6 +10,16 @@ public struct HeartRateReading: Equatable, Sendable {
 		self.timestamp = timestamp
 		self.beatsPerMinute = beatsPerMinute
 	}
+
+	/// Saved HealthKit samples are optional context, not a continuous measurement.
+	/// Never attach an old or future reading to a new manual log.
+	public func currentValue(at now: Date = Date(), maximumAge: TimeInterval = 120) -> Double? {
+		let age = now.timeIntervalSince(timestamp)
+		guard beatsPerMinute.isFinite, (1...300).contains(beatsPerMinute),
+		      age.isFinite, maximumAge.isFinite, maximumAge >= 0,
+		      age >= 0, age <= maximumAge else { return nil }
+		return beatsPerMinute
+	}
 }
 
 /// Handles HealthKit authorization and observes saved heart-rate updates while the app runs.
@@ -27,6 +37,9 @@ public final class HealthKitManager: ObservableObject {
 
 	private var query: HKAnchoredObjectQuery?
 	private var mockHeartRateTimer: Timer?
+	private var freshnessTimer: Timer?
+	private var latestReading: HeartRateReading?
+	private var streamGeneration = UUID()
 
 	private init() {}
 
@@ -53,6 +66,10 @@ public final class HealthKitManager: ObservableObject {
 	public func startHeartRateStreaming() {
 		guard query == nil else { return }
 		stopMockHeartRate()
+		streamGeneration = UUID()
+		let generation = streamGeneration
+		latestReading = nil
+		currentHeartRate = 0
 		guard HKHealthStore.isHealthDataAvailable(),
 				let hrType = HKObjectType.quantityType(forIdentifier: .heartRate),
 				isAuthorized else {
@@ -70,18 +87,35 @@ public final class HealthKitManager: ObservableObject {
 			options: .strictStartDate
 		)
 		query = HKAnchoredObjectQuery(type: hrType, predicate: predicate, anchor: nil, limit: HKObjectQueryNoLimit) { [weak self] _, samples, _, _, _ in
-			self?.publishHeartRates(Self.beatsPerMinute(from: samples))
+			self?.publishHeartRates(Self.beatsPerMinute(from: samples), generation: generation)
 		}
 		query?.updateHandler = { [weak self] _, samples, _, _, _ in
-			self?.publishHeartRates(Self.beatsPerMinute(from: samples))
+			self?.publishHeartRates(Self.beatsPerMinute(from: samples), generation: generation)
 		}
 		if let query { healthStore.execute(query) }
+		freshnessTimer?.invalidate()
+		freshnessTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+			Task { @MainActor [weak self] in
+				guard let self, self.streamGeneration == generation else { return }
+				self.currentHeartRate = self.freshHeartRate() ?? 0
+			}
+		}
 	}
 
 	public func stopHeartRateStreaming() {
+		// Ignore query callbacks that were already queued before stop/restart.
+		streamGeneration = UUID()
 		if let query { healthStore.stop(query) }
 		query = nil
 		stopMockHeartRate()
+		freshnessTimer?.invalidate()
+		freshnessTimer = nil
+		latestReading = nil
+		currentHeartRate = 0
+	}
+
+	public func freshHeartRate(at now: Date = Date()) -> Double? {
+		latestReading?.currentValue(at: now)
 	}
 
 	nonisolated private static func beatsPerMinute(from samples: [HKSample]?) -> [HeartRateReading] {
@@ -95,24 +129,31 @@ public final class HealthKitManager: ObservableObject {
 		}
 	}
 
-	nonisolated private func publishHeartRates(_ readings: [HeartRateReading]) {
+	nonisolated private func publishHeartRates(_ readings: [HeartRateReading], generation: UUID) {
 		Task { @MainActor [weak self] in
-			guard let self else { return }
+			guard let self, self.streamGeneration == generation else { return }
 			for reading in readings.sorted(by: { $0.timestamp < $1.timestamp })
 			where reading.beatsPerMinute.isFinite && reading.beatsPerMinute > 0 {
-				let bpm = reading.beatsPerMinute
-				currentHeartRate = bpm
+				if reading.currentValue() != nil,
+				   latestReading.map({ reading.timestamp >= $0.timestamp }) ?? true {
+					latestReading = reading
+				}
 				heartRatePublisher.send(reading)
 			}
+			currentHeartRate = freshHeartRate() ?? 0
 		}
 	}
 
 	private func startMockHeartRate() {
 		guard mockHeartRateTimer == nil else { return }
 		isUsingSimulatedData = true
+		let generation = streamGeneration
 		// Emit gentle random walk around 75 BPM
 		mockHeartRateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-			Task { @MainActor [weak self] in self?.emitMockHeartRate() }
+			Task { @MainActor [weak self] in
+				guard let self, self.streamGeneration == generation else { return }
+				self.emitMockHeartRate()
+			}
 		}
 	}
 
@@ -120,8 +161,10 @@ public final class HealthKitManager: ObservableObject {
 		let delta = Double.random(in: -3...4)
 		let current = currentHeartRate == 0 ? 75 : currentHeartRate
 		let new = max(50, min(130, current + delta))
+		let reading = HeartRateReading(timestamp: Date(), beatsPerMinute: new)
+		latestReading = reading
 		currentHeartRate = new
-		heartRatePublisher.send(HeartRateReading(timestamp: Date(), beatsPerMinute: new))
+		heartRatePublisher.send(reading)
 	}
 
 	private func stopMockHeartRate() {

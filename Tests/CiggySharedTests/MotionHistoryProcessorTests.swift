@@ -133,6 +133,114 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertEqual(result.expiredRangeCount, 1)
     }
 
+    func testPartiallyExpiredMissingRangeStillReportsLostCoverage() {
+        let end = start.addingTimeInterval(3 * 86_400 + 900)
+        var queried: [MotionHistoryRange] = []
+        let result = MotionHistoryProcessor.process(
+            from: end, to: end, analyzer: .init(),
+            pendingRanges: [.init(start: start, end: start.addingTimeInterval(1_800))], sensitivity: 0.5,
+            query: { lower, upper in
+                queried.append(.init(start: lower, end: upper))
+                return AnySequence([])
+            }
+        )
+        XCTAssertEqual(queried.first?.start, start.addingTimeInterval(900))
+        XCTAssertTrue(result.pendingRanges.isEmpty, "The still-retained suffix was reconciled")
+        XCTAssertEqual(result.expiredRangeCount, 1, "The missing prefix is permanently lost even though the suffix recovered")
+    }
+
+    func testRecentReplayContinuesCheckpointWithoutRecountingLongPattern() throws {
+        // The initial dense puffs counted once. Sparse puffs still connect to
+        // that cigarette, then dense puffs resume after the replay boundary.
+        let offsets = [0.0, 20, 40, 60, 80, 220, 360, 500, 640, 660, 680, 700]
+        let stream = offsets.flatMap { Array(recordedSession(offset: $0).prefix(1_000)) }
+        let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
+            AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+        }
+        let checkpoint = MotionHistoryProcessor.process(
+            from: start, to: start.addingTimeInterval(640), analyzer: .init(), pendingRanges: [],
+            sensitivity: 0.5, query: query
+        )
+        XCTAssertEqual(checkpoint.candidates.count, 1)
+        let savedAnalyzer = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(checkpoint.analyzer))
+        var queried: [MotionHistoryRange] = []
+        let replay = MotionHistoryProcessor.processRecent(
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(800), analyzer: savedAnalyzer, sensitivity: 0.5,
+            query: { lower, upper in
+                queried.append(.init(start: lower, end: upper))
+                return query(lower, upper)
+            }
+        )
+        XCTAssertTrue(replay.candidates.isEmpty, "A replay starting mid-pattern cannot create a second cigarette")
+        XCTAssertEqual(queried.first?.start, checkpoint.processedThrough)
+        XCTAssertTrue(replay.isComplete)
+    }
+
+    func testRecentCheckpointPreservesPartialPatternAcrossCursor() {
+        let stream = recordedSession(offset: 600)
+        let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
+            AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+        }
+        let checkpoint = MotionHistoryProcessor.process(
+            from: start, to: start.addingTimeInterval(660), analyzer: .init(), pendingRanges: [], sensitivity: 0.5, query: query
+        )
+        XCTAssertTrue(checkpoint.candidates.isEmpty)
+        let recent = MotionHistoryProcessor.processRecent(
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(720), analyzer: checkpoint.analyzer,
+            sensitivity: 0.5, query: query
+        )
+        let chronological = MotionHistoryProcessor.process(
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(720), analyzer: checkpoint.analyzer,
+            pendingRanges: [], sensitivity: 0.5, query: query
+        )
+        XCTAssertEqual(recent.candidates.count, 1)
+        XCTAssertEqual(recent.candidates, chronological.candidates, "The priority pass must not mutate the saved chronological analyzer")
+        XCTAssertEqual(checkpoint.processedThrough, start.addingTimeInterval(660))
+    }
+
+    func testRecentCheckpointCountsFirstNewPatternWithoutPriorHistory() {
+        let stream = recordedSession(offset: 10)
+        let recent = MotionHistoryProcessor.processRecent(
+            from: start, to: start.addingTimeInterval(120), analyzer: .init(), sensitivity: 0.5,
+            query: { lower, upper in AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper }) }
+        )
+        XCTAssertEqual(recent.candidates.count, 1)
+        XCTAssertTrue(recent.isComplete)
+    }
+
+    func testRecentCheckpointAllowsNewPatternAfterCountedSessionBreak() {
+        let stream = recordedSession(offset: 0) + recordedSession(offset: 650)
+        let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
+            AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+        }
+        let checkpoint = MotionHistoryProcessor.process(
+            from: start, to: start.addingTimeInterval(640), analyzer: .init(), pendingRanges: [], sensitivity: 0.5, query: query
+        )
+        XCTAssertEqual(checkpoint.candidates.count, 1)
+        let recent = MotionHistoryProcessor.processRecent(
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(800), analyzer: checkpoint.analyzer,
+            sensitivity: 0.5, query: query
+        )
+        XCTAssertEqual(recent.candidates.count, 1)
+        XCTAssertNotEqual(recent.candidates.first?.id, checkpoint.candidates.first?.id)
+    }
+
+    func testOldCheckpointStillPrioritizesRecentPatternBeforeBacklog() {
+        let end = start.addingTimeInterval(2 * 86_400)
+        let stream = recordedSession(offset: 2 * 86_400 - 200)
+        var queried: [MotionHistoryRange] = []
+        let recent = MotionHistoryProcessor.processRecent(
+            from: start, to: end, analyzer: .init(), sensitivity: 0.5,
+            query: { lower, upper in
+                queried.append(.init(start: lower, end: upper))
+                return AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
+            }
+        )
+        XCTAssertEqual(queried.first?.start, end.addingTimeInterval(-53 * 60))
+        XCTAssertEqual(recent.candidates.count, 1)
+        XCTAssertTrue(recent.isComplete)
+    }
+
     func testRecentPassQueriesBoundedRecentHistoryBeforeDaysOfBacklog() {
         let end = start.addingTimeInterval(2 * 86_400)
         var queried: [MotionHistoryRange] = []

@@ -39,12 +39,15 @@ public enum MotionHistoryProcessor {
     /// Checks recent activity before spending a limited background runtime on
     /// older history. Replaying eight preceding minutes reconstructs a session
     /// that straddles the recent-window boundary. Only candidates inside the
-    /// requested window are returned. A fresh analyzer keeps this pass independent
-    /// of the durable chronological cursor and makes unchanged source replays
-    /// reproducible; callers still deduplicate against saved automatic sessions.
+    /// requested window are returned. When the chronological checkpoint is inside
+    /// that context, copy its analyzer and continue from its cursor: restarting
+    /// midway through an already counted pattern could count that cigarette again.
+    /// Older backlogs use a fresh bounded replay. Neither pass advances the caller's
+    /// durable chronological checkpoint; callers still deduplicate saved sessions.
     public static func processRecent(
         from start: Date,
         to end: Date,
+        analyzer initialAnalyzer: RecordedMotionAnalyzer? = nil,
         sensitivity: Double,
         lookbackSeconds: TimeInterval = 45 * 60,
         query: (Date, Date) -> AnySequence<RecordedAccelerationSample>?,
@@ -57,9 +60,13 @@ public enum MotionHistoryProcessor {
         }
         let lookback = lookbackSeconds.isFinite ? min(3 * 60 * 60, max(60, lookbackSeconds)) : 45 * 60
         let requestedFrom = max(start, end.addingTimeInterval(-lookback))
-        let replayFrom = max(requestedFrom.addingTimeInterval(-8 * 60), end.addingTimeInterval(-3 * 24 * 60 * 60))
+        let contextStart = max(requestedFrom.addingTimeInterval(-8 * 60), end.addingTimeInterval(-3 * 24 * 60 * 60))
+        let checkpoint = start >= contextStart ? initialAnalyzer : nil
+        let replayFrom = checkpoint == nil ? contextStart : start
+        var analyzer = checkpoint ?? RecordedMotionAnalyzer(sensitivity: sensitivity)
+        analyzer.updateSensitivity(sensitivity)
         let replay = process(
-            from: replayFrom, to: end, analyzer: .init(sensitivity: sensitivity),
+            from: replayFrom, to: end, analyzer: analyzer,
             pendingRanges: [], sensitivity: sensitivity, queryChunkDuration: 15 * 60,
             query: query, shouldContinue: shouldContinue
         )
@@ -157,7 +164,9 @@ public enum MotionHistoryProcessor {
         return .init(candidates: candidates, analyzer: analyzer, processedThrough: processedThrough,
                      latestSampleAt: latestSampleAt,
                      pendingRanges: coalescedRanges(pending, maximumDuration: chunkDuration),
-                     expiredRangeCount: validRanges.filter { $0.end <= retentionStart }.count)
+                     // Losing even a prefix is permanent missing coverage. The
+                     // retained suffix can reconcile successfully on this pass.
+                     expiredRangeCount: validRanges.filter { $0.start < retentionStart }.count)
     }
 
     /// One-minute foreground retries must not create thousands of adjacent

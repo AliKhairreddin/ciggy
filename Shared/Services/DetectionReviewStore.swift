@@ -144,6 +144,10 @@ public final class DetectionReviewStore: ObservableObject {
 
 	private static func dailyID(parent: UUID, eventIDs: [UUID]) -> UUID {
 		let key = "ciggy-daily-review-v1:\(parent.uuidString):" + eventIDs.map(\.uuidString).sorted().joined(separator: ":")
+		return stableID(for: key)
+	}
+
+	private static func stableID(for key: String) -> UUID {
 		var bytes = Array(SHA256.hash(data: Data(key.utf8)).prefix(16))
 		bytes[6] = (bytes[6] & 0x0f) | 0x50
 		bytes[8] = (bytes[8] & 0x3f) | 0x80
@@ -180,6 +184,57 @@ public final class DetectionReviewStore: ObservableObject {
 			return true
 		}
 		let current = reviews[index]
+		if current.decision == .pending && incoming.decision == .pending {
+			// Pending summaries only gain detections. A delayed parent can extend
+			// a continuation after that continuation gained newer Watch events.
+			// Keep both sets instead of letting last-writer-wins drop either one.
+			let currentIDs = Set(current.eventIDs)
+			let incomingIDs = Set(incoming.eventIDs)
+			var merged = incoming.revision > current.revision ||
+				(incoming.revision == current.revision && incoming.updatedAt > current.updatedAt) ? incoming : current
+			if incomingIDs.isSubset(of: currentIDs) {
+				merged.eventIDs = current.eventIDs
+			} else if currentIDs.isSubset(of: incomingIDs) {
+				merged.eventIDs = incoming.eventIDs
+			} else {
+				// Concurrent, non-nested lists have no common chronological ordering.
+				// Use a stable order so both devices make the same selection on review.
+				merged.eventIDs = currentIDs.union(incomingIDs).sorted { $0.uuidString < $1.uuidString }
+			}
+			merged.windowStart = min(current.windowStart, incoming.windowStart)
+			merged.windowEnd = max(current.windowEnd, incoming.windowEnd)
+			merged.updatedAt = max(current.updatedAt, incoming.updatedAt)
+			guard merged != current else { return false }
+			reviews[index] = merged
+			sortAndSave()
+			return true
+		}
+		if (current.decision == .pending) != (incoming.decision == .pending) {
+			// A user can review on iPhone while an offline Watch is still extending
+			// the same summary. A higher pending revision must not reopen a saved
+			// decision, and the decision must not hide the Watch's new detections.
+			let decided = current.decision == .pending ? incoming : current
+			let pending = current.decision == .pending ? current : incoming
+			var changed = current.decision == .pending
+			if changed { reviews[index] = decided }
+			let reviewedIDs = Set(decided.eventIDs)
+			let extraIDs = pending.eventIDs.filter { reviewedIDs.contains($0) == false }
+			if extraIDs.isEmpty == false {
+				// Derive the same continuation on both devices, regardless of delivery
+				// order. Replaying an older parent follows this chain without reviving
+				// a continuation that the user has already reviewed, either.
+				let continuation = DetectionReview(
+					id: Self.stableID(for: "ciggy-review-continuation-v1:\(decided.id.uuidString)"),
+					eventIDs: extraIDs, origin: pending.origin,
+					windowStart: pending.windowStart, windowEnd: pending.windowEnd,
+					updatedAt: pending.updatedAt, revision: pending.revision,
+					dayStart: pending.dayStart
+				)
+				if upsert(continuation) { changed = true }
+			}
+			if changed { sortAndSave() }
+			return changed
+		}
 		guard incoming.revision > current.revision ||
 			(incoming.revision == current.revision && incoming.updatedAt > current.updatedAt) else {
 			return false

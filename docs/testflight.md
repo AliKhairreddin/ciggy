@@ -37,7 +37,7 @@ Each executable bundle includes `PrivacyInfo.xcprivacy`. Xcode's synchronized so
 | File timestamps | `C617.1` | Find calibration recordings inside app storage |
 | System boot time | `8FFB.1` | Convert Core Motion event timestamps into absolute dates for logging and paired-device synchronization |
 
-The app manifests declare no tracking or developer collection of app data. Apple-hosted TestFlight diagnostics and feedback are described separately in the [privacy policy](privacy.md).
+The app manifests declare no tracking. They declare linked motion data, tester identifiers, and names for the optional private calibration feature, which requires pairing and explicit consent. Ordinary cigarette history and HealthKit data stay on the devices. Apple-hosted TestFlight diagnostics and feedback are described separately in the [privacy policy](privacy.md).
 
 Both app property lists set `ITSAppUsesNonExemptEncryption=false`: Ciggy uses Apple's CryptoKit SHA-256 only to derive stable event IDs and Apple's system services for paired-device transport. It has no custom encryption implementation or third-party SDKs.
 

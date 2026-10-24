@@ -296,9 +296,9 @@ private struct PrivacyInfoView: View {
 						body: "If you grant access, Ciggy can attach heart-rate context. Motion detection still works without it. Ciggy never writes HealthKit data."
 					)
 					privacyRow(
-						icon: "cloud.slash.fill",
-						title: "No cloud upload",
-						body: "This prototype does not upload events, notes, settings, or detection reviews to a cloud service."
+						icon: "waveform.path",
+						title: "Optional motion sharing",
+						body: "Private motion calibration is off by default. If you pair and opt in, wrist-motion recordings and timestamps go to the private dashboard. Heart rate and cigarette notes are not uploaded. Pause sharing or delete shared recordings in Private motion calibration."
 					)
 					Link("Read the privacy policy",
 					     destination: URL(string: "https://github.com/AliKhairreddin/ciggy/blob/main/docs/privacy.md")!)
