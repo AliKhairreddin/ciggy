@@ -8,9 +8,9 @@ struct CiggyLogControl: ControlWidget {
 	var body: some ControlWidgetConfiguration {
 		StaticControlConfiguration(kind: "CiggyLogControl") {
 			ControlWidgetButton(action: OpenCiggyScreenIntent(target: .log)) {
-				Label("Log a cigarette", systemImage: "plus.circle.fill")
+				Label { Text("Log a Cigarette") } icon: { CiggyIcon.log.image }
 			}
-		}.displayName("Quick Log").description("Open Ciggy to log a cigarette.")
+		}.displayName("Log a Cigarette").description("Open the logging form. Save the cigarette in Ciggy.")
 	}
 }
 
@@ -19,7 +19,7 @@ struct CiggyReportsControl: ControlWidget {
 	var body: some ControlWidgetConfiguration {
 		StaticControlConfiguration(kind: "CiggyReportsControl") {
 			ControlWidgetButton(action: OpenCiggyScreenIntent(target: .reports)) {
-				Label("Reports", systemImage: "chart.bar.fill")
+				Label { Text("Reports") } icon: { CiggyIcon.reports.image }
 			}
 		}.displayName("Ciggy Reports").description("Open your trends and reports.")
 	}
@@ -30,8 +30,8 @@ struct CiggyTodayControl: ControlWidget {
 	var body: some ControlWidgetConfiguration {
 		StaticControlConfiguration(kind: "CiggyTodayControl") {
 			ControlWidgetButton(action: OpenCiggyScreenIntent(target: .today)) {
-				Label("Today", systemImage: "leaf.fill")
+				Label { Text("Cigarettes Today") } icon: { CiggyIcon.cigarette.image }
 			}
-		}.displayName("Ciggy Today").description("Open today's check-in.")
+		}.displayName("Cigarettes Today").description("Open today's recorded cigarette count in Ciggy.")
 	}
 }

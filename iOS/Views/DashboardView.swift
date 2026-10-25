@@ -171,7 +171,7 @@ struct DashboardView: View {
 	private var todaysTimeline: some View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 14) {
-				Label("Today's little moments", systemImage: "clock")
+				Label { Text("Today's little moments") } icon: { CiggyIconView(.elapsed, size: 20) }
 					.font(.headline).foregroundStyle(palette.primaryText)
 				let events = repository.events.filter { Calendar.current.isDateInToday($0.timestamp) }.reversed()
 				if events.isEmpty {
@@ -180,7 +180,7 @@ struct DashboardView: View {
 				} else {
 					ForEach(Array(events.prefix(8))) { event in
 						HStack(alignment: .top, spacing: 12) {
-							Image(systemName: event.source == .manual ? "plus.circle.fill" : "applewatch")
+							CiggyIconView(event.source == .manual ? .log : .watch, size: 20)
 								.foregroundStyle(palette.mint)
 							VStack(alignment: .leading, spacing: 3) {
 								Text(event.source == .manual ? "You checked in" : "Watch detection")
@@ -272,19 +272,19 @@ struct DashboardView: View {
 			metricCard(
 				title: "Smoke-free",
 				value: "\(viewModel.streakDays)d",
-				icon: "sparkles",
+				icon: .streak,
 				color: CiggyTheme.sunlight
 			)
 			metricCard(
 				title: "This week",
 				value: "\(viewModel.weeklyCount)",
-				icon: "calendar",
+				icon: .reports,
 				color: CiggyTheme.lavender
 			)
 			metricCard(
 				title: "Est. saved",
 				value: String(format: "$%.0f", viewModel.moneySaved),
-				icon: "leaf.fill",
+				icon: .savings,
 				color: palette.mint
 			)
 		}
@@ -303,7 +303,7 @@ struct DashboardView: View {
 							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer()
-					Image(systemName: "chart.bar.xaxis")
+					CiggyIconView(.reports, size: 22)
 						.foregroundStyle(palette.mint)
 				}
 
@@ -383,7 +383,7 @@ struct DashboardView: View {
 	private var trackingFreshnessCard: some View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 10) {
-				Label(tracking.status?.title() ?? "Waiting for Watch tracking status", systemImage: "applewatch.radiowaves.left.and.right")
+				Label { Text(tracking.status?.title() ?? "Waiting for Watch tracking status") } icon: { CiggyIconView(.watch, size: 20) }
 					.font(.subheadline.weight(.bold))
 					.foregroundStyle(palette.primaryText)
 				Text(tracking.status?.detail() ?? "Your saved count is shown above. Ciggy requests recent motion from your paired Watch; today's total may still be incomplete until it responds.")
@@ -413,7 +413,7 @@ struct DashboardView: View {
 
 	private var manualLogButton: some View {
 		Button { isLogging = true } label: {
-			Label("Add missed cigarette", systemImage: "plus.circle")
+			Label { Text("Add missed cigarette") } icon: { CiggyIconView(.log, size: 20) }
 				.font(.subheadline)
 				.frame(minHeight: 44)
 		}
@@ -484,7 +484,7 @@ struct DashboardView: View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 12) {
 				HStack {
-					Label("Your little wrist sidekick", systemImage: "applewatch")
+					Label { Text("Your little wrist sidekick") } icon: { CiggyIconView(.watch, size: 20) }
 						.font(.subheadline.weight(.bold)).foregroundStyle(palette.primaryText)
 					Spacer(minLength: 0)
 				}
@@ -517,10 +517,9 @@ struct DashboardView: View {
 		}
 	}
 
-	private func metricCard(title: String, value: String, icon: String, color: Color) -> some View {
+	private func metricCard(title: String, value: String, icon: CiggyIcon, color: Color) -> some View {
 		VStack(alignment: .leading, spacing: 9) {
-			Image(systemName: icon)
-				.font(.subheadline.weight(.bold))
+			CiggyIconView(icon, size: 20)
 				.foregroundStyle(color)
 			Text(value)
 				.font(.title2.weight(.black))

@@ -1,5 +1,14 @@
 # Ciggy Repository Instructions
 
+## Parody brand and voice
+
+- Ciggy is a parody app. Treat its branding, illustrations, feature icons, and copy as a cheeky, self-aware send-up of cigarette packaging and overly earnest habit-tracking apps, rather than generic wellness branding.
+- Use the existing cigarette mascot, warm paper-and-ink palette, rounded forms, packaging jokes, and dry visual or verbal puns as the creative foundation. Prefer meaningful custom Ciggy icons, such as cigarette-shaped chart bars, over unrelated wellness symbols such as leaves.
+- Keep the humor about the habit, its rituals, and the app's own absurdity. Be playful and nonjudgmental; avoid humiliating users, trivializing illness, or portraying smoking as safe or beneficial.
+- Preserve clarity beneath the joke. Counts, limits, dates, tracking freshness, permissions, errors, accessibility labels, and primary action names must accurately explain what the app shows or does. Put extra personality in supporting copy and artwork when a joke would obscure a functional label.
+- Parody does not justify invented detections, misleading health claims, or hiding missing data. Keep automatic estimates and platform limitations honest.
+- Apply this direction consistently across the iPhone app, Watch app, widgets, complications, Live Activities, and release copy. Preserve recognizable system conventions for basic navigation and safety/status actions where they help usability.
+
 ## Delivery
 
 - Work directly on `main`. Do not create or switch to another branch unless the user explicitly asks.

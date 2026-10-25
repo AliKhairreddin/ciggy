@@ -8,7 +8,7 @@ struct CiggyLiveActivity: Widget {
 		ActivityConfiguration(for: CiggyActivityAttributes.self) { context in
 			VStack(alignment: .leading, spacing: 12) {
 				HStack {
-					Label("ciggy", systemImage: "leaf.fill").font(.headline)
+					Label { Text("ciggy") } icon: { CiggyIconView(.cigarette, size: 20) }.font(.headline)
 					Spacer()
 					Text(context.isStale ? "Session ended" : "Today's check-in").font(.caption)
 				}
@@ -22,10 +22,10 @@ struct CiggyLiveActivity: Widget {
 					}
 					ProgressView(value: context.state.progress).tint(CiggyTheme.ember).privacySensitive()
 					HStack {
-						Text("\(context.state.remaining) remaining within your limit").font(.caption).privacySensitive()
+						Text(limitSummary(context.state)).font(.caption).privacySensitive()
 						Spacer()
 						Link(destination: URL(string: "ciggy://log")!) {
-							Label("Log", systemImage: "plus.circle.fill").font(.subheadline.weight(.bold))
+							Label { Text("Log") } icon: { CiggyIconView(.log, size: 18) }.font(.subheadline.weight(.bold))
 						}
 					}
 				}
@@ -37,7 +37,7 @@ struct CiggyLiveActivity: Widget {
 		} dynamicIsland: { context in
 			DynamicIsland {
 				DynamicIslandExpandedRegion(.leading) {
-					Label("ciggy", systemImage: "leaf.fill").font(.headline).foregroundStyle(CiggyTheme.peach)
+					Label { Text("ciggy") } icon: { CiggyIconView(.cigarette, size: 20) }.font(.headline).foregroundStyle(CiggyTheme.peach)
 				}
 				DynamicIslandExpandedRegion(.trailing) {
 					if !context.isStale {
@@ -54,23 +54,32 @@ struct CiggyLiveActivity: Widget {
 							HStack {
 								elapsed(context)
 								Spacer()
-								Link(destination: URL(string: "ciggy://log")!) { Label("Log", systemImage: "plus.circle.fill") }
+								Link(destination: URL(string: "ciggy://log")!) {
+									Label { Text("Log") } icon: { CiggyIconView(.log, size: 18) }
+								}
 									.font(.subheadline.weight(.bold)).foregroundStyle(CiggyTheme.peach)
 							}
 						}
 					}
 				}
 			} compactLeading: {
-				Image(systemName: "leaf.fill").foregroundStyle(CiggyTheme.peach)
+				CiggyIconView(.cigarette, size: 20).foregroundStyle(CiggyTheme.peach)
 			} compactTrailing: {
 				if context.isStale { Image(systemName: "checkmark") }
 				else { Text("\(context.state.dailyCount)").monospacedDigit().privacySensitive() }
 			} minimal: {
-				Image(systemName: "leaf.fill").foregroundStyle(CiggyTheme.peach)
+				CiggyIconView(.cigarette, size: 20).foregroundStyle(CiggyTheme.peach)
 			}
 			.widgetURL(URL(string: "ciggy://today"))
 			.keylineTint(CiggyTheme.peach)
 		}
+	}
+
+	private func limitSummary(_ state: LiveActivitySnapshot) -> String {
+		if state.dailyCount > state.dailyLimit {
+			return "\(state.dailyCount - state.dailyLimit) over your daily limit"
+		}
+		return state.remaining == 0 ? "Daily limit reached" : "\(state.remaining) left before your daily limit"
 	}
 
 	private func count(_ context: ActivityViewContext<CiggyActivityAttributes>) -> some View {

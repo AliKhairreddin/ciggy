@@ -204,15 +204,15 @@ struct RootTabView: View {
 	var body: some View {
 		TabView(selection: $selectedTab) {
 			NavigationStack(path: $todayPath) { DashboardView() }
-				.tabItem { Label("Today", systemImage: "circle.grid.2x2.fill") }
+				.tabItem { Label { Text("Today") } icon: { CiggyIcon.cigarette.image } }
 				.tag(0)
 
 			NavigationStack { ReportsView() }
-				.tabItem { Label("Reports", systemImage: "chart.bar.fill") }
+				.tabItem { Label { Text("Reports") } icon: { CiggyIcon.reports.image } }
 				.tag(1)
 
 			NavigationStack { GoalsView() }
-				.tabItem { Label("Goals", systemImage: "target") }
+				.tabItem { Label { Text("Goals") } icon: { CiggyIcon.limit.image } }
 				.tag(2)
 		}
 		.tint(CiggyTheme.ember)

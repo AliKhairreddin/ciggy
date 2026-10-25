@@ -50,8 +50,7 @@ struct WatchSettingsView: View {
 
 	private var header: some View {
 		HStack(spacing: 9) {
-			Image(systemName: "slider.horizontal.3")
-				.font(.system(size: 16, weight: .bold))
+			CiggyIconView(.settings, size: 20)
 				.foregroundStyle(CiggyTheme.deepInk)
 				.frame(width: 36, height: 36)
 				.background(CiggyTheme.brandGradient, in: Circle())
@@ -71,7 +70,7 @@ struct WatchSettingsView: View {
 		watchCard {
 			VStack(alignment: .leading, spacing: 9) {
 				HStack {
-					Label("Sensitivity", systemImage: "hand.raised.fingers.spread.fill")
+					Label { Text("Sensitivity") } icon: { CiggyIconView(.watch, size: 15) }
 					Spacer()
 					Text(sensitivityName)
 						.foregroundStyle(palette.mint)
@@ -102,7 +101,7 @@ struct WatchSettingsView: View {
 		watchCard {
 			Stepper(value: dailyLimitBinding, in: 1...100) {
 				HStack {
-					Label("Daily limit", systemImage: "scope")
+					Label { Text("Daily limit") } icon: { CiggyIconView(.limit, size: 15) }
 					Spacer()
 					Text("\(settingsStore.settings.dailyLimit)")
 						.font(.system(size: 18, weight: .black, design: .rounded))

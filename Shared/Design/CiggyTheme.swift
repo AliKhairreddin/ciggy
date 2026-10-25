@@ -68,8 +68,7 @@ public struct CiggyProfileMark: View {
 	private let size: CGFloat
 	public init(size: CGFloat = 44) { self.size = size }
 	public var body: some View {
-		Image(systemName: "person.crop.circle")
-			.font(.system(size: size * 0.53, weight: .medium))
+		CiggyIconView(.profile, size: size * 0.53)
 			.foregroundStyle(palette.primaryText)
 			.frame(width: size, height: size)
 			.ciggyGlass(in: Circle())

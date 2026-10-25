@@ -95,8 +95,7 @@ struct WatchDashboardView: View {
 				.frame(width: 7, height: 7)
 				.shadow(color: isMotionMonitoring ? palette.mint : CiggyTheme.ember, radius: 4)
 			NavigationLink(destination: WatchSettingsView()) {
-				Image(systemName: "person.crop.circle.fill")
-					.font(.system(size: 12, weight: .bold))
+				CiggyIconView(.profile, size: 16)
 					.foregroundStyle(palette.primaryText)
 					.frame(width: 26, height: 26)
 					.background(palette.elevatedSurface, in: Circle())
@@ -202,8 +201,10 @@ struct WatchDashboardView: View {
 
 	private var motionStatus: some View {
 		HStack(spacing: 9) {
-			Image(systemName: isMotionMonitoring ? "hand.raised.fingers.spread.fill" : "exclamationmark.triangle.fill")
-				.font(.system(size: 15, weight: .bold))
+			Group {
+				if isMotionMonitoring { CiggyIconView(.watch, size: 18) }
+				else { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 15, weight: .bold)) }
+			}
 				.foregroundStyle(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
 			VStack(alignment: .leading, spacing: 1) {
 				Text(tracking.status?.title() ?? (isMotionMonitoring ? "Motion monitoring" : "Motion unavailable"))
@@ -225,7 +226,7 @@ struct WatchDashboardView: View {
 
 	private var logButton: some View {
 		NavigationLink(destination: LogSmokeView()) {
-			Label("Add missed cigarette", systemImage: "plus.circle")
+			Label { Text("Add missed cigarette") } icon: { CiggyIconView(.log, size: 15) }
 				.font(.system(size: 11))
 				.foregroundStyle(palette.secondaryText)
 				.frame(maxWidth: .infinity)
@@ -251,7 +252,7 @@ struct WatchDashboardView: View {
 	private var weeklyLink: some View {
 		NavigationLink(destination: WeeklySummaryView()) {
 			HStack {
-				Image(systemName: "chart.bar.fill")
+				CiggyIconView(.reports, size: 16)
 				Text("7-day rhythm")
 				Spacer()
 				Image(systemName: "chevron.right")

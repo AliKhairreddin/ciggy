@@ -66,8 +66,7 @@ struct GoalsView: View {
 							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer()
-					Image(systemName: "target")
-						.font(.title2)
+					CiggyIconView(.limit, size: 24)
 						.foregroundStyle(palette.mint)
 				}
 

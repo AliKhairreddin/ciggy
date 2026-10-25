@@ -11,6 +11,7 @@ private struct CiggyWidgetEntry: TimelineEntry {
 }
 
 private struct CiggyWidgetProvider: TimelineProvider {
+	var usesLivePreviewTime = false
 	func placeholder(in context: Context) -> CiggyWidgetEntry { previewEntry() }
 	func getSnapshot(in context: Context, completion: @escaping (CiggyWidgetEntry) -> Void) {
 		completion(context.isPreview ? previewEntry() : CiggyWidgetEntry(date: Date(), snapshot: WidgetSnapshotStore().read()))
@@ -24,7 +25,10 @@ private struct CiggyWidgetProvider: TimelineProvider {
 		completion(Timeline(entries: dates.map { CiggyWidgetEntry(date: $0, snapshot: snapshot) }, policy: .atEnd))
 	}
 	private func previewEntry() -> CiggyWidgetEntry {
-		let now = Date()
+		// A daytime example always demonstrates 3 recorded / 7 left, even when
+		// someone opens the gallery shortly after midnight. Never persisted.
+		let current = Date()
+		let now = usesLivePreviewTime ? current : Calendar.current.date(bySettingHour: 15, minute: 0, second: 0, of: current) ?? current
 		let events = [30, 120, 240, 1_500, 2_940, 4_380].map {
 			SmokingEvent(timestamp: now.addingTimeInterval(Double(-$0 * 60)), source: .manual)
 		}
@@ -36,20 +40,20 @@ private enum WidgetMetric {
 	case today, remaining, elapsed, week, log
 	var title: String {
 		switch self {
-		case .today: "Today"
-		case .remaining: "Daily Budget"
+		case .today: "Cigarettes Today"
+		case .remaining: "Daily Limit Remaining"
 		case .elapsed: "Since Last Log"
-		case .week: "Your Week"
-		case .log: "Quick Log"
+		case .week: "Last 7 Days"
+		case .log: "Log a Cigarette"
 		}
 	}
-	var symbol: String {
+	var icon: CiggyIcon {
 		switch self {
-		case .today: "leaf.fill"
-		case .remaining: "target"
-		case .elapsed: "timer"
-		case .week: "chart.bar.fill"
-		case .log: "plus.circle.fill"
+		case .today: .cigarette
+		case .remaining: .limit
+		case .elapsed: .elapsed
+		case .week: .reports
+		case .log: .log
 		}
 	}
 	var url: URL {
@@ -72,7 +76,7 @@ public struct CiggyTodayWidget: Widget {
 	public var body: some WidgetConfiguration {
 		StaticConfiguration(kind: "CiggyToday", provider: CiggyWidgetProvider()) { entry in
 			CiggyWidgetView(entry: entry, metric: .today)
-		}.configurationDisplayName("Today").description("Today's count and daily-limit progress.")
+		}.configurationDisplayName("Cigarettes Today").description("Today's paper trail: cigarettes recorded, including automatic estimates. Tap to open Today.")
 			.supportedFamilies(ciggyWidgetFamilies)
 	}
 }
@@ -82,7 +86,7 @@ public struct CiggyBudgetWidget: Widget {
 	public var body: some WidgetConfiguration {
 		StaticConfiguration(kind: "CiggyBudget", provider: CiggyWidgetProvider()) { entry in
 			CiggyWidgetView(entry: entry, metric: .remaining)
-		}.configurationDisplayName("Daily Budget").description("See how many logs remain within your daily limit.")
+		}.configurationDisplayName("Daily Limit Remaining").description("Your line in the ash: cigarettes left before your daily limit, or how far over it you are. Tap to adjust the limit.")
 			.supportedFamilies(ciggyWidgetFamilies)
 	}
 }
@@ -90,9 +94,9 @@ public struct CiggyBudgetWidget: Widget {
 public struct CiggyElapsedWidget: Widget {
 	public init() {}
 	public var body: some WidgetConfiguration {
-		StaticConfiguration(kind: "CiggyElapsed", provider: CiggyWidgetProvider()) { entry in
+		StaticConfiguration(kind: "CiggyElapsed", provider: CiggyWidgetProvider(usesLivePreviewTime: true)) { entry in
 			CiggyWidgetView(entry: entry, metric: .elapsed)
-		}.configurationDisplayName("Since Last Log").description("A running timer from your most recent log.")
+		}.configurationDisplayName("Since Last Log").description("Time since your latest recorded cigarette. A timer, not a smoke-free certificate.")
 			.supportedFamilies(ciggyWidgetFamilies)
 	}
 }
@@ -102,7 +106,7 @@ public struct CiggyWeekWidget: Widget {
 	public var body: some WidgetConfiguration {
 		StaticConfiguration(kind: "CiggyWeek", provider: CiggyWidgetProvider()) { entry in
 			CiggyWidgetView(entry: entry, metric: .week)
-		}.configurationDisplayName("Your Week").description("Seven days of logs at a glance.")
+		}.configurationDisplayName("Last 7 Days").description("A week of receipts: cigarettes recorded today and over the previous six days. Tap to open Reports.")
 			.supportedFamilies(ciggyWidgetFamilies)
 	}
 }
@@ -112,7 +116,7 @@ public struct CiggyQuickLogWidget: Widget {
 	public var body: some WidgetConfiguration {
 		StaticConfiguration(kind: "CiggyQuickLog", provider: CiggyWidgetProvider()) { entry in
 			CiggyWidgetView(entry: entry, metric: .log)
-		}.configurationDisplayName("Quick Log").description("Open Ciggy's logging screen with one tap.")
+		}.configurationDisplayName("Log a Cigarette").description("One slipped past the paperwork? Open Ciggy's logging form, then save it in the app.")
 			.supportedFamilies(ciggyWidgetFamilies)
 	}
 }
@@ -124,13 +128,54 @@ private struct CiggyWidgetView: View {
 	let metric: WidgetMetric
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
 	private var weekCount: Int { entry.week.reduce(0) { $0 + $1.count } }
+	private var logIconSize: CGFloat {
+		#if os(watchOS)
+		if family == .accessoryCorner { return 18 }
+		#endif
+		return 30
+	}
+	private var overLimit: Int { max(0, entry.today.dailyCount - entry.today.dailyLimit) }
+	private var usesCompactHomeCopy: Bool {
+		#if os(iOS)
+		family == .systemSmall
+		#else
+		false
+		#endif
+	}
+	private var metricProgress: Double {
+		metric == .remaining ? Double(entry.today.remaining) / Double(entry.today.dailyLimit) : entry.today.progress
+	}
+	private var compactLabel: String {
+		switch metric {
+		case .today: "today"
+		case .remaining: overLimit > 0 ? "over" : entry.today.remaining == 0 ? "at limit" : "left"
+		case .elapsed: "since log"
+		case .week: "7 days"
+		case .log: "log"
+		}
+	}
+	private var cornerLabel: String {
+		switch metric {
+		case .today: "Cigarettes today"
+		case .remaining: overLimit > 0 ? "Over daily limit" : entry.today.remaining == 0 ? "Daily limit reached" : "Left to daily limit"
+		default: metric.title
+		}
+	}
+	private var limitSummary: String {
+		if overLimit > 0 { return "\(overLimit) cigarettes over your daily limit of \(entry.today.dailyLimit)" }
+		if entry.today.remaining == 0 { return "Daily limit of \(entry.today.dailyLimit) reached" }
+		return "\(entry.today.remaining) cigarettes left before your daily limit of \(entry.today.dailyLimit)"
+	}
 	private var subtitle: String {
 		switch metric {
-		case .today: "of \(entry.today.dailyLimit) daily limit"
-		case .remaining: entry.today.dailyCount > entry.today.dailyLimit ? "\(entry.today.dailyCount - entry.today.dailyLimit) over today's limit" : "remaining within today's limit"
-		case .elapsed: "since your last log"
-		case .week: "logs in the last 7 days"
-		case .log: "Log a cigarette"
+		case .today: return usesCompactHomeCopy ? "recorded · limit \(entry.today.dailyLimit)" : "cigarettes recorded · limit \(entry.today.dailyLimit)"
+		case .remaining:
+			if overLimit > 0 { return "\(usesCompactHomeCopy ? "over" : "cigarettes over") · limit \(entry.today.dailyLimit)" }
+			if entry.today.remaining == 0 { return "daily limit of \(entry.today.dailyLimit) reached" }
+			return "\(usesCompactHomeCopy ? "left" : "cigarettes left") · limit \(entry.today.dailyLimit)"
+		case .elapsed: return "since last recorded cigarette"
+		case .week: return "cigarettes recorded in 7 days"
+		case .log: return "Add one to the paper trail"
 		}
 	}
 
@@ -142,25 +187,29 @@ private struct CiggyWidgetView: View {
 
 	@ViewBuilder private var content: some View {
 		if entry.snapshot == nil && metric != .log {
-			Label("Open Ciggy", systemImage: "leaf")
+			Label { Text("Open Ciggy") } icon: { CiggyIconView(.cigarette, size: 14) }
 		} else {
 			switch family {
 			case .accessoryInline:
-				HStack(spacing: 4) { Image(systemName: metric.symbol); inlineValue }
+				HStack(spacing: 4) { CiggyIconView(metric.icon, size: 12); inlineValue }
 			case .accessoryCircular:
 				circular
 			case .accessoryRectangular:
-				VStack(alignment: .leading, spacing: 3) {
-					Label(metric.title, systemImage: metric.symbol).font(.caption.weight(.semibold))
-					value.font(.title3.weight(.bold)).minimumScaleFactor(0.6)
+				VStack(alignment: .leading, spacing: 2) {
+					Label { Text(metric == .remaining ? "Daily limit" : metric.title) } icon: { CiggyIconView(metric.icon, size: 12) }
+						.font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+					HStack(alignment: .firstTextBaseline, spacing: 4) {
+						value.font(.title3.weight(.bold)).minimumScaleFactor(0.6)
+						if metric == .today || metric == .remaining { Text(compactLabel).font(.caption2) }
+					}.lineLimit(1)
 					if metric == .today || metric == .remaining {
-						ProgressView(value: entry.today.progress).privacySensitive()
+						ProgressView(value: metricProgress).privacySensitive().accessibilityHidden(true)
 					} else { Text(subtitle).font(.caption2).lineLimit(1) }
 				}
 			#if os(watchOS)
 			case .accessoryCorner:
 				value.font(.title3.weight(.bold))
-					.widgetLabel { Text(metric.title) }
+					.widgetLabel { Text(cornerLabel) }
 			#endif
 			default:
 				#if os(iOS)
@@ -176,14 +225,25 @@ private struct CiggyWidgetView: View {
 		ZStack {
 			AccessoryWidgetBackground()
 			if metric == .today || metric == .remaining {
-				Gauge(value: entry.today.progress) { Image(systemName: metric.symbol) } currentValueLabel: {
-					value.font(.headline)
+				Gauge(value: metricProgress) { CiggyIconView(metric.icon, size: 10) } currentValueLabel: {
+					VStack(spacing: 0) {
+						value.font(.system(size: 16, weight: .bold)).lineLimit(1).minimumScaleFactor(0.6)
+						Text(compactLabel).font(.system(size: 8, weight: .semibold)).lineLimit(1)
+					}
 				}.gaugeStyle(.accessoryCircular).privacySensitive()
-			} else {
+			} else if metric == .log {
 				VStack(spacing: 2) {
-					Image(systemName: metric.symbol).font(.caption)
-					value.font(.caption.weight(.bold)).minimumScaleFactor(0.45)
+					CiggyIconView(.log, size: 24)
+					Text("Log").font(.system(size: 8, weight: .semibold))
 				}.padding(5)
+					.accessibilityElement(children: .ignore)
+					.accessibilityLabel("Open Ciggy to log a cigarette")
+			} else {
+				VStack(spacing: 1) {
+					CiggyIconView(metric.icon, size: 12)
+					value.font(.caption.weight(.bold)).lineLimit(1).minimumScaleFactor(0.45)
+					Text(compactLabel).font(.system(size: 8, weight: .semibold))
+				}.padding(3)
 			}
 		}
 	}
@@ -195,20 +255,21 @@ private struct CiggyWidgetView: View {
 	}
 
 	private var homeScreen: some View {
-		VStack(alignment: .leading, spacing: 10) {
-			HStack {
-				Label("ciggy", systemImage: metric.symbol).font(.caption.weight(.black)).widgetAccentable()
-				Spacer()
-				if family != .systemSmall {
-					Text(metric.title).font(.caption.weight(.semibold))
+		VStack(alignment: .leading, spacing: usesCompactHomeCopy ? 8 : 10) {
+			HStack(alignment: .top, spacing: 7) {
+				CiggyIconView(metric.icon, size: 17).widgetAccentable()
+				VStack(alignment: .leading, spacing: 2) {
+					Text("ciggy").font(.caption2.weight(.black)).widgetAccentable()
+					Text(metric.title).font(.caption.weight(.semibold)).lineLimit(2).minimumScaleFactor(0.8)
 				}
+				Spacer()
 			}.foregroundStyle(CiggyTheme.ember)
 			if family == .systemMedium {
 				HStack(spacing: 20) {
 					primaryMetric
 					Spacer(minLength: 0)
 					if metric == .week { weekChart.frame(maxWidth: 145) }
-					else if metric != .log { progressRing.frame(width: 60, height: 60) }
+					else if metric == .today || metric == .remaining { progressRing.frame(width: 60, height: 60) }
 				}
 			} else {
 				primaryMetric
@@ -216,13 +277,15 @@ private struct CiggyWidgetView: View {
 			if isLarge {
 				Divider()
 				HStack {
-					Text("YOUR WEEK").font(.caption2.weight(.bold)).tracking(1)
+					Text("LAST 7 DAYS").font(.caption2.weight(.bold)).tracking(1)
 					Spacer()
 					Text("\(weekCount) logs").font(.caption.weight(.semibold)).privacySensitive()
 				}
 				weekChart
 				HStack {
-					Link(destination: URL(string: "ciggy://log")!) { Label("Log", systemImage: "plus.circle.fill") }
+					Link(destination: URL(string: "ciggy://log")!) {
+						Label { Text("Log") } icon: { CiggyIconView(.log, size: 13) }
+					}
 					Spacer()
 					Link("Reports", destination: URL(string: "ciggy://reports")!)
 				}.font(.caption.weight(.bold)).foregroundStyle(CiggyTheme.ember)
@@ -236,9 +299,10 @@ private struct CiggyWidgetView: View {
 		VStack(alignment: .leading, spacing: 5) {
 			value.font(.system(size: metric == .elapsed ? 29 : 38, weight: .black, design: .rounded))
 				.minimumScaleFactor(0.5).lineLimit(1)
+				.frame(height: 44, alignment: .leading)
 			Text(subtitle).font(.caption).foregroundStyle(palette.secondaryText).fixedSize(horizontal: false, vertical: true)
 			if metric == .today || metric == .remaining {
-				ProgressView(value: entry.today.progress).tint(CiggyTheme.ember).privacySensitive()
+				ProgressView(value: metricProgress).tint(CiggyTheme.ember).privacySensitive().accessibilityHidden(true)
 			}
 		}
 	}
@@ -246,10 +310,14 @@ private struct CiggyWidgetView: View {
 	private var progressRing: some View {
 		ZStack {
 			Circle().stroke(palette.border, lineWidth: 6)
-			Circle().trim(from: 0, to: entry.today.progress).stroke(CiggyTheme.ember, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+			Circle().trim(from: 0, to: metricProgress).stroke(CiggyTheme.ember, style: StrokeStyle(lineWidth: 6, lineCap: .round))
 				.rotationEffect(.degrees(-90))
-			Text("\(entry.today.dailyCount)/\(entry.today.dailyLimit)").font(.caption2.weight(.bold)).minimumScaleFactor(0.6)
-		}.privacySensitive()
+			VStack(spacing: 1) {
+				Text(metric == .remaining ? "\(entry.today.remaining)/\(entry.today.dailyLimit)" : "\(entry.today.dailyCount)/\(entry.today.dailyLimit)")
+					.font(.caption2.weight(.bold)).minimumScaleFactor(0.6)
+				Text(metric == .remaining ? "left" : "recorded").font(.system(size: 8))
+			}
+		}.privacySensitive().accessibilityHidden(true)
 	}
 
 	private var weekChart: some View {
@@ -270,22 +338,39 @@ private struct CiggyWidgetView: View {
 
 	@ViewBuilder private var value: some View {
 		switch metric {
-		case .today: Text("\(entry.today.dailyCount)").privacySensitive()
-		case .remaining: Text("\(entry.today.remaining)").privacySensitive()
-		case .week: Text("\(weekCount)").privacySensitive()
-		case .log: Image(systemName: "plus.circle.fill").widgetAccentable()
+		case .today:
+			Text("\(entry.today.dailyCount)").privacySensitive()
+				.accessibilityLabel("\(entry.today.dailyCount) cigarettes recorded today")
+		case .remaining:
+			Text(overLimit > 0 ? "+\(overLimit)" : "\(entry.today.remaining)").privacySensitive()
+				.accessibilityLabel(limitSummary)
+		case .week:
+			Text("\(weekCount)").privacySensitive()
+				.accessibilityLabel("\(weekCount) cigarettes recorded in the last seven days")
+		case .log:
+			ZStack { CiggyIconView(.log, size: logIconSize).widgetAccentable() }
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel("Open Ciggy to log a cigarette")
 		case .elapsed:
 			if let last = entry.today.lastLoggedAt {
 				Text(last, style: .timer).monospacedDigit().privacySensitive()
+					.accessibilityLabel("Time since last recorded cigarette")
+					.accessibilityValue(Text(last, style: .timer))
 			} else { Text("No logs yet").font(.caption) }
 		}
 	}
 
 	@ViewBuilder private var inlineValue: some View {
 		switch metric {
-		case .today: Text("\(entry.today.dailyCount)/\(entry.today.dailyLimit) today").privacySensitive()
-		case .remaining: Text("\(entry.today.remaining) remaining").privacySensitive()
-		case .week: Text("\(weekCount) this week").privacySensitive()
+		case .today:
+			Text("\(entry.today.dailyCount) today").privacySensitive()
+				.accessibilityLabel("\(entry.today.dailyCount) cigarettes recorded today")
+		case .remaining:
+			Text(overLimit > 0 ? "+\(overLimit) over limit" : entry.today.remaining == 0 ? "0 · limit reached" : "\(entry.today.remaining) left to limit")
+				.privacySensitive().accessibilityLabel(limitSummary)
+		case .week:
+			Text("\(weekCount) in 7 days").privacySensitive()
+				.accessibilityLabel("\(weekCount) cigarettes recorded in the last seven days")
 		case .log: Text("Log a cigarette")
 		case .elapsed: value
 		}
