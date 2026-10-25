@@ -1,8 +1,8 @@
 # Ciggy privacy policy
 
-Effective October 23, 2026.
+Effective October 25, 2026.
 
-Ciggy is an iPhone and Apple Watch smoking-awareness app developed by Ali Khairreddin. Ordinary cigarette tracking stays on your devices and does not require an account. Ciggy has no advertising or third-party analytics SDK. An optional, separately consented calibration feature sends wrist-motion recordings to the private Ciggy dashboard described below.
+Ciggy is an iPhone and Apple Watch smoking-awareness app developed by Ali Khairreddin. Ordinary cigarette tracking stays on your devices and does not require an account. Ciggy has no advertising or third-party analytics SDK. An optional, separately consented calibration feature sends wrist-motion recordings to the private Ciggy dashboard described below. The optional Ashtray League publishes weekly cigarette totals only after you join.
 
 ## Information on your devices
 
@@ -15,6 +15,16 @@ Opt-in calibration recordings contain motion samples and the label you select. C
 Ciggy uses Apple's WatchConnectivity framework to synchronize events, settings, corrections, detection feedback, and calibration recordings between your paired iPhone and Apple Watch. Widgets and complications read a local summary shared with the app. Live Activities and notifications may display counts or summaries on your Lock Screen or Watch, depending on your device settings.
 
 If you explicitly export or share a calibration recording, the destination you choose receives that file. Device backups and transfers may also contain app data according to your Apple settings.
+
+## Optional public Ashtray League
+
+Browsing the league does not upload your cigarette history. Joining requires an explicit public-sharing choice. Ciggy creates a random member identifier and generated alias, saves a separate membership credential in this iPhone’s Keychain, and sends the current and previous UTC weeks’ cigarette totals to the existing Cloudflare service. These totals include saved manual logs and automatic estimates. Exact cigarette timestamps, event IDs, notes, goals, motion, heart rate, and location are not sent to the league.
+
+Your alias, weekly cigarette totals, rank, and count synchronization time are public. The server also stores the member identifier, a hash of the credential, join and expiry times, and aggregate revision numbers to prevent delayed requests from undoing corrections. No real name or regional location is required. The league identity is separate from private calibration and cannot access calibration data. Cloudflare processes network requests; application rate limiting stores only short-lived, windowed IP hashes.
+
+Only the current and previous Monday–Sunday UTC weeks are available. Older totals are removed by hourly cleanup; inactive memberships expire after 90 days. Leaving deletes the public alias and saved totals after server confirmation. If offline, Ciggy pauses further sharing, keeps the deletion pending, and retries when the league next loads. A minimal credential-hash revocation record remains for up to 90 days to stop delayed requests from restoring deleted data. Cloudflare-managed backups follow the provider’s separate retention policy.
+
+Removing the app is not a server deletion request. Leave the league before removal to request immediate deletion. Keychain credentials can survive reinstall, but Ciggy pauses count sharing when local installation history is missing rather than overwriting a saved total with an empty history. Public standings may have been viewed or copied by others.
 
 ## Optional private calibration dashboard
 

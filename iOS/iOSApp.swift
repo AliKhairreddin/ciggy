@@ -17,6 +17,7 @@ struct CiggyiOSApp: App {
 				.environmentObject(runtime.settingsStore)
 				.environmentObject(runtime.reviewStore)
 				.environmentObject(liveActivity)
+				.environmentObject(runtime.league)
 				.onAppear {
 					liveActivity.bind(repository: runtime.repository, settings: runtime.settingsStore)
 					runtime.start()
@@ -33,6 +34,9 @@ struct CiggyiOSApp: App {
 						runtime.coordinator.refreshNotifications()
 						ConnectivityManager.shared.requestHistoryRefresh()
 						liveActivity.refresh()
+						if runtime.league.isMember || runtime.league.pendingDeletion {
+							Task { await runtime.league.load() }
+						}
 					}
 				}
 		}
@@ -48,9 +52,11 @@ final class IOSAppRuntime: ObservableObject {
 	let settingsStore = UserSettingsStore()
 	let reviewStore = DetectionReviewStore()
 	let coordinator = IOSAppCoordinator()
+	let league = LeaderboardStore()
 
 	func start() {
 		coordinator.start(repository: repository, settings: settingsStore, reviewStore: reviewStore)
+		league.bind(repository: repository)
 	}
 }
 
@@ -214,6 +220,10 @@ struct RootTabView: View {
 			NavigationStack { GoalsView() }
 				.tabItem { Label { Text("Goals") } icon: { CiggyIcon.limit.image } }
 				.tag(2)
+
+			NavigationStack { LeaderboardView() }
+				.tabItem { Label { Text("League") } icon: { CiggyIcon.league.image } }
+				.tag(3)
 		}
 		.tint(CiggyTheme.ember)
 		.ciggyAppearance()
@@ -242,6 +252,7 @@ struct RootTabView: View {
 		case "log": todayPath = NavigationPath(); selectedTab = 0; isLogging = true
 		case "reports": selectedTab = 1
 		case "goals": selectedTab = 2
+		case "league": selectedTab = 3
 		case "today": todayPath = NavigationPath(); selectedTab = 0
 		default: break
 		}

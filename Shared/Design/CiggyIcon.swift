@@ -8,6 +8,7 @@ public enum CiggyIcon: String, CaseIterable, Sendable {
     case limit = "CiggyIconLimit"
     case elapsed = "CiggyIconElapsed"
     case reports = "CiggyIconReports"
+    case league = "CiggyIconLeague"
     case log = "CiggyIconLog"
     case settings = "CiggyIconSettings"
     case profile = "CiggyIconProfile"

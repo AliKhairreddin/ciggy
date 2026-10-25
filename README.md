@@ -48,13 +48,19 @@ A Ciggy complication on the active Watch face gives background checks more oppor
 
 ## Tracking experience
 
-The iPhone bottom bar contains **Today**, **Reports**, and **Goals**. Open Settings through the profile icon at the top right of Today; the Watch also uses its header profile icon. Manual entry remains available as a small **Add missed cigarette** action, and automatic detections remain reviewable with **Accurate** and **Adjust count**.
+The iPhone bottom bar contains **Today**, **Reports**, **Goals**, and **League**. Open Settings through the profile icon at the top right of Today; the Watch also uses its header profile icon. Manual entry remains available as a small **Add missed cigarette** action, and automatic detections remain reviewable with **Accurate** and **Adjust count**.
 
 Detection is an estimate from wrist motion, not a measurement of the object in the hand. Normal sensitivity requires at least five completed raise/hold/return cycles and at least five minutes of continuing qualifying activity. The first duration starts at the first recognized gesture; after a count, another five-minute segment with fresh gestures can create another count without a quiet gap. More than 2½ minutes between accepted gestures breaks the accumulated evidence, so idle time cannot turn into extra cigarettes. The five-minute default is an engineering estimate informed by measured smoking durations, **not an established global average**. Shorter cigarettes can be missed and a long single cigarette can be split. See the [duration evidence and counting rules](docs/cigarette-duration.md).
 
 The Watch must be on the moving hand. Stopping or restarting live sensors clears incomplete live duration; unavailable source intervals cannot establish continuous smoking. Saved accelerometer history can separately catch up when it contains continuous motion. The first estimate needs five minutes of qualifying evidence, plus any delay before watchOS supplies and processes the recording and delivers the event to iPhone. This does not guarantee a five-minute iPhone update.
 
 Synthetic tests exercise full assumed smoking, spoon/fork eating, drinking, resting, opposite-wrist and interrupted-data scenarios through both live-motion and historical-acceleration pipelines. They are deterministic software stress tests, **not training data or proof of real-world accuracy**. Identical wrist traces cannot be distinguished by labeling them differently. See [the motion test guide](docs/motion-testing.md) for the reproducible large-sweep command and historical results. Earlier [reliability validation](docs/reliability-validation.md) and measured replay results predate the duration rule and do not validate its accuracy.
+
+## Ashtray League
+
+An optional global leaderboard ranks weekly cigarette counts from highest to lowest. Join under a generated Ciggy alias, see the top 50 and your own position, and browse this week or last week. Equal totals share a rank; the weekly edition resets Monday at 00:00 UTC. The podium has questionable bragging rights and no prizes.
+
+Joining shares only your alias and the current and previous weeks’ aggregate cigarette totals. Counts include saved manual logs and automatic estimates; corrections and delayed Watch delivery update the league when the iPhone synchronizes. Nothing is shared until you join, and leaving deletes your public league record. See [league rules and implementation](docs/leaderboard.md) and [privacy](docs/privacy.md).
 
 ## Private calibration
 

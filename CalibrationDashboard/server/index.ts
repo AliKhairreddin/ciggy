@@ -7,6 +7,7 @@ import { APIError, APPLE_EPOCH_MS, cleanAlias, object, readJSON, RETENTION_DAYS,
 import { validateNativeUploadWindow } from './validation.ts';
 import { summarizeRecording } from '../public/timeline.js';
 import { listDeliveryReports, saveDeliveryReport } from './delivery.ts';
+import { handleLeague, purgeLeague } from './league.ts';
 
 type Authenticator = (request: Request, env: Env) => Promise<string>;
 const DAY = 86400000;
@@ -115,7 +116,8 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
       try {
         const { pathname } = new URL(request.url), method = request.method;
         let response: Response;
-        if (pathname === '/api/enroll' && method === 'POST') response = await enroll(request, env);
+        if (pathname === '/api/league' || pathname.startsWith('/api/league/')) response = await handleLeague(request, env);
+        else if (pathname === '/api/enroll' && method === 'POST') response = await enroll(request, env);
         else if (pathname === '/api/upload' && method === 'POST') {
           assertSameOrigin(request, env);
           const participant = await participantForToken(request, env);
@@ -203,11 +205,12 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
           return secure(response);
         }
         // Never log raw samples, aliases, pairing codes, tokens, or request bodies.
-        return secure(json({ error: 'The private recording service is temporarily unavailable. Please retry.' }, 503));
+        return secure(json({ error: 'The Ciggy service is temporarily unavailable. Please retry.' }, 503));
       }
     },
     async scheduled(_controller: ScheduledController, env: Env, _context: ExecutionContext): Promise<void> {
       await purgeExpired(env);
+      await purgeLeague(env);
     }
   };
 }
