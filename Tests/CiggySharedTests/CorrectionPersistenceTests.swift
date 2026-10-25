@@ -240,6 +240,43 @@ final class CorrectionPersistenceTests: XCTestCase {
         }
     }
 
+    func testShiftedDurationReviewKeepsAdjacentSegmentsAndCorrectsTheSameScope() throws {
+        let originals = (0..<3).map { index in
+            SmokingEvent(timestamp: now.addingTimeInterval(Double(index + 1) * 300), source: .automatic,
+                         motionSessionStartedAt: now.addingTimeInterval(Double(index) * 300))
+        }
+        let aliases = originals.map {
+            SmokingEvent(timestamp: $0.timestamp.addingTimeInterval(30), source: .automatic,
+                         motionSessionStartedAt: $0.motionSessionStartedAt?.addingTimeInterval(30))
+        }
+        let correction = DetectionReview(eventIDs: aliases.map(\.id), origin: .watchHistory,
+            windowStart: now, windowEnd: aliases.last!.timestamp, decision: .adjusted,
+            correctedCount: 1, updatedAt: now, revision: 2, dayStart: Calendar.current.startOfDay(for: now),
+            eventSnapshots: aliases, correction: .init(decidedAt: now))
+        for initial in [originals, aliases] {
+            try withFiles { defaults, reviewURL, eventURL in
+                let repository = EventRepository(userDefaults: defaults, snapshotURL: eventURL)
+                initial.forEach { XCTAssertTrue(repository.receiveEvent($0)) }
+                XCTAssertEqual(repository.events.count, 3)
+                let store = DetectionReviewStore(userDefaults: defaults, snapshotURL: reviewURL)
+                store.configureCorrectionDelivery(repository: repository, enqueue: { _ in true })
+                XCTAssertTrue(store.receive(correction))
+                for event in originals + aliases { XCTAssertTrue(repository.receiveEvent(event)) }
+                XCTAssertTrue(store.retryPendingCorrections())
+                XCTAssertEqual(repository.events.map(\.id), [initial[0].id])
+
+                let restoredRepository = EventRepository(userDefaults: defaults, snapshotURL: eventURL)
+                let restoredStore = DetectionReviewStore(userDefaults: defaults, snapshotURL: reviewURL)
+                restoredStore.configureCorrectionDelivery(repository: restoredRepository, enqueue: { _ in true })
+                let next = SmokingEvent(timestamp: now.addingTimeInterval(1_200), source: .automatic,
+                                        motionSessionStartedAt: now.addingTimeInterval(900))
+                XCTAssertTrue(restoredRepository.addEvent(next))
+                XCTAssertTrue(restoredStore.receive(correction))
+                XCTAssertEqual(restoredRepository.events.map(\.id), [initial[0].id, next.id])
+            }
+        }
+    }
+
     func testMissingLegacyOriginalKeepsCorrectionPendingUntilEventArrives() throws {
         try withFiles { defaults, reviewURL, eventURL in
             let repository = EventRepository(userDefaults: defaults, snapshotURL: eventURL)

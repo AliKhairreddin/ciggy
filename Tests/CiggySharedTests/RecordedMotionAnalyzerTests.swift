@@ -6,13 +6,19 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
 
     func testRepeatedRecordedCyclesCreateCandidate() throws {
         var analyzer = RecordedMotionAnalyzer()
-        let candidates = samples(cycles: 5).compactMap { analyzer.record($0) }
+        let candidates = samples(cycles: 16).compactMap { analyzer.record($0) }
         let detected = try XCTUnwrap(candidates.first)
         XCTAssertEqual(candidates.count, 1)
-        XCTAssertEqual(detected.motionGestureCount, 5)
+        XCTAssertEqual(detected.motionGestureCount, 16)
         XCTAssertNil(detected.peakHeartRate)
-        XCTAssertGreaterThan(detected.gestureAt.timeIntervalSince(start), 85)
-        XCTAssertLessThan(detected.gestureAt.timeIntervalSince(start), 90)
+        XCTAssertGreaterThan(detected.gestureAt.timeIntervalSince(start), 305)
+        XCTAssertLessThan(detected.gestureAt.timeIntervalSince(start), 310)
+        XCTAssertGreaterThanOrEqual(detected.gestureAt.timeIntervalSince(try XCTUnwrap(detected.motionSessionStartedAt)), 300)
+    }
+
+    func testRepeatedCyclesBelowDurationThresholdDoNotCount() {
+        var analyzer = RecordedMotionAnalyzer()
+        XCTAssertTrue(samples(cycles: 15).compactMap { analyzer.record($0) }.isEmpty)
     }
 
     func testStaticMotionDoesNotCreateCandidate() {
@@ -23,7 +29,7 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
     }
 
     func testCheckpointRestoresPartialSessionAndProducesSameCandidateID() throws {
-        let stream = samples(cycles: 5)
+        let stream = samples(cycles: 16)
         var uninterrupted = RecordedMotionAnalyzer()
         let expected = stream.compactMap { uninterrupted.record($0) }
         var resumed = RecordedMotionAnalyzer()
@@ -36,29 +42,39 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
     }
 
     func testReplayProducesStableIDsAndContinuingSessionSurvivesCheckpoint() throws {
-        let stream = samples(cycles: 5)
+        let stream = samples(cycles: 16)
         var first = RecordedMotionAnalyzer()
         let candidate = try XCTUnwrap(stream.compactMap { first.record($0) }.first)
         var replay = RecordedMotionAnalyzer()
         XCTAssertEqual(stream.compactMap { replay.record($0) }.first?.id, candidate.id)
         first = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(first))
-        for sample in samples(cycles: 5, offset: 100) { XCTAssertNil(first.record(sample)) }
+        for sample in samples(cycles: 14, offset: 320) { XCTAssertNil(first.record(sample)) }
+        let next = samples(cycles: 1, offset: 600).compactMap { first.record($0) }
+        XCTAssertEqual(next.count, 1)
+        XCTAssertNotEqual(next.first?.id, candidate.id)
     }
 
-    func testSeparateRecordedPatternsCountWithinEightMinutesAcrossCheckpoint() throws {
+    func testSeparateRecordedPatternsEachRequireDurationAcrossCheckpoint() throws {
         var analyzer = RecordedMotionAnalyzer()
-        var detected = samples(cycles: 5).compactMap { analyzer.record($0) }
+        var detected = samples(cycles: 16).compactMap { analyzer.record($0) }
         analyzer = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(analyzer))
-        for sample in rest(from: 100, to: 275) { XCTAssertNil(analyzer.record(sample)) }
-        detected += samples(cycles: 5, offset: 275).compactMap { analyzer.record($0) }
+        for sample in rest(from: 320, to: 500) { XCTAssertNil(analyzer.record(sample)) }
+        detected += samples(cycles: 16, offset: 500).compactMap { analyzer.record($0) }
         XCTAssertEqual(detected.count, 2)
         XCTAssertEqual(Set(detected.map(\.id)).count, 2)
-        XCTAssertLessThan(try XCTUnwrap(detected.last?.gestureAt).timeIntervalSince(start), 480)
+        XCTAssertGreaterThan(try XCTUnwrap(detected.last?.gestureAt).timeIntervalSince(start), 800)
     }
 
-    func testLongRecordedPatternCountsOnce() {
+    func testLongRecordedPatternCountsSuccessiveDurationSegments() throws {
         var analyzer = RecordedMotionAnalyzer()
-        XCTAssertEqual(samples(cycles: 40).compactMap { analyzer.record($0) }.count, 1)
+        let candidates = samples(cycles: 47).compactMap { analyzer.record($0) }
+        XCTAssertEqual(candidates.count, 3)
+        XCTAssertEqual(Set(candidates.map(\.id)).count, 3)
+        for pair in zip(candidates, candidates.dropFirst()) {
+            XCTAssertEqual(pair.1.motionSessionStartedAt, pair.0.gestureAt)
+            XCTAssertGreaterThanOrEqual(pair.1.gestureAt.timeIntervalSince(pair.0.gestureAt), 300)
+            XCTAssertGreaterThanOrEqual(try XCTUnwrap(pair.1.motionGestureCount), 5)
+        }
     }
 
     func testMalformedAndOutOfOrderSamplesAreIgnored() {
@@ -80,7 +96,7 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         }
         XCTAssertTrue(detected.isEmpty, "Four intact cycles cannot become a five-cycle session")
         for sample in rest(from: 100, to: 300) { XCTAssertNil(analyzer.record(sample)) }
-        let recovered = samples(cycles: 5, offset: 300).compactMap { analyzer.record($0) }
+        let recovered = samples(cycles: 16, offset: 300).compactMap { analyzer.record($0) }
         XCTAssertEqual(recovered.count, 1)
     }
 
@@ -88,7 +104,40 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
         var analyzer = RecordedMotionAnalyzer(sampleInterval: .infinity, gravityTimeConstant: .nan)
         XCTAssertEqual(analyzer.sampleInterval, 0.1)
         XCTAssertEqual(analyzer.gravityTimeConstant, 0.25)
-        XCTAssertEqual(samples(cycles: 5).compactMap { analyzer.record($0) }.count, 1)
+        XCTAssertEqual(samples(cycles: 16).compactMap { analyzer.record($0) }.count, 1)
+    }
+
+    func testUnknownSourceGapCannotSupplyDurationForNextSegment() throws {
+        var analyzer = RecordedMotionAnalyzer()
+        XCTAssertEqual(samples(cycles: 16).compactMap { analyzer.record($0) }.count, 1)
+        // The unobserved interval must not be treated as smoking or quiet rest.
+        XCTAssertTrue(samples(cycles: 16, offset: 400).compactMap { analyzer.record($0) }.isEmpty)
+        XCTAssertFalse(analyzer.hasConfirmedContinuity)
+        for sample in rest(from: 720, to: 900) { XCTAssertNil(analyzer.record(sample)) }
+        XCTAssertTrue(analyzer.hasConfirmedContinuity)
+        let recovered = samples(cycles: 16, offset: 900).compactMap { analyzer.record($0) }
+        XCTAssertEqual(recovered.count, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(recovered.first).gestureAt.timeIntervalSince(start), 1_200)
+    }
+
+    func testLegacyAnalyzerCheckpointRequiresFreshDurationEvidence() throws {
+        var analyzer = RecordedMotionAnalyzer()
+        XCTAssertTrue(samples(cycles: 8).compactMap { analyzer.record($0) }.isEmpty)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(analyzer)) as? [String: Any])
+        var fusion = try XCTUnwrap(legacy["fusionEngine"] as? [String: Any])
+        var configuration = try XCTUnwrap(fusion["configuration"] as? [String: Any])
+        configuration.removeValue(forKey: "minimumSmokingDurationSeconds")
+        fusion["configuration"] = configuration
+        fusion.removeValue(forKey: "durationSegmentStartedAt")
+        fusion.removeValue(forKey: "durationModelVersion")
+        legacy["fusionEngine"] = fusion
+        analyzer = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONSerialization.data(withJSONObject: legacy))
+        let candidates = samples(cycles: 16, offset: 160).compactMap { analyzer.record($0) }
+        XCTAssertEqual(candidates.count, 1)
+        let candidate = try XCTUnwrap(candidates.first)
+        XCTAssertGreaterThan(candidate.gestureAt.timeIntervalSince(start), 465,
+                             "An old checkpoint contains no proof for the new five-minute duration rule")
+        XCTAssertLessThan(candidate.gestureAt.timeIntervalSince(start), 470)
     }
 
     private func rest(from lower: Double, to upper: Double) -> [RecordedAccelerationSample] {

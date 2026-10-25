@@ -10,7 +10,7 @@ final class DetectionAlgorithmPersistenceTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         let start = Date()
         var detector: DetectionAlgorithm? = DetectionAlgorithm(userDefaults: defaults)
-        for puff in 0..<3 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector!) }
+        for puff in 0..<3 { await deliver(start.addingTimeInterval(Double(puff) * 60), to: detector!) }
         XCTAssertEqual(detector?.sessionGestureCount, 3)
         weak let previous = detector
         detector = nil
@@ -19,27 +19,30 @@ final class DetectionAlgorithmPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.sessionGestureCount, 3)
         var candidates: [DetectionCandidate] = []
         let subscription = restored.candidatePublisher.sink { candidates.append($0) }
-        for puff in 3..<5 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: restored) }
+        for puff in 3..<6 { await deliver(start.addingTimeInterval(Double(puff) * 60), to: restored) }
         XCTAssertEqual(candidates.count, 1)
         XCTAssertEqual(candidates.first?.motionSessionStartedAt, start)
         withExtendedLifetime(subscription) {}
     }
 
-    func testCountedLivePatternCannotRestartAsAnotherCigaretteAfterRelaunch() async {
+    func testCountedLiveSegmentResumesNextDurationWithoutRecountingAfterRelaunch() async {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let start = Date()
         var detector: DetectionAlgorithm? = DetectionAlgorithm(userDefaults: defaults)
-        for puff in 0..<10 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector!) }
+        for puff in 0..<18 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector!) }
         detector = nil
         let restored = DetectionAlgorithm(userDefaults: defaults)
         var candidates: [DetectionCandidate] = []
         let subscription = restored.candidatePublisher.sink { candidates.append($0) }
-        for puff in 10..<30 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: restored) }
+        for puff in 18..<30 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: restored) }
         XCTAssertTrue(candidates.isEmpty)
-        for puff in 0..<5 { await deliver(start.addingTimeInterval(800 + Double(puff) * 20), to: restored) }
+        await deliver(start.addingTimeInterval(600), to: restored)
         XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates.first?.motionSessionStartedAt, start.addingTimeInterval(300))
+        for puff in 0...15 { await deliver(start.addingTimeInterval(800 + Double(puff) * 20), to: restored) }
+        XCTAssertEqual(candidates.count, 2)
         withExtendedLifetime(subscription) {}
     }
 
@@ -56,7 +59,7 @@ final class DetectionAlgorithmPersistenceTests: XCTestCase {
         noCandidate.isInverted = true
         let subscription = detector.candidatePublisher.sink { _ in noCandidate.fulfill() }
         let now = Date()
-        for index in 0..<8 { MotionManager.shared.gestureDetected.send(now.addingTimeInterval(Double(index) * 20)) }
+        for index in 0..<20 { MotionManager.shared.gestureDetected.send(now.addingTimeInterval(Double(index) * 20)) }
         await fulfillment(of: [noCandidate], timeout: 0.2)
         XCTAssertEqual(detector.sessionGestureCount, 0)
         XCTAssertEqual(defaults.data(forKey: "live"), unreadable)
@@ -77,7 +80,7 @@ final class DetectionAlgorithmPersistenceTests: XCTestCase {
         var detector: DetectionAlgorithm? = DetectionAlgorithm(userDefaults: defaults, snapshotURL: snapshotURL)
         var initialCandidates: [DetectionCandidate] = []
         var initialSubscription: AnyCancellable? = detector?.candidatePublisher.sink { initialCandidates.append($0) }
-        for puff in 0..<5 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector!) }
+        for puff in 0...15 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector!) }
         XCTAssertEqual(initialCandidates.count, 1)
         XCTAssertTrue(FileManager.default.fileExists(atPath: snapshotURL.path))
         withExtendedLifetime(initialSubscription) {}
@@ -89,7 +92,7 @@ final class DetectionAlgorithmPersistenceTests: XCTestCase {
         XCTAssertNil(restored.lastPersistenceError)
         var candidates: [DetectionCandidate] = []
         let subscription = restored.candidatePublisher.sink { candidates.append($0) }
-        for puff in 5..<10 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: restored) }
+        for puff in 16..<30 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: restored) }
         XCTAssertTrue(candidates.isEmpty, "The atomic checkpoint retains the already-counted session after an immediate restart.")
         withExtendedLifetime(subscription) {}
     }
@@ -105,18 +108,51 @@ final class DetectionAlgorithmPersistenceTests: XCTestCase {
         var canPersist = false
         detector.persistCandidate = { candidate in attempts.append(candidate); return canPersist }
         let subscription = detector.candidatePublisher.sink { candidates.append($0) }
-        for puff in 0..<5 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector) }
+        for puff in 0...15 { await deliver(start.addingTimeInterval(Double(puff) * 20), to: detector) }
         XCTAssertEqual(attempts.count, 1)
-        XCTAssertEqual(detector.sessionGestureCount, 4)
+        XCTAssertEqual(detector.sessionGestureCount, 15)
         XCTAssertTrue(candidates.isEmpty)
 
         canPersist = true
-        await deliver(start.addingTimeInterval(100), to: detector)
+        await deliver(start.addingTimeInterval(320), to: detector)
         XCTAssertEqual(attempts.count, 2)
         XCTAssertEqual(candidates.count, 1)
         XCTAssertEqual(candidates.first?.motionSessionStartedAt, start)
-        await deliver(start.addingTimeInterval(120), to: detector)
+        await deliver(start.addingTimeInterval(340), to: detector)
         XCTAssertEqual(candidates.count, 1)
+        withExtendedLifetime(subscription) {}
+    }
+
+    func testStoppingLiveSensorsPersistsDiscardedDurationBeforeRestart() async {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let start = Date()
+        var detector: DetectionAlgorithm? = DetectionAlgorithm(userDefaults: defaults)
+        for second in stride(from: 0, through: 240, by: 20) {
+            await deliver(start.addingTimeInterval(Double(second)), to: detector!)
+        }
+        let stopped = expectation(description: "Sensor stop discards partial duration")
+        let stopSubscription = detector!.$sessionGestureCount.dropFirst().prefix(1).sink { count in
+            XCTAssertEqual(count, 0)
+            stopped.fulfill()
+        }
+        MotionManager.shared.stop()
+        await fulfillment(of: [stopped], timeout: 2)
+        stopSubscription.cancel()
+        detector = nil
+
+        let restored = DetectionAlgorithm(userDefaults: defaults)
+        XCTAssertEqual(restored.sessionGestureCount, 0)
+        var candidates: [DetectionCandidate] = []
+        let subscription = restored.candidatePublisher.sink { candidates.append($0) }
+        for second in stride(from: 300, through: 580, by: 20) {
+            await deliver(start.addingTimeInterval(Double(second)), to: restored)
+            XCTAssertTrue(candidates.isEmpty)
+        }
+        await deliver(start.addingTimeInterval(600), to: restored)
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates.first?.motionSessionStartedAt, start.addingTimeInterval(300))
         withExtendedLifetime(subscription) {}
     }
 

@@ -8,6 +8,8 @@ SED labels individual puff cycles inside smoking-session recordings. SED-FL labe
 
 [RisQ](https://pmc.ncbi.nlm.nih.gov/articles/PMC4682919/) describes gesture segmentation, discrimination from eating/drinking, and sequence-based session inference using a 9-axis wristband. It informs the evaluation approach but does not provide a validated Apple Watch model for this app. The [2022 Sensors paper](https://www.mdpi.com/1424-8220/22/8/3094) primarily studies **identifying the wearer** from movement. Its user-identification scores are not smoking detection scores.
 
+The current detector also uses a [five-minute cigarette-duration estimate](cigarette-duration.md), documented separately with measured smoking-duration studies. No representative global average was established. That duration is an engineering default combined with motion evidence, not a trained classifier or a validated way to identify physical cigarette boundaries.
+
 ## Reproduce the SED baseline
 
 Python 3.9+ and the full Xcode Swift toolchain are sufficient. The exporter uses only the Python standard library. Keep downloads, exported CSVs, and generated reports outside the repository:
@@ -33,6 +35,8 @@ An optional second executable argument selects sensitivity in `0...1`; the docum
 
 ## Measured baseline, October 23, 2026
 
+**Historical result:** this baseline and the build 6 comparison below predate the five-minute duration rule. They remain records of those earlier implementations. Running the replay command with current code measures the current detector and may produce different counts; the numbers below must not be presented as current duration-model validation.
+
 The pinned release exported **479,251 samples**, **20 smoking recordings**, **11 participants**, **276 annotated puff cycles**, and **9,584.62 seconds** of recording (~159.74 minutes).
 
 | Output at default sensitivity | Measured result |
@@ -49,9 +53,15 @@ These are **positive-recording coverage and raw output counts**, not daily accur
 
 ## Session-boundary update, build 6
 
-The eight-minute post-detection lockout has been removed. After emitting a candidate, the engine continues observing gesture times and keeps one count for an uninterrupted pattern, even beyond eight minutes. A gap of more than the existing 150-second inter-gesture limit allows a new pattern to accumulate. The rolling eight-minute evidence window and gesture-shape thresholds remain unchanged. Repository deduplication now compares supporting intervals with 30 seconds of timing tolerance instead of blocking every automatic event within eight minutes; corrected intervals remain retained.
+Build 6 removed the eight-minute post-detection lockout. After emitting a candidate, that implementation continued observing gesture times and kept one count for an uninterrupted pattern, even beyond eight minutes. A gap of more than the existing 150-second inter-gesture limit allowed a new pattern to accumulate. The rolling eight-minute evidence window and gesture-shape thresholds remained unchanged. Repository deduplication compared supporting intervals with 30 seconds of timing tolerance instead of blocking every automatic event within eight minutes; corrected intervals remained retained.
 
-Replaying the same pinned release with this rule produced **17 historical candidates in 17/20 recordings** and **18 gyro-assisted proxy candidates in 18/20 recordings**, with the same 257 proxy shape gestures. Participant 11's first recording now emits one proxy candidate rather than two. Historical per-recording output is unchanged. An initial 90-second boundary produced an extra historical candidate for participant 2's first recording and was rejected; production retains the existing 150-second gap. This small, inspected corpus is regression evidence, not independent validation of the session boundary or a measure of free-living accuracy. No model was trained. Two cigarettes without a recognizable gap can still merge; missed gestures or a long pause within one cigarette can split it.
+Replaying the same pinned release with that rule produced **17 historical candidates in 17/20 recordings** and **18 gyro-assisted proxy candidates in 18/20 recordings**, with the same 257 proxy shape gestures. Participant 11's first recording emitted one proxy candidate rather than two. Historical per-recording output was unchanged. An initial 90-second boundary produced an extra historical candidate for participant 2's first recording and was rejected; build 6 retained the 150-second gap. This small, inspected corpus was regression evidence, not independent validation of the session boundary or a measure of free-living accuracy. No model was trained. Under that rule, two cigarettes without a recognizable gap could merge; missed gestures or a long pause within one cigarette could split it.
+
+## Duration-based counting update
+
+The current engine requires at least five minutes of qualifying activity and the sensitivity-dependent gesture count before the first estimate. Continued qualifying activity can produce another estimate after each further five-minute segment with fresh gesture evidence. A quiet gap is no longer required between counts. More than 150 seconds without an accepted gesture still breaks incomplete evidence, and missing source intervals cannot prove continuity. Historical duration state persists with the analyzer across batch boundaries and relaunches. Live sampling stops, restarts and gaps clear incomplete live evidence; a saved checkpoint does not grant credit for unobserved time. Initial detection requires five minutes of evidence plus any watchOS availability, execution and delivery delays, so a five-minute update is not guaranteed.
+
+This changes the meaning of the estimate: sustained activity is divided into duration segments rather than assigned one count until a pause. A shorter cigarette may be missed and a long cigarette may be divided; real-device validation is needed for both. See [the evidence, exact counting rule and limitations](cigarette-duration.md). Neither the old SED counts nor the older synthetic sweep establish the accuracy of this change.
 
 ## Background execution constraints
 

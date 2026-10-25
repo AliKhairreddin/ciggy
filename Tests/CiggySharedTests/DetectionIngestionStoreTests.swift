@@ -129,6 +129,45 @@ final class DetectionIngestionStoreTests: XCTestCase {
             motionSessionStartedAt: start, motionGestureCount: 5)
     }
 
+    func testContinuousDurationSegmentsKeepReviewsAndCorrectionsAcrossRetryAndShiftedReplay() throws {
+        try withContext { context in
+            let candidates = (0..<3).map { index in
+                let beginning = start.addingTimeInterval(Double(index) * 300)
+                let end = beginning.addingTimeInterval(300)
+                return DetectionCandidate(gestureAt: end, detectedAt: end,
+                                          motionSessionStartedAt: beginning, motionGestureCount: 10)
+            }
+            XCTAssertNil(context.ingest(candidates, sendReview: { _ in false }))
+            XCTAssertEqual(context.repository.events.map(\.id), candidates.map(\.id))
+            context.reloadFromDisk()
+            XCTAssertNotNil(context.journal.recover(repository: context.repository, reviews: context.reviews,
+                sendEvent: { _ in true }, sendReview: { _ in true }))
+            let review = try XCTUnwrap(context.reviews.reviews.first)
+            XCTAssertEqual(review.eventIDs, candidates.map(\.id))
+            XCTAssertTrue(DetectionReviewWorkflow.adjust(review, to: 1, repository: context.repository, store: context.reviews))
+            context.reloadFromDisk()
+
+            let shifted = candidates.map { original in
+                DetectionCandidate(gestureAt: original.gestureAt.addingTimeInterval(30),
+                    detectedAt: original.detectedAt.addingTimeInterval(30),
+                    motionSessionStartedAt: original.motionSessionStartedAt?.addingTimeInterval(30), motionGestureCount: 10)
+            }
+            XCTAssertNotNil(context.ingest(shifted))
+            XCTAssertEqual(context.repository.events.map(\.id), [candidates[0].id])
+            XCTAssertEqual(context.reviews.reviews.count, 1)
+
+            let fourth = DetectionCandidate(gestureAt: start.addingTimeInterval(1_200),
+                detectedAt: start.addingTimeInterval(1_200), motionSessionStartedAt: start.addingTimeInterval(900),
+                motionGestureCount: 10)
+            XCTAssertNotNil(context.ingest([fourth]))
+            XCTAssertNotNil(context.ingest(candidates + [fourth]))
+            context.reloadFromDisk()
+            XCTAssertEqual(context.repository.events.map(\.id), [candidates[0].id, fourth.id])
+            XCTAssertEqual(context.reviews.reviews.count, 2)
+            XCTAssertEqual(context.journal.pendingCount, 0)
+        }
+    }
+
     private func withContext(_ body: (Context) throws -> Void) throws {
         let context = try Context()
         defer { context.cleanup() }

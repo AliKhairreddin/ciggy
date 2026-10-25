@@ -263,11 +263,11 @@ struct SettingsView: View {
 	private var sensitivityDescription: String {
 		switch viewModel.sensitivity {
 		case ..<0.34:
-			return "Waits for about seven matching movements before recording a detection."
+			return "Requires at least seven matching movements across about five minutes per estimated cigarette."
 		case 0.67...:
-			return "Can detect after about four matching movements; more false detections are possible."
+			return "Requires at least four matching movements across about five minutes; more false detections are possible."
 		default:
-			return "Looks for about five matching movements within one short session."
+			return "Requires at least five matching movements across about five minutes. Continued smoking-like motion can add another estimated cigarette every five minutes. Short cigarettes may be missed and long ones split."
 		}
 	}
 }

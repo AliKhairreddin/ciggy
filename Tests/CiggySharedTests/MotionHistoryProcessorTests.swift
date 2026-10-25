@@ -153,9 +153,9 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertEqual(result.expiredRangeCount, 1, "The missing prefix is permanently lost even though the suffix recovered")
     }
 
-    func testRecentReplayContinuesCheckpointWithoutRecountingLongPattern() throws {
-        // The initial dense puffs counted once. Sparse puffs still connect to
-        // that cigarette, then dense puffs resume after the replay boundary.
+    func testRecentReplayContinuesCheckpointAndCountsOnlyFreshDurationSegment() throws {
+        // Sparse puffs keep the first duration segment connected. After the
+        // checkpoint, enough fresh motion and another five minutes allow +1.
         let offsets = [0.0, 20, 40, 60, 80, 220, 360, 500, 640, 660, 680, 700]
         let stream = withMeasuredRest(offsets.flatMap { Array(recordedSession(offset: $0).prefix(1_000)) }, through: 800)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
@@ -175,13 +175,17 @@ final class MotionHistoryProcessorTests: XCTestCase {
                 return query(lower, upper)
             }
         )
-        XCTAssertTrue(replay.candidates.isEmpty, "A replay starting mid-pattern cannot create a second cigarette")
+        XCTAssertEqual(replay.candidates.count, 1, "The continued segment has fresh gestures and another five minutes")
+        XCTAssertEqual(replay.candidates.first?.motionSessionStartedAt, checkpoint.candidates.first?.gestureAt)
+        let continued = try XCTUnwrap(replay.candidates.first)
+        let previous = try XCTUnwrap(checkpoint.candidates.first)
+        XCTAssertGreaterThanOrEqual(continued.gestureAt.timeIntervalSince(previous.gestureAt), 300)
         XCTAssertEqual(queried.first?.start, checkpoint.processedThrough)
         XCTAssertTrue(replay.isComplete)
     }
 
     func testRecentCheckpointPreservesPartialPatternAcrossCursor() {
-        let stream = withMeasuredRest(recordedSession(offset: 600), through: 720)
+        let stream = withMeasuredRest(recordedSession(offset: 600), through: 960)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
         }
@@ -190,11 +194,11 @@ final class MotionHistoryProcessorTests: XCTestCase {
         )
         XCTAssertTrue(checkpoint.candidates.isEmpty)
         let recent = MotionHistoryProcessor.processRecent(
-            from: checkpoint.processedThrough, to: start.addingTimeInterval(720), analyzer: checkpoint.analyzer,
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(960), analyzer: checkpoint.analyzer,
             sensitivity: 0.5, query: query
         )
         let chronological = MotionHistoryProcessor.process(
-            from: checkpoint.processedThrough, to: start.addingTimeInterval(720), analyzer: checkpoint.analyzer,
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(960), analyzer: checkpoint.analyzer,
             pendingRanges: [], sensitivity: 0.5, query: query
         )
         XCTAssertEqual(recent.candidates.count, 1)
@@ -203,9 +207,9 @@ final class MotionHistoryProcessorTests: XCTestCase {
     }
 
     func testRecentCheckpointCountsFirstNewPatternWithoutPriorHistory() {
-        let stream = withMeasuredRest(recordedSession(offset: 10), through: 120)
+        let stream = withMeasuredRest(recordedSession(offset: 10), through: 340)
         let recent = MotionHistoryProcessor.processRecent(
-            from: start, to: start.addingTimeInterval(120), analyzer: .init(), sensitivity: 0.5,
+            from: start, to: start.addingTimeInterval(340), analyzer: .init(), sensitivity: 0.5,
             query: { lower, upper in AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper }) }
         )
         XCTAssertEqual(recent.candidates.count, 1)
@@ -213,7 +217,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
     }
 
     func testRecentCheckpointAllowsNewPatternAfterCountedSessionBreak() {
-        let stream = withMeasuredRest(recordedSession(offset: 0) + recordedSession(offset: 650), through: 800)
+        let stream = withMeasuredRest(recordedSession(offset: 0) + recordedSession(offset: 650), through: 1_000)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
         }
@@ -222,7 +226,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
         )
         XCTAssertEqual(checkpoint.candidates.count, 1)
         let recent = MotionHistoryProcessor.processRecent(
-            from: checkpoint.processedThrough, to: start.addingTimeInterval(800), analyzer: checkpoint.analyzer,
+            from: checkpoint.processedThrough, to: start.addingTimeInterval(1_000), analyzer: checkpoint.analyzer,
             sensitivity: 0.5, query: query
         )
         XCTAssertEqual(recent.candidates.count, 1)
@@ -231,7 +235,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testOldCheckpointStillPrioritizesRecentPatternBeforeBacklog() {
         let end = start.addingTimeInterval(2 * 86_400)
-        let stream = withMeasuredRest(recordedSession(offset: 2 * 86_400 - 200), from: 2 * 86_400 - 53 * 60, through: 2 * 86_400)
+        let stream = withMeasuredRest(recordedSession(offset: 2 * 86_400 - 400), from: 2 * 86_400 - 53 * 60, through: 2 * 86_400)
         var queried: [MotionHistoryRange] = []
         let recent = MotionHistoryProcessor.processRecent(
             from: start, to: end, analyzer: .init(), sensitivity: 0.5,
@@ -267,16 +271,16 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testRecentPassReconstructsSessionAcrossWindowBoundaryAndReplaysStableID() throws {
         let end = start.addingTimeInterval(3_600)
-        // The first three complete cycles precede the recent-window boundary;
-        // looking at only the recent window would miss this cigarette.
-        let stream = withMeasuredRest(recordedSession(offset: 850), through: 3_660)
+        // Duration evidence starts before the recent-window boundary; replay
+        // must retain that evidence and preserve the original emission time.
+        let stream = withMeasuredRest(recordedSession(offset: 850), through: 3_900)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
         }
         let first = MotionHistoryProcessor.processRecent(from: start, to: end, sensitivity: 0.5, query: query)
         let replay = MotionHistoryProcessor.processRecent(from: start, to: end, sensitivity: 0.5, query: query)
         let movedWindow = MotionHistoryProcessor.processRecent(
-            from: start, to: end.addingTimeInterval(60), sensitivity: 0.5, query: query
+            from: start, to: end.addingTimeInterval(300), sensitivity: 0.5, query: query
         )
         let candidate = try XCTUnwrap(first.candidates.first)
         XCTAssertEqual(first.candidates.count, 1)
@@ -312,7 +316,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testRecentPassFiltersCandidatesFromPrecedingContext() {
         let end = start.addingTimeInterval(3_600)
-        let stream = withMeasuredRest(recordedSession(offset: 650), through: 3_600)
+        let stream = withMeasuredRest(recordedSession(offset: 580), through: 3_600)
         let recent = MotionHistoryProcessor.processRecent(
             from: start, to: end, sensitivity: 0.5,
             query: { lower, upper in AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper }) }
@@ -360,7 +364,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
     }
 
     func testCigaretteCrossingEightMinuteBatchBoundaryCountsOnceAndNextPatternCounts() throws {
-        let stream = withMeasuredRest(recordedSession(offset: 420) + recordedSession(offset: 675), through: 800)
+        let stream = withMeasuredRest(recordedSession(offset: 420) + recordedSession(offset: 925), through: 1_280)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
         }
@@ -371,7 +375,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertTrue(first.candidates.isEmpty, "The first cigarette is still incomplete at the batch boundary")
         let checkpoint = try JSONDecoder().decode(RecordedMotionAnalyzer.self, from: JSONEncoder().encode(first.analyzer))
         let next = MotionHistoryProcessor.process(
-            from: first.processedThrough, to: start.addingTimeInterval(800), analyzer: checkpoint,
+            from: first.processedThrough, to: start.addingTimeInterval(1_280), analyzer: checkpoint,
             pendingRanges: [], sensitivity: 0.5, queryChunkDuration: 480, query: query
         )
         XCTAssertEqual(next.candidates.count, 2)
@@ -379,7 +383,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(crossing.motionSessionStartedAt), start.addingTimeInterval(480))
         XCTAssertGreaterThan(crossing.gestureAt, start.addingTimeInterval(480))
         let uninterrupted = MotionHistoryProcessor.process(
-            from: start, to: start.addingTimeInterval(800), analyzer: .init(), pendingRanges: [],
+            from: start, to: start.addingTimeInterval(1_280), analyzer: .init(), pendingRanges: [],
             sensitivity: 0.5, queryChunkDuration: 480, query: query
         )
         XCTAssertEqual(next.candidates, uninterrupted.candidates)
@@ -405,7 +409,8 @@ final class MotionHistoryProcessorTests: XCTestCase {
     }
 
     private func recordedSession(offset: Double) -> [RecordedAccelerationSample] {
-        (0..<5_000).map { index in
+        // Sixteen 20-second cycles include five full minutes of observed motion.
+        (0..<16_000).map { index in
             let seconds = Double(index) * 0.02
             let local = seconds.truncatingRemainder(dividingBy: 20)
             let angle: Double

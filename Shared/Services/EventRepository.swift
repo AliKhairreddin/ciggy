@@ -68,9 +68,7 @@ public final class EventRepository: ObservableObject {
             let matchedID = automaticSessionID(matching: event)
             let retainedID = matchedID ?? event.id
             if let matchedID, matchedID != event.id { next.eventAliases?[event.id] = matchedID }
-            let start = event.motionSessionStartedAt ?? event.timestamp
-            next.automaticSessionStarts?[retainedID] = min(automaticSessionStarts[retainedID] ?? automaticEventTimes[retainedID] ?? start, start)
-            next.automaticEventTimes[retainedID] = max(automaticEventTimes[retainedID] ?? event.timestamp, event.timestamp)
+            Self.rememberAutomaticEvidence(event, as: retainedID, in: &next)
             if matchedID != nil || deletedEventIDs.contains(event.id) {
                 if next != snapshot { _ = commit(next) }
                 return false
@@ -214,10 +212,7 @@ public final class EventRepository: ObservableObject {
                         retainedID = matched
                         next.eventAliases?[original.id] = matched
                     }
-                    let start = original.motionSessionStartedAt ?? original.timestamp
-                    next.automaticEventTimes[retainedID] = max(next.automaticEventTimes[retainedID] ?? original.timestamp, original.timestamp)
-                    let retainedStart = min(next.automaticSessionStarts?[retainedID] ?? start, start)
-                    next.automaticSessionStarts?[retainedID] = retainedStart
+                    Self.rememberAutomaticEvidence(original, as: retainedID, in: &next)
                 }
                 if retainedID == original.id, known.insert(original.id).inserted { next.events.append(original) }
             }
@@ -256,13 +251,51 @@ public final class EventRepository: ObservableObject {
     }
 
     private static func automaticSessionID(matching event: SmokingEvent, in saved: Snapshot) -> UUID? {
+        var resolved = event.id
+        var visited = Set<UUID>()
+        while visited.insert(resolved).inserted, let alias = saved.eventAliases?[resolved] { resolved = alias }
+        if resolved != event.id { return resolved }
         if saved.automaticEventTimes[event.id] != nil { return event.id }
         let start = event.motionSessionStartedAt ?? event.timestamp
-        return saved.automaticEventTimes.keys.sorted { $0.uuidString < $1.uuidString }.first { id in
-            guard let end = saved.automaticEventTimes[id] else { return false }
+        let duration = event.timestamp.timeIntervalSince(start)
+        let matches = saved.automaticEventTimes.compactMap { id, end -> (id: UUID, overlap: Double, distance: Double)? in
             let savedStart = saved.automaticSessionStarts?[id] ?? end
-            return start <= end.addingTimeInterval(30) && event.timestamp >= savedStart.addingTimeInterval(-30)
+            let savedDuration = end.timeIntervalSince(savedStart)
+            let endDistance = abs(event.timestamp.timeIntervalSince(end))
+            let startDistance = abs(start.timeIntervalSince(savedStart))
+            let overlap = max(0, min(event.timestamp, end).timeIntervalSince(max(start, savedStart)))
+            let longest = max(duration, savedDuration)
+            let fraction = longest > 0 ? overlap / longest : 0
+            let matches: Bool
+            if duration == 0 || savedDuration == 0 {
+                // Legacy events may lack their supporting interval. Match a
+                // nearby count or a point well inside the observed pattern,
+                // never the shared boundary with the following cigarette.
+                let point = duration == 0 ? event.timestamp : end
+                let intervalStart = duration == 0 ? savedStart : start
+                let intervalEnd = duration == 0 ? end : event.timestamp
+                matches = endDistance <= 30 || (point > intervalStart.addingTimeInterval(30) && point <= intervalEnd)
+            } else {
+                // Consecutive duration estimates touch (and live/history can
+                // overlap slightly). Adjacency alone is not duplicate evidence.
+                matches = startDistance <= 30 || endDistance <= 30 || fraction > 0.5
+            }
+            guard matches else { return nil }
+            return (id, fraction, min(startDistance, endDistance))
         }
+        return matches.sorted {
+            if $0.overlap != $1.overlap { return $0.overlap > $1.overlap }
+            if $0.distance != $1.distance { return $0.distance < $1.distance }
+            return $0.id.uuidString < $1.id.uuidString
+        }.first?.id
+    }
+
+    private static func rememberAutomaticEvidence(_ event: SmokingEvent, as id: UUID, in saved: inout Snapshot) {
+        // Keep the canonical interval fixed. Widening it for every shifted
+        // replay can transitively swallow the next several cigarettes.
+        guard saved.automaticEventTimes[id] == nil else { return }
+        saved.automaticEventTimes[id] = event.timestamp
+        saved.automaticSessionStarts?[id] = event.motionSessionStartedAt ?? event.timestamp
     }
 
     public func canonicalEventID(_ id: UUID) -> UUID {
@@ -365,9 +398,11 @@ public final class EventRepository: ObservableObject {
         rawEvents = saved.events.compactMap(Self.validated).filter { seen.insert($0.id).inserted }.sorted(by: Self.eventOrder)
         correctionReviews = (saved.correctionReviews ?? []).filter(\.hasValidDates)
         for event in rawEvents where event.source == .automatic {
-            automaticEventTimes[event.id] = max(automaticEventTimes[event.id] ?? event.timestamp, event.timestamp)
+            // Older snapshots expanded these bounds when aliases arrived.
+            // Originals recover the actual canonical interval where retained.
+            automaticEventTimes[event.id] = event.timestamp
             let start = event.motionSessionStartedAt ?? event.timestamp
-            automaticSessionStarts[event.id] = min(automaticSessionStarts[event.id] ?? start, start)
+            automaticSessionStarts[event.id] = start
         }
         publishDerivedEvents()
     }

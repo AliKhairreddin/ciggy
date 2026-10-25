@@ -265,9 +265,9 @@ struct WatchSettingsView: View {
 
 	private var sensitivityDescription: String {
 		switch settingsStore.settings.sensitivity {
-		case ..<0.34: return "Waits for more matching movements before detecting."
-		case 0.67...: return "Detects sooner, with a greater chance of false detections."
-		default: return "Balances earlier detections with fewer false alarms."
+			case ..<0.34: return "At least seven matching movements over about five minutes per estimate."
+			case 0.67...: return "At least four matching movements over about five minutes; more false detections possible."
+			default: return "At least five matching movements over about five minutes per estimate. Continued motion can add another; short cigarettes may be missed and long ones split."
 		}
 	}
 

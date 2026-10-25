@@ -53,6 +53,7 @@ public struct RecordedMotionAnalyzer: Codable, Sendable {
         quietSince = nil
         gravity = nil
         gestureEngine.reset()
+        fusionEngine.resetSession()
         sourceDisruptions = sourceDisruptionCount &+ 1
     }
 

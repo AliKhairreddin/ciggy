@@ -33,9 +33,13 @@ final class SyntheticMotionSimulationTests: XCTestCase {
                     result.recordedCandidates += 1
                 }
             }
-            XCTAssertLessThanOrEqual(result.liveCandidates, 1, "Short trace must not log twice: \(scenario), seed \(index + 1)")
+            XCTAssertLessThanOrEqual(result.liveCandidates, 1, "One-duration trace must not log twice: \(scenario), seed \(index + 1)")
             XCTAssertLessThanOrEqual(result.recordedCandidates, 1, "Recorded trace must not log twice: \(scenario), seed \(index + 1)")
             XCTAssertEqual(result.duplicateIDs, 0)
+            if scenario == .ambiguousHandToMouth {
+                XCTAssertEqual(result.liveCandidates, 1, "The positive trace includes five minutes of qualifying motion")
+                XCTAssertEqual(result.recordedCandidates, 1, "The saved positive trace must exercise the production duration gate")
+            }
             if scenario == .stationary || scenario == .oppositeWrist || scenario == .interrupted {
                 XCTAssertEqual(result.liveCandidates, 0, "Incomplete/nonmoving trace: \(scenario), seed \(index + 1)")
                 XCTAssertEqual(result.recordedCandidates, 0, "Incomplete/nonmoving history: \(scenario), seed \(index + 1)")
@@ -88,6 +92,30 @@ final class SyntheticMotionSimulationTests: XCTestCase {
         XCTAssertEqual(candidates.count, 100)
         XCTAssertEqual(Set(candidates.map(\.id)).count, 100)
     }
+
+    func testContinuousSyntheticMotionProducesMultipleDurationEstimates() throws {
+        let trace = Trace(scenario: .ambiguousHandToMouth, seed: 42, cycleCount: 50)
+        var gesture = MotionGestureEngine()
+        var fusion = DetectionFusionEngine()
+        var recorded = RecordedMotionAnalyzer()
+        var liveCandidates: [DetectionCandidate] = []
+        var recordedCandidates: [DetectionCandidate] = []
+        trace.forEachSample { sample in
+            if let at = gesture.record(sample), let candidate = fusion.recordGesture(at: at) { liveCandidates.append(candidate) }
+            if let candidate = recorded.record(.init(timestamp: sample.timestamp,
+                x: sample.gravity.x + sample.userAcceleration.x,
+                y: sample.gravity.y + sample.userAcceleration.y,
+                z: sample.gravity.z + sample.userAcceleration.z)) { recordedCandidates.append(candidate) }
+        }
+        for candidates in [liveCandidates, recordedCandidates] {
+            XCTAssertGreaterThanOrEqual(candidates.count, 3)
+            XCTAssertEqual(Set(candidates.map(\.id)).count, candidates.count)
+            for candidate in candidates {
+                XCTAssertGreaterThanOrEqual(try XCTUnwrap(candidate.motionGestureCount), 5)
+                XCTAssertGreaterThanOrEqual(candidate.gestureAt.timeIntervalSince(try XCTUnwrap(candidate.motionSessionStartedAt)), 300)
+            }
+        }
+    }
 }
 
 private enum Scenario: String, CaseIterable {
@@ -132,7 +160,7 @@ private struct Trace {
     let offset: Double
     let mirror: Double
 
-    init(scenario: Scenario, seed: UInt64, offset: Double = 0) {
+    init(scenario: Scenario, seed: UInt64, offset: Double = 0, cycleCount: Int? = nil) {
         var random = Random(state: seed)
         baseAngle = random.value(-Double.pi...Double.pi)
         plane = random.value(-Double.pi...Double.pi)
@@ -150,10 +178,10 @@ private struct Trace {
                    Phase(duration: 0.4, from: 0.5, to: 0), Phase(duration: 2, from: 0, to: 0)]
         let count: Int
         switch scenario {
-        case .smoking, .interrupted: count = random.count(5...10)
+        case .smoking, .interrupted: count = random.count(12...18)
         case .spoon, .fork: count = random.count(8...16)
         case .drinking: count = random.count(1...7)
-        case .ambiguousHandToMouth: count = 6
+        case .ambiguousHandToMouth: count = cycleCount ?? 16
         default: count = 0
         }
         for _ in 0..<count {
@@ -162,7 +190,7 @@ private struct Trace {
             let pause: Double
             switch scenario {
             case .smoking, .interrupted:
-                angle = random.value(0.2...1.4); hold = random.value(0.3...3.5); pause = random.value(8...22)
+                angle = random.value(0.2...1.4); hold = random.value(0.3...3.5); pause = random.value(15...25)
             case .spoon:
                 angle = random.value(0.3...1.4); hold = random.value(0.2...1.8); pause = random.value(3...10)
             case .fork:
@@ -170,7 +198,7 @@ private struct Trace {
             case .drinking:
                 angle = random.value(0.3...1.5); hold = random.value(0.5...6); pause = random.value(4...18)
             case .ambiguousHandToMouth:
-                angle = random.value(0.8...1.2); hold = random.value(1.5...2.5); pause = random.value(12...20)
+                angle = random.value(0.8...1.2); hold = random.value(1.5...2.5); pause = random.value(18...22)
             default: angle = 0; hold = 1; pause = 1
             }
             phases += [Phase(duration: random.value(0.6...1.6), from: 0, to: angle),

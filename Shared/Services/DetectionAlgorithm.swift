@@ -78,13 +78,22 @@ public final class DetectionAlgorithm: ObservableObject {
 
 	private func bind() {
 		motion.$latestSample
+			.dropFirst()
 			.compactMap { $0?.timestamp }
 			.sink { [weak self] timestamp in
 				Task { @MainActor [weak self] in
 					guard let self else { return }
-					self.engine.expireSession(at: timestamp)
+					self.engine.observeMotionSample(at: timestamp)
 					self.sessionGestureCount = self.engine.observedGestureCount
 				}
+			}
+			.store(in: &cancellables)
+
+		motion.$status
+			.dropFirst()
+			.filter { $0 != .running }
+			.sink { [weak self] _ in
+				Task { @MainActor [weak self] in self?.resetSession() }
 			}
 			.store(in: &cancellables)
 

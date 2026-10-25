@@ -6,12 +6,12 @@ final class MotionHistoryContinuityTests: XCTestCase {
     private var firstEpisode: [Double] {
         [0, 20, 40, 60, 80] + Array(stride(from: 220.0, through: 1_340, by: 140)) + [1_360, 1_380, 1_400]
     }
-    private var secondEpisode: [Double] { [2_000, 2_020, 2_040, 2_060, 2_080] }
+    private var secondEpisode: [Double] { Array(stride(from: 2_000.0, through: 2_300, by: 20)) }
 
     func testColdRecentReplayDefersTruncatedEpisodeAndCountsLaterProvenBoundary() {
         let samples = trace(cycles: firstEpisode + secondEpisode, duration: 4_000)
         let complete = process(samples, end: 4_000)
-        XCTAssertEqual(complete.candidates.count, 2)
+        XCTAssertEqual(complete.candidates.count, 3)
         let recent = MotionHistoryProcessor.processRecent(
             from: start, to: date(4_000), analyzer: .init(), sourceStartedAt: start,
             sensitivity: 0.5, query: provider(samples)
@@ -21,10 +21,10 @@ final class MotionHistoryContinuityTests: XCTestCase {
         XCTAssertFalse(recent.pendingRanges.isEmpty)
     }
 
-    func testKnownCaptureStartCountsFirstEpisodeImmediately() {
-        let samples = trace(cycles: [0, 20, 40, 60, 80], duration: 120)
+    func testKnownCaptureStartCountsFirstEpisodeAfterRequiredDuration() {
+        let samples = trace(cycles: Array(stride(from: 0.0, through: 300, by: 20)), duration: 320)
         let recent = MotionHistoryProcessor.processRecent(
-            from: start, to: date(120), sourceStartedAt: start, sensitivity: 0.5, query: provider(samples)
+            from: start, to: date(320), sourceStartedAt: start, sensitivity: 0.5, query: provider(samples)
         )
         XCTAssertEqual(recent.candidates.count, 1)
         XCTAssertTrue(recent.isComplete)
@@ -39,7 +39,7 @@ final class MotionHistoryContinuityTests: XCTestCase {
             sensitivity: 0.5, queryChunkDuration: 500,
             query: { lower, upper in lower == self.date(1_000) ? nil : query(lower, upper) }
         )
-        XCTAssertEqual(missing.candidates.map(\.id), full.candidates.map(\.id))
+        XCTAssertEqual(missing.candidates.map(\.id), full.candidates.filter { $0.gestureAt < self.date(1_000) || $0.gestureAt > self.date(1_500) }.map(\.id))
         XCTAssertFalse(missing.pendingRanges.isEmpty)
         XCTAssertFalse(missing.replayCheckpoints.isEmpty)
         let saved = try JSONDecoder().decode([MotionHistoryReplayCheckpoint].self,
@@ -52,7 +52,7 @@ final class MotionHistoryContinuityTests: XCTestCase {
         XCTAssertTrue(repaired.pendingRanges.isEmpty)
         XCTAssertTrue(repaired.replayCheckpoints.isEmpty)
         XCTAssertEqual(Set((missing.candidates + repaired.candidates).map(\.id)), Set(full.candidates.map(\.id)))
-        XCTAssertFalse(repaired.candidates.contains { $0.gestureAt > self.date(1_300) && $0.gestureAt < self.date(1_500) })
+        XCTAssertTrue(repaired.candidates.contains { $0.gestureAt > self.date(1_300) && $0.gestureAt < self.date(1_500) }, "Only recovered continuous motion may restore the missing duration segment")
         let next = MotionHistoryProcessor.process(
             from: repaired.processedThrough, to: date(4_000), analyzer: repaired.analyzer,
             pendingRanges: repaired.pendingRanges, replayCheckpoints: repaired.replayCheckpoints,

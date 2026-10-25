@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-/// Groups repeated hand-to-mouth gestures into one probable smoking session.
+/// Estimates cigarettes from successive durations of repeated hand-to-mouth motion.
 ///
 /// Motion is the primary signal. Heart-rate samples are retained only to attach
 /// optional context to the candidate and are never required for detection.
@@ -9,6 +9,8 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	public struct Configuration: Codable, Sendable, Equatable {
 		public var minimumGestureCount: Int
 		public var sessionWindowSeconds: TimeInterval
+		/// Research-informed estimate, not a global average. See docs/cigarette-duration.md.
+		public var minimumSmokingDurationSeconds: TimeInterval
 		public var minimumGestureSeparationSeconds: TimeInterval
 		public var maximumGestureSeparationSeconds: TimeInterval
 		public var heartRateContextSeconds: TimeInterval
@@ -16,12 +18,14 @@ public struct DetectionFusionEngine: Codable, Sendable {
 		public init(
 			minimumGestureCount: Int = 5,
 			sessionWindowSeconds: TimeInterval = 8 * 60,
+			minimumSmokingDurationSeconds: TimeInterval = 5 * 60,
 			minimumGestureSeparationSeconds: TimeInterval = 6,
 			maximumGestureSeparationSeconds: TimeInterval = 2.5 * 60,
 			heartRateContextSeconds: TimeInterval = 60
 		) {
 			self.minimumGestureCount = min(100, max(2, minimumGestureCount))
 			self.sessionWindowSeconds = Self.finite(sessionWindowSeconds, fallback: 480, range: 30...3_600)
+			self.minimumSmokingDurationSeconds = Self.finite(minimumSmokingDurationSeconds, fallback: 300, range: 0...self.sessionWindowSeconds)
 			self.minimumGestureSeparationSeconds = Self.finite(minimumGestureSeparationSeconds, fallback: 6, range: 0...150)
 			self.maximumGestureSeparationSeconds = max(
 				self.minimumGestureSeparationSeconds,
@@ -30,12 +34,30 @@ public struct DetectionFusionEngine: Codable, Sendable {
 			self.heartRateContextSeconds = Self.finite(heartRateContextSeconds, fallback: 60, range: 10...600)
 		}
 
+		private enum CodingKeys: String, CodingKey {
+			case minimumGestureCount, sessionWindowSeconds, minimumSmokingDurationSeconds
+			case minimumGestureSeparationSeconds, maximumGestureSeparationSeconds, heartRateContextSeconds
+		}
+
+		public init(from decoder: Decoder) throws {
+			let values = try decoder.container(keyedBy: CodingKeys.self)
+			self.init(
+				minimumGestureCount: try values.decode(Int.self, forKey: .minimumGestureCount),
+				sessionWindowSeconds: try values.decode(TimeInterval.self, forKey: .sessionWindowSeconds),
+				minimumSmokingDurationSeconds: try values.decodeIfPresent(TimeInterval.self, forKey: .minimumSmokingDurationSeconds) ?? 300,
+				minimumGestureSeparationSeconds: try values.decode(TimeInterval.self, forKey: .minimumGestureSeparationSeconds),
+				maximumGestureSeparationSeconds: try values.decode(TimeInterval.self, forKey: .maximumGestureSeparationSeconds),
+				heartRateContextSeconds: try values.decode(TimeInterval.self, forKey: .heartRateContextSeconds)
+			)
+		}
+
 		private static func finite(_ value: Double, fallback: Double, range: ClosedRange<Double>) -> Double {
 			min(range.upperBound, max(range.lowerBound, value.isFinite ? value : fallback))
 		}
 
 		fileprivate var validated: Self {
 			.init(minimumGestureCount: minimumGestureCount, sessionWindowSeconds: sessionWindowSeconds,
+			      minimumSmokingDurationSeconds: minimumSmokingDurationSeconds,
 			      minimumGestureSeparationSeconds: minimumGestureSeparationSeconds,
 			      maximumGestureSeparationSeconds: maximumGestureSeparationSeconds,
 			      heartRateContextSeconds: heartRateContextSeconds)
@@ -57,6 +79,10 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	// Optional fields allow pre-session-boundary checkpoints to migrate in place.
 	private var lastObservedGestureAt: Date?
 	private var sessionCounted: Bool?
+	private var durationSegmentStartedAt: Date?
+	// Old checkpoints have no duration evidence; never award elapsed-time credit on upgrade.
+	private var durationModelVersion: Int? = 1
+	private var lastMotionSampleAt: Date?
 
 	public init(configuration: Configuration = .init()) {
 		self.configuration = configuration.validated
@@ -88,37 +114,45 @@ public struct DetectionFusionEngine: Codable, Sendable {
 		if recentHeartRates.count > 600 { recentHeartRates.removeFirst(recentHeartRates.count - 600) }
 	}
 
-	/// Emits once per connected motion pattern after enough distinct gestures.
-	/// Evidence rolls across batch boundaries; counting never disables observation.
+	/// Emits only on a qualifying gesture after both duration and motion requirements.
+	/// Each next segment needs fresh gestures; elapsed wall time alone never counts.
 	public mutating func recordGesture(at timestamp: Date) -> DetectionCandidate? {
 		guard timestamp.timeIntervalSince1970.isFinite,
 		      abs(timestamp.timeIntervalSince1970) < Double(Int64.max) / 1_000 else { return nil }
 		configuration = configuration.validated
 		if let lastCandidateAt, timestamp <= lastCandidateAt { return nil }
+		if durationModelVersion == nil {
+			// Keep the last event identity, but begin fresh evidence after an upgrade.
+			gestureTimestamps.removeAll()
+			durationSegmentStartedAt = nil
+			sessionCounted = nil
+			durationModelVersion = 1
+		}
 
 		if let lastGesture = lastObservedGestureAt ?? gestureTimestamps.last ?? lastCandidateAt {
 			let separation = timestamp.timeIntervalSince(lastGesture)
 			guard separation > 0, separation >= configuration.minimumGestureSeparationSeconds else { return nil }
 			if separation > configuration.maximumGestureSeparationSeconds {
 				gestureTimestamps.removeAll()
-				sessionCounted = false
+				durationSegmentStartedAt = nil
 			}
 		}
-		// Keep listening after the first count. Continued puffs belong to that
-		// cigarette even if they continue beyond eight minutes. A quiet gap ends
-		// the pattern; the next pattern needs its own full set of gestures.
-		let alreadyCounted = sessionCounted ?? (lastCandidateAt != nil && gestureTimestamps.isEmpty)
 		lastObservedGestureAt = timestamp
-		guard alreadyCounted == false else { return nil }
-		sessionCounted = false
+		if durationSegmentStartedAt == nil { durationSegmentStartedAt = timestamp }
 
 		gestureTimestamps.append(timestamp)
 		gestureTimestamps.removeAll {
 			timestamp.timeIntervalSince($0) > configuration.sessionWindowSeconds
 		}
+		// Retain a bounded rolling evidence interval even for custom sparse patterns.
+		if let segmentStart = durationSegmentStartedAt,
+		   timestamp.timeIntervalSince(segmentStart) > configuration.sessionWindowSeconds {
+			durationSegmentStartedAt = gestureTimestamps.first
+		}
 
 		guard gestureTimestamps.count >= configuration.minimumGestureCount,
-		      let sessionStartedAt = gestureTimestamps.first else { return nil }
+		      let sessionStartedAt = durationSegmentStartedAt,
+		      timestamp.timeIntervalSince(sessionStartedAt) >= configuration.minimumSmokingDurationSeconds else { return nil }
 
 		let baseline = baselineHeartRate(before: sessionStartedAt)
 		let peak = recentHeartRates
@@ -136,23 +170,40 @@ public struct DetectionFusionEngine: Codable, Sendable {
 			peakHeartRate: peak
 		)
 		lastCandidateAt = timestamp
-		sessionCounted = true
 		gestureTimestamps.removeAll()
+		// The boundary is a measured gesture. It anchors time, but is not reused
+		// toward the next segment's required number of fresh movements.
+		durationSegmentStartedAt = timestamp
 		return candidate
 	}
 
-	/// Clears incomplete progress without turning continuing puffs into a new cigarette.
+	/// Unobserved time must not contribute to a duration estimate.
 	public mutating func resetSession() {
 		gestureTimestamps.removeAll()
+		durationSegmentStartedAt = nil
 		recentHeartRates.removeAll()
+	}
+
+	/// Live diagnostics arrive at 5 Hz. A sensor interruption cannot supply
+	/// duration evidence, even when two recognized gestures are close in time.
+	public mutating func observeMotionSample(at timestamp: Date) {
+		guard timestamp.timeIntervalSince1970.isFinite else { resetSession(); return }
+		if let lastMotionSampleAt {
+			guard timestamp > lastMotionSampleAt else { return }
+			if timestamp.timeIntervalSince(lastMotionSampleAt) > 1 { resetSession() }
+		} else if durationSegmentStartedAt != nil {
+			resetSession()
+		}
+		lastMotionSampleAt = timestamp
+		expireSession(at: timestamp)
 	}
 
 	/// Historical replay may begin inside a previously counted episode. Only
 	/// measured, continuous quiet establishes a new boundary after unknown source.
 	public mutating func confirmObservedSessionBoundary() {
 		gestureTimestamps.removeAll()
+		durationSegmentStartedAt = nil
 		lastObservedGestureAt = nil
-		sessionCounted = false
 	}
 
 	/// Refresh progress even when no new gesture is completed. Keeping a partial
@@ -160,9 +211,10 @@ public struct DetectionFusionEngine: Codable, Sendable {
 	public mutating func expireSession(at timestamp: Date) {
 		guard timestamp.timeIntervalSince1970.isFinite else { return }
 		configuration = configuration.validated
-		if let lastGesture = gestureTimestamps.last,
+		if let lastGesture = lastObservedGestureAt ?? gestureTimestamps.last,
 		   timestamp.timeIntervalSince(lastGesture) > configuration.maximumGestureSeparationSeconds {
 			gestureTimestamps.removeAll()
+			durationSegmentStartedAt = nil
 		} else {
 			gestureTimestamps.removeAll { timestamp.timeIntervalSince($0) > configuration.sessionWindowSeconds }
 		}
