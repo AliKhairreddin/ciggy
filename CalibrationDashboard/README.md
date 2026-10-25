@@ -1,6 +1,6 @@
 # Private motion journal
 
-The Worker serves the existing Ciggy dashboard, stores recording JSON in a private R2 bucket, and keeps participant metadata and activity labels in D1. The raw format is the app's `MotionRecording` version 1; its numeric dates are seconds since January 1, 2001. Background accelerometer recordings have no measured gyroscope data.
+The Worker serves the React and shadcn/ui Ciggy dashboard, stores recording JSON in a private R2 bucket, and keeps participant metadata and activity labels in D1. The raw format is the app's `MotionRecording` version 1; its numeric dates are seconds since January 1, 2001. Background accelerometer recordings have no measured gyroscope data.
 
 The same Worker also serves the optional [Ashtray League](../docs/leaderboard.md), a public global weekly ranking of shared cigarette totals. Its `/api/league` routes, credentials, and D1 tables are separate from private calibration. Migration `0005_ashtray_league.sql` adds the league; it never makes recordings or dashboard assets public.
 
@@ -48,6 +48,7 @@ Raw data and labels expire 14 days after the first upload reservation, are exclu
 ```sh
 npm ci
 npm test
+npm run build
 npm run typecheck
 npx wrangler deploy --dry-run
 ```

@@ -14,12 +14,19 @@ const DAY = 86400000;
 function json(value: unknown, status = 200): Response { return Response.json(value, { status }); }
 function secure(response: Response): Response {
   const headers = new Headers(response.headers);
+  const isHTML = headers.get('Content-Type')?.includes('text/html') && response.body !== null;
+  // Radix dialogs create a scroll-lock stylesheet. Authorize only styles carrying
+  // this response's random nonce, without allowing arbitrary inline styles/scripts.
+  const nonce = isHTML ? btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))) : null;
   headers.set('Cache-Control', 'no-store');
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'no-referrer');
-  headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self'; style-src 'self'${nonce ? ` 'nonce-${nonce}'` : ''}; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  const secured = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return nonce ? new HTMLRewriter().on('head', {
+    element(element) { element.append(`<meta name="csp-style-nonce" content="${nonce}">`, { html: true }); },
+  }).transform(secured) : secured;
 }
 function identifier(value: string): string {
   if (!UUID.test(value)) throw new APIError(400, 'Invalid recording identifier.');

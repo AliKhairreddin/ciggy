@@ -143,10 +143,10 @@ export function coveredDuration(sessions, fromMs, toMs) {
   }
   return duration;
 }
-export function sliceSession(session, fromMs, toMs) {
+export function sliceSession(session, fromMs, toMs, source = '') {
   const samples = session.recording.samples.filter(sample => {
     const at = appleSecondsToMs(sample.timestamp);
-    return at >= fromMs && at <= toMs;
+    return at >= fromMs && at <= toMs && (!source || sample.source === source);
   });
   if (!samples.length) return null;
   const lower = samples[0].timestamp, upper = samples.at(-1).timestamp;
@@ -157,8 +157,8 @@ export function sliceSession(session, fromMs, toMs) {
       .filter(annotation => annotation.start < annotation.end)
   };
 }
-export function makeExport(sessions, { fromMs = -8640000000000000, toMs = 8640000000000000 } = {}) {
+export function makeExport(sessions, { fromMs = -8640000000000000, toMs = 8640000000000000, source = '' } = {}) {
   return { kind: 'ciggy-labeled-motion', formatVersion: 1, dateEncoding: 'secondsSince2001',
-    exportedAt: new Date().toISOString(), sessions: sessions.map(session => sliceSession(session, fromMs, toMs)).filter(Boolean) };
+    exportedAt: new Date().toISOString(), sessions: sessions.map(session => sliceSession(session, fromMs, toMs, source)).filter(Boolean) };
 }
 export function magnitude(value) { return value ? Math.hypot(value.x, value.y, value.z) : null; }

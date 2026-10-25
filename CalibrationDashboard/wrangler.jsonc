@@ -10,7 +10,7 @@
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
-    "directory": "./public",
+    "directory": "./dist",
     "binding": "ASSETS",
     "run_worker_first": true
   },
@@ -53,5 +53,8 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1
+  },
+  "build": {
+    "command": "npm run build"
   }
 }
