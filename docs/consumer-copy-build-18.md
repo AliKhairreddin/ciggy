@@ -16,4 +16,10 @@ The parody and consumer-surface rules are recorded in `AGENTS.md`. Motion classi
 - Xcode source groups, shared-library links, Watch embedding/dependency and matching companion identifiers were verified.
 - Validation and release builds use an isolated source snapshot containing only this change, excluding concurrent leaderboard work.
 
-Build-specific update details are in [the release notes](releases/build-18.md). TestFlight delivery is recorded after upload and processing verification.
+- Signed Release archive succeeded. All four executable bundles have version 1.0/build 18 and verified signatures; the archived source matches product commit `a579221`.
+
+## Delivery
+
+Product commit `a579221` was pushed to `main`. App Store Connect accepted and finished processing build 18. The exact 1,286-character What to Test body was saved and matched after a full page reload. The existing internal tester group is assigned and lists version 1.0 (18) as Testing.
+
+Build-specific update details are in [the release notes](releases/build-18.md). This native app update does not require a server deployment.
