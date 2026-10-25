@@ -490,6 +490,9 @@ export function App() {
   }, []);
   useEffect(() => {
     setView(null);
+    // A file can overlap both periods. Keep an untouched activity range inside
+    // the newly applied period even when the selected file itself stays the same.
+    if (!dirty && activeSession) selectRecording(activeSession);
   }, [state.filters]);
   useEffect(() => {
     if (!dirty && (!activeSession || !active)) {
