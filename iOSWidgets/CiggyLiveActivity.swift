@@ -10,7 +10,7 @@ struct CiggyLiveActivity: Widget {
 				HStack {
 					Label { Text("ciggy") } icon: { CiggyIconView(.cigarette, size: 20) }.font(.headline)
 					Spacer()
-					Text(context.isStale ? "Session ended" : "Today's check-in").font(.caption)
+					Text(context.isStale ? "Session ended" : "Today's tally").font(.caption)
 				}
 				if context.isStale {
 					Text("Open Ciggy to start another session.").font(.subheadline)

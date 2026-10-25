@@ -10,8 +10,6 @@ struct WatchDashboardView: View {
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@EnvironmentObject private var coordinator: WatchAppCoordinator
 	@StateObject private var viewModel = WatchDashboardViewModel()
-	@ObservedObject private var connectivity = ConnectivityManager.shared
-	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
 	@ObservedObject private var tracking = TrackingStatusStore.shared
 	@State private var reviewToAdjust: DetectionReview?
 	@State private var widgetDestination: String?
@@ -23,8 +21,7 @@ struct WatchDashboardView: View {
 				VStack(spacing: 8) {
 					profileHeader
 					todayRing(size: min(106, max(76, geometry.size.height - 100)))
-					motionStatus
-					syncStatus
+					trackingNotice
 					if let error = reviewStore.lastPersistenceError {
 						VStack(alignment: .leading, spacing: 6) {
 							Text(error).font(.system(size: 9)).foregroundStyle(palette.secondaryText)
@@ -90,10 +87,6 @@ struct WatchDashboardView: View {
 			CiggyBrandMark(size: 24)
 			Text("ciggy").font(.system(size: 18, weight: .black, design: .rounded)).tracking(-0.7).foregroundStyle(palette.primaryText)
 			Spacer()
-			Circle()
-				.fill(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
-				.frame(width: 7, height: 7)
-				.shadow(color: isMotionMonitoring ? palette.mint : CiggyTheme.ember, radius: 4)
 			NavigationLink(destination: WatchSettingsView()) {
 				CiggyIconView(.profile, size: 16)
 					.foregroundStyle(palette.primaryText)
@@ -151,9 +144,6 @@ struct WatchDashboardView: View {
 					Text("\(review.displayCount) detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 						.font(.system(size: 14, weight: .black, design: .rounded))
 						.foregroundStyle(palette.primaryText)
-					Text(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? "Today's automatic detections" : "Earlier detection summary")
-						.font(.system(size: 8))
-						.foregroundStyle(palette.secondaryText)
 					Text(reviewDateText(review))
 						.font(.system(size: 8))
 						.foregroundStyle(palette.secondaryText)
@@ -162,7 +152,7 @@ struct WatchDashboardView: View {
 			}
 
 			if review.decision == .pending {
-				Text("Already counted. Review is optional.")
+				Text("Included in total.")
 					.font(.system(size: 8))
 					.foregroundStyle(palette.secondaryText)
 				HStack(spacing: 6) {
@@ -199,30 +189,25 @@ struct WatchDashboardView: View {
 		)
 	}
 
-	private var motionStatus: some View {
-		HStack(spacing: 9) {
-			Group {
-				if isMotionMonitoring { CiggyIconView(.watch, size: 18) }
-				else { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 15, weight: .bold)) }
-			}
-				.foregroundStyle(isMotionMonitoring ? palette.mint : CiggyTheme.ember)
-			VStack(alignment: .leading, spacing: 1) {
-				Text(tracking.status?.title() ?? (isMotionMonitoring ? "Motion monitoring" : "Motion unavailable"))
-					.font(.system(size: 12, weight: .bold))
-					.foregroundStyle(palette.primaryText)
-				Text(tracking.status?.detail() ?? sensorDetail)
-					.font(.system(size: 9))
-					.foregroundStyle(palette.secondaryText)
-			}
-			Spacer(minLength: 0)
-		}
-		.padding(10)
-		.background(palette.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-		.overlay(
-			RoundedRectangle(cornerRadius: 15, style: .continuous)
-				.stroke(palette.border, lineWidth: 1)
-		)
-	}
+    private var trackingNotice: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let notice = tracking.status.map { $0.consumerNotice(at: context.date) } ?? "Recent activity pending"
+            if let notice {
+                NavigationLink(destination: WatchTrackingDetailsView()) {
+                    HStack(spacing: 4) {
+                        Text(notice)
+                        Image(systemName: "chevron.right").font(.system(size: 8))
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(palette.secondaryText)
+                    .frame(minHeight: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Open tracking details")
+                .accessibilityIdentifier("watch-tracking-notice")
+            }
+        }
+    }
 
 	private var logButton: some View {
 		NavigationLink(destination: LogSmokeView()) {
@@ -236,24 +221,11 @@ struct WatchDashboardView: View {
 		.accessibilityIdentifier("watch-log-button")
 	}
 
-	private var syncStatus: some View {
-		HStack(spacing: 7) {
-			Image(systemName: connectivity.isLiveSyncAvailable ? "iphone.radiowaves.left.and.right" : "arrow.triangle.2.circlepath")
-				.foregroundStyle(connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.sunlight)
-			Text(syncStatusText)
-			Spacer(minLength: 0)
-		}
-		.font(.system(size: 10, weight: .semibold))
-		.foregroundStyle(palette.secondaryText)
-		.padding(.horizontal, 8)
-		.accessibilityElement(children: .combine)
-	}
-
 	private var weeklyLink: some View {
 		NavigationLink(destination: WeeklySummaryView()) {
 			HStack {
 				CiggyIconView(.reports, size: 16)
-				Text("7-day rhythm")
+				Text("Last 7 Days")
 				Spacer()
 				Image(systemName: "chevron.right")
 					.font(.caption2.weight(.bold))
@@ -281,31 +253,6 @@ struct WatchDashboardView: View {
 		"\(viewModel.todayCount) cigarettes today, daily limit \(settings.settings.dailyLimit)"
 	}
 
-	private var sensorDetail: String {
-		if backgroundMotion.isProcessingHistory {
-			return "Checking recorded background movement"
-		}
-		if viewModel.currentHeartRate.isFinite, (1...300).contains(viewModel.currentHeartRate) {
-			let simulated = viewModel.isUsingSimulatedHeartRate ? " · demo" : ""
-			let background = backgroundMotion.isCaptureArmed ? " · background armed" : ""
-			return "\(Int(viewModel.currentHeartRate)) BPM\(simulated)\(background)"
-		}
-		return backgroundMotion.isCaptureArmed ? "Live now · background armed" : "Looking for repeated gestures"
-	}
-
-	private var isMotionMonitoring: Bool {
-		viewModel.isMotionMonitoring || backgroundMotion.isCaptureArmed
-	}
-
-	private var syncStatusText: String {
-		if connectivity.isLiveSyncAvailable { return "iPhone live" }
-		if connectivity.isCounterpartAppInstalled == false { return "Install iPhone app" }
-		#if targetEnvironment(simulator)
-		return "Open iPhone to sync"
-		#else
-		return "Will sync when available"
-		#endif
-	}
 
 }
 
@@ -352,7 +299,7 @@ private struct WatchDetectionCountAdjustmentView: View {
 					}
 					.padding(9)
 					.background(palette.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-					Text("Changes this summary on both devices, not your whole daily total.")
+					Text("Adjusting this summary only.")
 						.font(.system(size: 9))
 						.foregroundStyle(palette.secondaryText)
 					if saveFailed {

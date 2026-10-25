@@ -24,7 +24,7 @@ struct GoalsView: View {
 			if mode.isFolded {
 				CiggyPanel {
 					VStack(alignment: .leading, spacing: 16) {
-						Text("Your daily plan").font(.headline)
+						Text("Your daily limit").font(.headline)
 						Text("\(viewModel.dailyLimit) cigarettes or fewer")
 							.font(.system(.title, design: .rounded, weight: .bold))
 						CiggyPackMeter(count: 0, limit: viewModel.dailyLimit)
@@ -46,11 +46,11 @@ struct GoalsView: View {
 	}
 
 	private var story: some View {
-		CiggyStoryCard("Less pressure. More you.", subtitle: "A realistic limit is a good place to start.", color: CiggyTheme.peach)
+		CiggyStoryCard("Big plans. Small print.", subtitle: "A daily limit, minus the motivational poster.", color: CiggyTheme.peach)
 	}
 
 	private var header: some View {
-		CiggyScreenHeader("The little plan", title: "Your pace. Your rules.", subtitle: "Small steps still move you forward.")
+		CiggyScreenHeader("The fine print", title: "Terms & conditions.", subtitle: "Set a daily limit. Ciggy will keep the receipts.")
 	}
 
 	private var limitCard: some View {
@@ -61,7 +61,7 @@ struct GoalsView: View {
 						Text("Daily limit")
 							.font(.headline)
 							.foregroundStyle(palette.primaryText)
-						Text("Your target for each day")
+						Text("Your line in the ash.")
 							.font(.caption)
 							.foregroundStyle(palette.secondaryText)
 					}
@@ -119,7 +119,7 @@ struct GoalsView: View {
 							Text("Set a quit date")
 								.font(.headline)
 								.foregroundStyle(palette.primaryText)
-							Text("Give the journey a destination")
+							Text("Pick a retirement date for the lighter.")
 								.font(.caption)
 								.foregroundStyle(palette.secondaryText)
 						}

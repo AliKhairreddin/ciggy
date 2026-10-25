@@ -5,6 +5,7 @@ import SwiftUI
 
 enum DashboardDestination: Hashable {
 	case settings
+	case trackingDetails
 }
 
 struct DashboardView: View {
@@ -14,7 +15,6 @@ struct DashboardView: View {
 	@EnvironmentObject private var settings: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
 	@StateObject private var viewModel = DashboardViewModel()
-	@ObservedObject private var connectivity = ConnectivityManager.shared
 	@ObservedObject private var tracking = TrackingStatusStore.shared
 	@State private var reviewToAdjust: DetectionReview?
 	@State private var isLogging = false
@@ -73,6 +73,7 @@ struct DashboardView: View {
 		.navigationDestination(for: DashboardDestination.self) { destination in
 			switch destination {
 			case .settings: SettingsView(showsNavigationBar: true)
+			case .trackingDetails: TrackingDetailsView()
 			}
 		}
 		.onAppear { viewModel.bind(repository: repository, settings: settings) }
@@ -107,7 +108,7 @@ struct DashboardView: View {
 	private var logConfirmation: some View {
 		if let event = lastLoggedEvent {
 			VStack(alignment: .leading, spacing: 8) {
-				Label("Logged. No judgment.", systemImage: "checkmark.circle.fill")
+				Label("Logged. Paperwork complete.", systemImage: "checkmark.circle.fill")
 				HStack {
 					Button("Undo") {
 						let removed = repository.removeEvent(id: event.id)
@@ -137,7 +138,7 @@ struct DashboardView: View {
 
 	private func foldedSummary(mode: CiggyLayoutPlan.Mode) -> some View {
 		VStack(alignment: .leading, spacing: 12) {
-			Text(mode == .tabletop ? "A little breathing room." : "Today's page.")
+			Text(mode == .tabletop ? "Desk duty." : "Today's paperwork.")
 				.font(.system(.title2, design: .rounded, weight: .black))
 			HStack {
 				dailyCount
@@ -160,9 +161,7 @@ struct DashboardView: View {
 	private var foldedCheckIn: some View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 8) {
-				Text("Within reach.").font(.system(.title3, design: .rounded, weight: .bold))
-				Text("Your Watch keeps track. Add a check-in here if it missed one.")
-					.font(.caption).foregroundStyle(palette.secondaryText)
+				Text("Missing paperwork?").font(.system(.title3, design: .rounded, weight: .bold))
 				manualLogButton
 			}.foregroundStyle(palette.primaryText)
 		}
@@ -171,11 +170,11 @@ struct DashboardView: View {
 	private var todaysTimeline: some View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 14) {
-				Label { Text("Today's little moments") } icon: { CiggyIconView(.elapsed, size: 20) }
+				Label { Text("Today's paper trail") } icon: { CiggyIconView(.elapsed, size: 20) }
 					.font(.headline).foregroundStyle(palette.primaryText)
 				let events = repository.events.filter { Calendar.current.isDateInToday($0.timestamp) }.reversed()
 				if events.isEmpty {
-					Text("A fresh page. Your check-ins will appear here.")
+					Text("No logs yet. The filing cabinet is empty.")
 						.font(.subheadline).foregroundStyle(palette.secondaryText)
 				} else {
 					ForEach(Array(events.prefix(8))) { event in
@@ -183,7 +182,7 @@ struct DashboardView: View {
 							CiggyIconView(event.source == .manual ? .log : .watch, size: 20)
 								.foregroundStyle(palette.mint)
 							VStack(alignment: .leading, spacing: 3) {
-								Text(event.source == .manual ? "You checked in" : "Watch detection")
+								Text(event.source == .manual ? "Manual log" : "Watch detection")
 									.font(.subheadline.weight(.semibold))
 								if let notes = event.notes {
 									Text(notes).font(.caption).foregroundStyle(palette.secondaryText)
@@ -216,7 +215,7 @@ struct DashboardView: View {
 				Text(Date(), format: .dateTime.weekday(.wide).month(.abbreviated).day())
 					.textCase(.uppercase).tracking(1.5).font(.caption2.weight(.heavy))
 				Spacer()
-				Text("YOUR DAILY CHECK-IN").font(.system(size: 8, weight: .heavy)).tracking(1)
+				Text("THE DAILY PAPER TRAIL").font(.system(size: 8, weight: .heavy)).tracking(1)
 					.accessibilityHidden(true)
 			}
 			Text("Let's clear the air.")
@@ -229,7 +228,7 @@ struct DashboardView: View {
 			HStack(alignment: .top) {
 				VStack(alignment: .leading, spacing: 4) {
 					Text(todayMessage).font(.subheadline.weight(.bold))
-					Text(viewModel.dailyCount == 0 ? "One day at a time. You've got this." : "Last logged \(viewModel.lastEventDescription.lowercased()).")
+					Text(viewModel.dailyCount == 0 ? "A quiet day at the records office." : "Last logged \(viewModel.lastEventDescription.lowercased()).")
 						.font(.caption).foregroundStyle(palette.secondaryText)
 				}
 				Spacer(minLength: 4)
@@ -270,7 +269,7 @@ struct DashboardView: View {
 	private var quickMetrics: some View {
 		LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: dynamicTypeSize.isAccessibilitySize ? 1 : 3), spacing: 12) {
 			metricCard(
-				title: "Smoke-free",
+				title: "Days since log",
 				value: "\(viewModel.streakDays)d",
 				icon: .streak,
 				color: CiggyTheme.sunlight
@@ -295,10 +294,10 @@ struct DashboardView: View {
 			VStack(alignment: .leading, spacing: 14) {
 				HStack {
 					VStack(alignment: .leading, spacing: 2) {
-						Text("Your week, on paper")
+						Text("Seven days, on paper")
 							.font(.headline)
 							.foregroundStyle(palette.primaryText)
-						Text("Every log is a little more awareness.")
+						Text("The numbers requested a bar chart.")
 							.font(.caption)
 							.foregroundStyle(palette.secondaryText)
 					}
@@ -334,7 +333,7 @@ struct DashboardView: View {
 
 	private var detectionExperience: some View {
 		VStack(alignment: .leading, spacing: 2) {
-			trackingFreshnessCard
+			trackingNotice
 			manualLogButton
 			detectionReviews
 		}
@@ -342,7 +341,7 @@ struct DashboardView: View {
 
 	@ViewBuilder
 	private var detectionStatus: some View {
-		trackingFreshnessCard
+		trackingNotice
 		detectionReviews
 	}
 
@@ -361,9 +360,6 @@ struct DashboardView: View {
 			}
 		}
 		let todayReviews = reviewStore.reviews(on: Date())
-		if todayReviews.isEmpty {
-			detectionReadyCard
-		}
 		ForEach(todayReviews) { review in
 			detectionReviewCard(review)
 		}
@@ -380,36 +376,26 @@ struct DashboardView: View {
 		}
 	}
 
-	private var trackingFreshnessCard: some View {
-		CiggyPanel {
-			VStack(alignment: .leading, spacing: 10) {
-				Label { Text(tracking.status?.title() ?? "Waiting for Watch tracking status") } icon: { CiggyIconView(.watch, size: 20) }
-					.font(.subheadline.weight(.bold))
-					.foregroundStyle(palette.primaryText)
-				Text(tracking.status?.detail() ?? "Your saved count is shown above. Ciggy requests recent motion from your paired Watch; today's total may still be incomplete until it responds.")
-					.font(.caption)
-					.foregroundStyle(palette.secondaryText)
-				Button {
-					ConnectivityManager.shared.requestHistoryRefresh()
-				} label: {
-					Label("Check Watch", systemImage: "arrow.clockwise")
-						.font(.subheadline.weight(.semibold))
-						.frame(minHeight: 44)
-				}
-				.buttonStyle(.plain)
-				.foregroundStyle(palette.mint)
-				.disabled(!HistoryRefreshPolicy.shouldRequest(at: Date(), lastRequestedAt: connectivity.lastHistoryRefreshRequestedAt))
-				.accessibilityIdentifier("check-watch-history")
-				if let requested = connectivity.lastHistoryRefreshRequestedAt,
-				   Date().timeIntervalSince(requested) < 60,
-				   tracking.status?.historyCheckedAt.map({ $0 < requested }) ?? true {
-					Text("Check requested. Your Watch can respond in the background when watchOS allows.")
-						.font(.caption)
-						.foregroundStyle(palette.secondaryText)
-				}
-			}
-		}
-	}
+	private var trackingNotice: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let notice = tracking.status.map { $0.consumerNotice(at: context.date) } ?? "Recent activity pending"
+            if let notice {
+                NavigationLink(value: DashboardDestination.trackingDetails) {
+                    HStack(spacing: 8) {
+                        CiggyIconView(.watch, size: 16)
+                        Text(notice)
+                        Image(systemName: "chevron.right").font(.caption2)
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(palette.secondaryText)
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Open tracking details")
+                .accessibilityIdentifier("tracking-notice")
+            }
+        }
+    }
 
 	private var manualLogButton: some View {
 		Button { isLogging = true } label: {
@@ -444,7 +430,7 @@ struct DashboardView: View {
 				}
 
 				if review.decision == .pending {
-					Text("These detections are already included in your count. Confirm or correct this summary whenever you want.")
+					Text("Included in your total.")
 						.font(.caption)
 						.foregroundStyle(palette.secondaryText)
 					HStack(spacing: 10) {
@@ -480,23 +466,6 @@ struct DashboardView: View {
 		}
 	}
 
-	private var detectionReadyCard: some View {
-		CiggyPanel {
-			VStack(alignment: .leading, spacing: 12) {
-				HStack {
-					Label { Text("Your little wrist sidekick") } icon: { CiggyIconView(.watch, size: 20) }
-						.font(.subheadline.weight(.bold)).foregroundStyle(palette.primaryText)
-					Spacer(minLength: 0)
-				}
-				CiggyStatusPill(syncStatusTitle, systemImage: connectivity.isLiveSyncAvailable ? "applewatch.radiowaves.left.and.right" : "arrow.triangle.2.circlepath", color: connectivity.isLiveSyncAvailable ? palette.mint : CiggyTheme.ember)
-				Text("Wear your Watch on the hand you smoke with. Ciggy looks for repeated gestures; detection can miss cigarettes or mistake other movements. Review and adjust your total when needed.")
-					.font(.caption).foregroundStyle(palette.secondaryText)
-				Text("Today's count updates as recorded Watch motion is checked. The tracking status above shows how recent the available data is.")
-					.font(.caption).foregroundStyle(palette.secondaryText)
-			}
-		}
-	}
-
 	private func reviewSummaryText(_ review: DetectionReview) -> String {
 		let calendar = Calendar.current
 		let day = calendar.isDateInToday(review.windowEnd) ? "Today" : review.windowEnd.formatted(date: .abbreviated, time: .omitted)
@@ -511,9 +480,9 @@ struct DashboardView: View {
 		case .pending:
 			return ""
 		case .accurate:
-			return "Marked accurate · syncs with your paired Watch"
+			return "Marked accurate"
 		case .adjusted:
-			return "Count adjusted to \(review.displayCount) · syncs with your paired Watch"
+			return "Count adjusted to \(review.displayCount)"
 		}
 	}
 
@@ -540,20 +509,12 @@ struct DashboardView: View {
 
 	private var todayMessage: String {
 		let remaining = max(0, settings.settings.dailyLimit - viewModel.dailyCount)
-		if viewModel.dailyCount == 0 { return "A fresh page." }
-		if remaining == 0 { return "Take a breather. Reset at your pace." }
-		return "\(remaining) below your daily limit."
+		if viewModel.dailyCount == 0 { return "No cigarettes logged." }
+		if remaining == 0 { return "Daily limit reached." }
+		return "\(remaining) left before your daily limit."
 	}
 
-	private var syncStatusTitle: String {
-		if connectivity.isLiveSyncAvailable { return "Live sync" }
-		if connectivity.isCounterpartAppInstalled == false { return "Install Watch" }
-		#if targetEnvironment(simulator)
-		return "Open Watch"
-		#else
-		return "Sync queued"
-		#endif
-	}
+
 }
 
 struct DashboardView_Previews: PreviewProvider {
@@ -610,7 +571,7 @@ private struct DetectionCountAdjustmentView: View {
 						.accessibilityIdentifier("review-count-stepper")
 						.accessibilityValue("\(count)")
 
-						Text("Corrects these detections on iPhone and Apple Watch, not your entire daily total. Times stay within this summary's date and window.")
+						Text("Adjusting this summary only.")
 							.font(.caption)
 							.foregroundStyle(palette.secondaryText)
 							.multilineTextAlignment(.center)

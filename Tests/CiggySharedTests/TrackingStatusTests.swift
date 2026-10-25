@@ -3,6 +3,37 @@ import XCTest
 
 @MainActor
 final class TrackingStatusTests: XCTestCase {
+    func testConsumerNoticeAgesWithoutAnotherWatchDelivery() {
+        let now = Date(timeIntervalSince1970: 1_792_785_600)
+        let status = TrackingStatus(generatedAt: now, historySampleAt: now,
+            captureUntil: now.addingTimeInterval(43_200), captureAvailable: true, permissionGranted: true)
+        XCTAssertNil(status.consumerNotice(at: now.addingTimeInterval(600)))
+        XCTAssertEqual(status.consumerNotice(at: now.addingTimeInterval(601)), "Recent activity pending")
+        XCTAssertEqual(status.consumerNotice(at: now.addingTimeInterval(43_200)), "Open Watch to resume")
+    }
+
+    func testRecentSamplesDoNotHideMissingCoverageOrPermissionProblems() {
+        let now = Date(timeIntervalSince1970: 1_792_785_600)
+        func status(pending: Bool = false, expired: Bool = false, permission: Bool = true, error: String? = nil) -> TrackingStatus {
+            TrackingStatus(generatedAt: now, historySampleAt: now,
+                captureUntil: now.addingTimeInterval(43_200), pendingHistory: pending, expiredHistory: expired,
+                captureAvailable: true, permissionGranted: permission, lastError: error)
+        }
+        XCTAssertEqual(status(pending: true).consumerNotice(at: now), "Recent activity pending")
+        XCTAssertEqual(status(expired: true).consumerNotice(at: now), "Some activity missing")
+        XCTAssertEqual(status(permission: false).consumerNotice(at: now), "Watch setup needed")
+        XCTAssertEqual(status(error: "Synthetic sensor failure").consumerNotice(at: now), "Tracking needs attention")
+        XCTAssertTrue(status(error: "Synthetic sensor failure").detail(at: now).contains("Synthetic sensor failure"))
+    }
+
+    func testConsumerUpdatingNoticeExpiresAfterSuspension() {
+        let now = Date(timeIntervalSince1970: 1_792_785_600)
+        let status = TrackingStatus(generatedAt: now, captureUntil: now.addingTimeInterval(43_200),
+            captureAvailable: true, permissionGranted: true, isProcessing: true)
+        XCTAssertEqual(status.consumerNotice(at: now), "Updating count…")
+        XCTAssertEqual(status.consumerNotice(at: now.addingTimeInterval(61)), "Recent activity pending")
+    }
+
     func testCalibrationStatusPreservesTransferStageAndConsentAcrossTransport() throws {
         let now = Date(timeIntervalSince1970: 1_792_785_600.125)
         let calibration = CalibrationTrackingStatus(enabledAt: now.addingTimeInterval(-600), checkedAt: now,

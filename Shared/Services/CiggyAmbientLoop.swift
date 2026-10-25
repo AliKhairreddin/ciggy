@@ -14,9 +14,9 @@ public enum CiggyAmbientLoop {
 		}
 		public var subtitle: String {
 			switch self {
-			case .blueHour: return "Soft keys. A little space."
-			case .slowSunday: return "Nowhere to be for a moment."
-			case .afterHours: return "Warm chords, late into the night."
+			case .blueHour: return "Hold music for the habit."
+			case .slowSunday: return "The ashtray can wait."
+			case .afterHours: return "The lighter is off the clock."
 			}
 		}
 	}

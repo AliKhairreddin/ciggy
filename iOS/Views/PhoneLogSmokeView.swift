@@ -68,8 +68,8 @@ struct PhoneLogSmokeForm: View {
 		VStack(alignment: .leading, spacing: 20) {
 			HStack(spacing: 20) {
 				VStack(alignment: .leading, spacing: 6) {
-					Text("Just a check-in.").font(.system(.title, design: .rounded, weight: .black)).tracking(-1)
-					Text("One cigarette. Zero judgment.").font(.subheadline).foregroundStyle(palette.secondaryText)
+					Text("For the record.").font(.system(.title, design: .rounded, weight: .black)).tracking(-1)
+					Text("One cigarette. The paperwork starts here.").font(.subheadline).foregroundStyle(palette.secondaryText)
 				}
 				Spacer(minLength: 0)
 				CiggyBrandMark(size: 48)
@@ -89,7 +89,6 @@ struct PhoneLogSmokeForm: View {
 					.font(.headline).frame(maxWidth: .infinity).padding(18)
 					.ciggyGlass(in: RoundedRectangle(cornerRadius: 20), interactive: true)
 			}.buttonStyle(.plain).disabled(didSave).accessibilityIdentifier("save-phone-log")
-			Text("Saves to today and syncs with your paired Watch.").font(.caption).foregroundStyle(palette.secondaryText)
 		}.foregroundStyle(palette.primaryText)
 	}
 }

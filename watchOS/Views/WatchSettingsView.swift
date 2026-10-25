@@ -8,10 +8,6 @@ struct WatchSettingsView: View {
 	@EnvironmentObject private var repository: EventRepository
 	@EnvironmentObject private var settingsStore: UserSettingsStore
 	@EnvironmentObject private var reviewStore: DetectionReviewStore
-	@ObservedObject private var connectivity = ConnectivityManager.shared
-	@ObservedObject private var motion = MotionManager.shared
-	@ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
-	@ObservedObject private var health = HealthKitManager.shared
 
 	var body: some View {
 		ScrollView {
@@ -31,7 +27,9 @@ struct WatchSettingsView: View {
 				#if DEBUG
 				previewCard
 				#endif
-				diagnosticsCard
+                NavigationLink(destination: WatchTrackingDetailsView()) {
+                    Label { Text("Tracking details") } icon: { CiggyIconView(.watch, size: 15) }
+                }.accessibilityIdentifier("watch-tracking-details-link")
 				Text("Detection and goal settings sync to your paired iPhone. Appearance stays on this Watch.")
 					.font(.system(size: 9))
 					.foregroundStyle(palette.secondaryText)
@@ -55,10 +53,10 @@ struct WatchSettingsView: View {
 				.frame(width: 36, height: 36)
 				.background(CiggyTheme.brandGradient, in: Circle())
 			VStack(alignment: .leading, spacing: 1) {
-				Text("Tune Ciggy")
+				Text("The control room")
 					.font(.system(size: 17, weight: .black, design: .rounded))
 					.foregroundStyle(palette.primaryText)
-				Text("Motion-first controls")
+				Text("Small screen. Big clipboard.")
 					.font(.system(size: 9, weight: .semibold))
 					.foregroundStyle(palette.secondaryText)
 			}
@@ -156,6 +154,107 @@ struct WatchSettingsView: View {
 	}
 	#endif
 
+	private func watchCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+		content()
+			.padding(10)
+			.background(palette.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+			.overlay(
+				RoundedRectangle(cornerRadius: 15, style: .continuous)
+					.stroke(palette.border, lineWidth: 1)
+			)
+	}
+
+	private var sensitivityBinding: Binding<Double> {
+		Binding(
+			get: { settingsStore.settings.sensitivity },
+			set: { value in updateSettings { $0.sensitivity = value } }
+		)
+	}
+
+	private var dailyLimitBinding: Binding<Int> {
+		Binding(
+			get: { settingsStore.settings.dailyLimit },
+			set: { value in updateSettings { $0.dailyLimit = value } }
+		)
+	}
+
+	private var notificationsBinding: Binding<Bool> {
+		Binding(
+			get: { settingsStore.settings.notificationsEnabled },
+			set: { value in updateSettings { $0.notificationsEnabled = value } }
+		)
+	}
+
+	private func updateSettings(_ update: (inout UserSettings) -> Void) {
+		var updated = settingsStore.settings
+		update(&updated)
+		guard updated != settingsStore.settings else { return }
+		settingsStore.settings = updated
+		ConnectivityManager.shared.send(settings: updated)
+	}
+
+	private var sensitivityName: String {
+		switch settingsStore.settings.sensitivity {
+		case ..<0.34: return "Conservative"
+		case 0.67...: return "Responsive"
+		default: return "Balanced"
+		}
+	}
+
+	private var sensitivityDescription: String {
+		switch settingsStore.settings.sensitivity {
+			case ..<0.34: return "At least seven matching movements over about five minutes per estimate."
+			case 0.67...: return "At least four matching movements over about five minutes; more false detections possible."
+			default: return "At least five matching movements over about five minutes per estimate. Continued motion can add another; short cigarettes may be missed and long ones split."
+		}
+	}
+
+
+}
+
+struct WatchSettingsView_Previews: PreviewProvider {
+	static var previews: some View {
+		NavigationStack {
+			WatchSettingsView()
+				.environmentObject(EventRepository())
+				.environmentObject(UserSettingsStore())
+				.environmentObject(DetectionReviewStore())
+		}
+	}
+}
+struct WatchTrackingDetailsView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var coordinator: WatchAppCoordinator
+    @ObservedObject private var connectivity = ConnectivityManager.shared
+    @ObservedObject private var motion = MotionManager.shared
+    @ObservedObject private var backgroundMotion = BackgroundMotionMonitor.shared
+    @ObservedObject private var health = HealthKitManager.shared
+    @ObservedObject private var tracking = TrackingStatusStore.shared
+    private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                watchCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tracking.status?.title() ?? "Waiting for tracking status")
+                            .font(.headline)
+                        Text(tracking.status?.detail() ?? "Open Ciggy to check recorded movement.")
+                            .font(.caption)
+                        Button("Check now") { Task { await coordinator.refreshTracking() } }
+                            .disabled(backgroundMotion.isProcessingHistory)
+                            .accessibilityIdentifier("watch-check-history")
+                    }.foregroundStyle(palette.primaryText)
+                }
+                diagnosticsCard
+            }.padding(.horizontal, 4)
+        }
+        .navigationTitle("Tracking details")
+        .navigationBarTitleDisplayMode(.inline)
+        .containerBackground(for: .navigation) { CiggyBackdrop() }
+        .toolbarForegroundStyle(palette.primaryText, for: .navigationBar)
+    }
+
 	private var diagnosticsCard: some View {
 		watchCard {
 			VStack(alignment: .leading, spacing: 9) {
@@ -225,51 +324,6 @@ struct WatchSettingsView: View {
 		.font(.system(size: 10, weight: .semibold))
 	}
 
-	private var sensitivityBinding: Binding<Double> {
-		Binding(
-			get: { settingsStore.settings.sensitivity },
-			set: { value in updateSettings { $0.sensitivity = value } }
-		)
-	}
-
-	private var dailyLimitBinding: Binding<Int> {
-		Binding(
-			get: { settingsStore.settings.dailyLimit },
-			set: { value in updateSettings { $0.dailyLimit = value } }
-		)
-	}
-
-	private var notificationsBinding: Binding<Bool> {
-		Binding(
-			get: { settingsStore.settings.notificationsEnabled },
-			set: { value in updateSettings { $0.notificationsEnabled = value } }
-		)
-	}
-
-	private func updateSettings(_ update: (inout UserSettings) -> Void) {
-		var updated = settingsStore.settings
-		update(&updated)
-		guard updated != settingsStore.settings else { return }
-		settingsStore.settings = updated
-		ConnectivityManager.shared.send(settings: updated)
-	}
-
-	private var sensitivityName: String {
-		switch settingsStore.settings.sensitivity {
-		case ..<0.34: return "Conservative"
-		case 0.67...: return "Responsive"
-		default: return "Balanced"
-		}
-	}
-
-	private var sensitivityDescription: String {
-		switch settingsStore.settings.sensitivity {
-			case ..<0.34: return "At least seven matching movements over about five minutes per estimate."
-			case 0.67...: return "At least four matching movements over about five minutes; more false detections possible."
-			default: return "At least five matching movements over about five minutes per estimate. Continued motion can add another; short cigarettes may be missed and long ones split."
-		}
-	}
-
 	private var connectionDetail: String {
 		if connectivity.isLiveSyncAvailable { return "Live sync" }
 		if connectivity.isActivated == false { return "Starting…" }
@@ -284,14 +338,4 @@ struct WatchSettingsView: View {
 	}
 }
 
-struct WatchSettingsView_Previews: PreviewProvider {
-	static var previews: some View {
-		NavigationStack {
-			WatchSettingsView()
-				.environmentObject(EventRepository())
-				.environmentObject(UserSettingsStore())
-				.environmentObject(DetectionReviewStore())
-		}
-	}
-}
 #endif

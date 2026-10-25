@@ -54,11 +54,17 @@ struct SettingsView: View {
 	private var appearanceCard: some View { CiggyPanel { CiggyAppearanceSettings() } }
 
 	private var story: some View {
-		CiggyStoryCard("A sidekick, on your terms.", subtitle: "You choose how Ciggy pays attention.", color: CiggyTheme.softMint)
+		CiggyStoryCard("Small app. Big clipboard.", subtitle: "You control the settings. Ciggy supplies the commentary.", color: CiggyTheme.softMint)
 	}
 
 	@ViewBuilder
 	private var settingsControls: some View {
+        CiggyPanel {
+            NavigationLink(destination: TrackingDetailsView()) {
+                Label { Text("Tracking details") } icon: { CiggyIconView(.watch, size: 20) }
+                    .font(.headline).foregroundStyle(palette.primaryText)
+            }.accessibilityIdentifier("tracking-details-link")
+        }
 		detectionCard
 		notificationCard
 		CiggyPanel {
@@ -74,7 +80,7 @@ struct SettingsView: View {
 	}
 
 	private var header: some View {
-		CiggyScreenHeader("The control room", title: "A little fine-tuning.", subtitle: "Make yourself at home.")
+		CiggyScreenHeader("The control room", title: "Management has notes.", subtitle: "Adjust the settings. The cigarette has opinions.")
 	}
 
 	private var detectionCard: some View {
@@ -142,7 +148,7 @@ struct SettingsView: View {
 				Text("\"10 cigarettes today. Your lungs would like to unsubscribe.\"")
 					.font(.subheadline)
 					.foregroundStyle(palette.primaryText)
-				Text("110 rotating messages for daily milestones, reaching or exceeding your limit, cutting down, and smoke-free days. Watch logs count once they sync to iPhone. Includes Watch history summaries.")
+				Text("110 rotating messages for daily milestones, reaching or exceeding your limit, cutting down, and days with no logged cigarettes. Watch logs count once they sync to iPhone. Includes Watch history summaries.")
 					.font(.caption)
 					.foregroundStyle(palette.secondaryText)
 				Button("Preview a roast") {
@@ -245,7 +251,7 @@ struct SettingsView: View {
 	private var versionFooter: some View {
 		HStack(spacing: 8) {
 			CiggyBrandMark(size: 24)
-			Text("ciggy · built for awareness, never judgment")
+			Text("ciggy · paperwork, with commentary")
 		}
 		.font(.caption2)
 		.foregroundStyle(palette.secondaryText)

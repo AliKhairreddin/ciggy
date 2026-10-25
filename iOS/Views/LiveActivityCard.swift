@@ -10,12 +10,10 @@ struct LiveActivityCard: View {
 	var body: some View {
 		CiggyPanel {
 			VStack(alignment: .leading, spacing: 12) {
-				Label("Live Activity", systemImage: "capsule")
+				Label("The lock-screen edition", systemImage: "capsule")
 					.font(.headline).foregroundStyle(palette.primaryText)
-				Text("Keep today's count, your limit, and time since your last log on the Lock Screen and Dynamic Island on supported iPhones.")
+				Text("Your tally. On the Lock Screen.")
 					.font(.caption).foregroundStyle(palette.secondaryText)
-				Text("Visible outside Ciggy. Sessions last up to 8 hours, ending by midnight.")
-					.font(.caption2).foregroundStyle(palette.secondaryText)
 				Button {
 					Task {
 						if liveActivity.isActive { await liveActivity.stop() }

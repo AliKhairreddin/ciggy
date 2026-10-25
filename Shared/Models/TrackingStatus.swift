@@ -94,6 +94,20 @@ public struct TrackingStatus: Codable, Equatable, Sendable {
         return try decoder.decode(Self.self, from: data)
     }
 
+    /// Short, actionable copy for consumer screens. Full diagnostics remain in Settings.
+    public func consumerNotice(at now: Date = Date()) -> String? {
+        if !captureAvailable || !permissionGranted { return "Watch setup needed" }
+        if lastError != nil { return "Tracking needs attention" }
+        if captureUntil.map({ $0 <= now }) ?? true { return "Open Watch to resume" }
+        if expiredHistory { return "Some activity missing" }
+        if pendingHistory { return "Recent activity pending" }
+        if isProcessing && now.timeIntervalSince(generatedAt) < 60 { return "Updating count…" }
+        guard let sample = historySampleAt, now.timeIntervalSince(sample) <= 10 * 60 else {
+            return "Recent activity pending"
+        }
+        return nil
+    }
+
     public func title(at now: Date = Date()) -> String {
         if !captureAvailable { return "Watch motion unavailable" }
         if !permissionGranted { return "Motion permission needed" }

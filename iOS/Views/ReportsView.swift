@@ -22,27 +22,23 @@ struct ReportsView: View {
 			story
 			rangePicker
 			activityChart
-			heartRateCard
-			evidenceNote
 		} overview: { _ in
 			header
 			activityChart
 		} controls: { _ in
 			rangePicker
 			story
-			heartRateCard
-			evidenceNote
 		}
 		.toolbar(.hidden, for: .navigationBar)
 		.onAppear { viewModel.bind(repository: repository) }
 	}
 
 	private var story: some View {
-		CiggyStoryCard("Connect the little dots.", subtitle: "Your habits have a rhythm. Let’s find it.")
+		CiggyStoryCard("Very official paperwork.", subtitle: "Your logs now have a chart department.")
 	}
 
 	private var header: some View {
-		CiggyScreenHeader("The bigger picture", title: "You've got a rhythm.", subtitle: "A little curiosity goes a long way.")
+		CiggyScreenHeader("The paper trail", title: "The receipts are in.", subtitle: "Cigarette counts. With charts, naturally.")
 	}
 
 	private var rangePicker: some View {
@@ -60,12 +56,9 @@ struct ReportsView: View {
 			VStack(alignment: .leading, spacing: 14) {
 				HStack(alignment: .firstTextBaseline) {
 					VStack(alignment: .leading, spacing: 2) {
-						Text(range == .week ? "Daily activity" : "Monthly trend")
+						Text(range == .week ? "Daily counts" : "30-day counts")
 							.font(.headline)
 							.foregroundStyle(palette.primaryText)
-						Text("Manual and automatic logs")
-							.font(.caption)
-							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer()
 					Text("\(visibleCounts.reduce(0) { $0 + $1.count }) total")
@@ -74,7 +67,7 @@ struct ReportsView: View {
 				}
 
 				if visibleCounts.allSatisfy({ $0.count == 0 }) {
-					Label("A blank page for now. Your logs will fill it in.", systemImage: "pencil.and.scribble")
+					Label("No logs in this range. No receipts to print.", systemImage: "pencil.and.scribble")
 						.font(.caption).foregroundStyle(palette.secondaryText)
 				}
 
@@ -122,58 +115,6 @@ struct ReportsView: View {
 				}
 			}
 		}
-	}
-
-	private var heartRateCard: some View {
-		CiggyPanel {
-			VStack(alignment: .leading, spacing: 12) {
-				HStack {
-					Image(systemName: "heart.fill")
-						.foregroundStyle(CiggyTheme.ember)
-					Text("Heart-rate context")
-						.font(.headline)
-						.foregroundStyle(palette.primaryText)
-					Spacer()
-					Text("Optional")
-						.font(.caption2.weight(.bold))
-						.foregroundStyle(CiggyTheme.ember)
-						.padding(.horizontal, 8)
-						.padding(.vertical, 4)
-						.background(CiggyTheme.ember.opacity(0.12), in: Capsule())
-				}
-
-				if viewModel.heartRateTrend.isEmpty {
-					HStack(spacing: 12) {
-						Image(systemName: "waveform.path.ecg")
-							.font(.title2)
-							.foregroundStyle(palette.secondaryText)
-						Text("No heart-rate samples are attached to logged events yet.")
-							.font(.subheadline)
-							.foregroundStyle(palette.secondaryText)
-					}
-					.frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
-				} else {
-					Chart(viewModel.heartRateTrend, id: \.0) { pair in
-						LineMark(x: .value("Time", pair.0), y: .value("BPM", pair.1))
-							.foregroundStyle(CiggyTheme.ember)
-						PointMark(x: .value("Time", pair.0), y: .value("BPM", pair.1))
-							.foregroundStyle(CiggyTheme.sunlight)
-					}
-					.frame(height: 190)
-				}
-			}
-		}
-	}
-
-	private var evidenceNote: some View {
-		HStack(alignment: .top, spacing: 12) {
-			Image(systemName: "hand.raised.fingers.spread")
-				.foregroundStyle(palette.mint)
-			Text("Automatic events begin with repeated wrist motion. Heart rate can add context, but it never decides whether you smoked.")
-				.font(.caption)
-				.foregroundStyle(palette.secondaryText)
-		}
-		.padding(.horizontal, 4)
 	}
 
 	private var visibleCounts: [DayCount] {

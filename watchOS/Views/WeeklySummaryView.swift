@@ -11,14 +11,14 @@ struct WeeklySummaryView: View {
 	var body: some View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: 6) {
-				Text("7-day rhythm")
+				Text("Seven-day receipts")
 					.font(.system(size: 15, weight: .black, design: .rounded))
 					.foregroundStyle(palette.primaryText)
 				HStack(alignment: .firstTextBaseline, spacing: 4) {
 					Text("\(weeklyTotal)")
 						.font(.system(size: 24, weight: .black, design: .rounded))
 						.foregroundStyle(palette.mint)
-					Text("logged this week")
+					Text("logged in 7 days")
 						.font(.system(size: 10))
 						.foregroundStyle(palette.secondaryText)
 				}
@@ -61,7 +61,7 @@ struct WeeklySummaryView: View {
 		}
 		.containerBackground(for: .navigation) { CiggyBackdrop() }
 		.toolbarForegroundStyle(palette.primaryText, for: .navigationBar)
-		.navigationTitle("Weekly")
+		.navigationTitle("Last 7 Days")
 		.navigationBarTitleDisplayMode(.inline)
 	}
 

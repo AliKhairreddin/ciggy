@@ -59,7 +59,7 @@ public enum NotificationManager {
 
 	public static func scheduleEncouragement(after seconds: TimeInterval, message: String) {
 		let content = UNMutableNotificationContent()
-		content.title = "Stay strong!"
+		content.title = "A memo from Ciggy"
 		content.body = message
 		content.sound = .default
 		let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(5, seconds), repeats: false)

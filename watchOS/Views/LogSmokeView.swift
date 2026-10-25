@@ -16,10 +16,10 @@ struct LogSmokeView: View {
 			VStack(spacing: 6) {
 				HStack(spacing: 6) {
 					VStack(alignment: .leading, spacing: 2) {
-						Text("Just a check-in.")
+						Text("For the record.")
 							.font(.system(size: 14, weight: .black, design: .rounded))
 							.foregroundStyle(palette.primaryText)
-						Text("Zero judgment.")
+						Text("One cigarette. On file.")
 							.font(.system(size: 9))
 							.foregroundStyle(palette.secondaryText)
 					}

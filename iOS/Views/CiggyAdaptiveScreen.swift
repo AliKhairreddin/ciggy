@@ -35,7 +35,6 @@ struct CiggyDuoStatus: View {
 			HStack(spacing: 8) {
 				Label(title(for: hinge), systemImage: display.mode == .tabletop ? "laptopcomputer" : "book.closed")
 				Spacer(minLength: 8)
-				Text("\(hinge.degrees)°").monospacedDigit()
 			}
 			.font(.caption.weight(.semibold))
 			.foregroundStyle(CiggyPalette(colorScheme: colorScheme).secondaryText)

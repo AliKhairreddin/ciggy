@@ -34,6 +34,29 @@ final class ciggy_Watch_AppUITests: XCTestCase {
     }
 
     @MainActor
+    func testTrackingDetailsAreReachableFromSettings() {
+        let app = XCUIApplication()
+        app.launch()
+        let settings = app.buttons["watch-settings-button"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        let homeShot = XCTAttachment(screenshot: app.screenshot())
+        homeShot.name = "Consumer Watch home"
+        homeShot.lifetime = .keepAlways
+        add(homeShot)
+        settings.tap()
+        let details = app.buttons["watch-tracking-details-link"]
+        for _ in 0..<16 where !details.isHittable { app.swipeUp() }
+        XCTAssertTrue(details.isHittable)
+        details.tap()
+        let check = app.buttons["watch-check-history"]
+        XCTAssertTrue(check.waitForExistence(timeout: 5))
+        let detailShot = XCTAttachment(screenshot: app.screenshot())
+        detailShot.name = "Watch tracking details"
+        detailShot.lifetime = .keepAlways
+        add(detailShot)
+    }
+
+    @MainActor
     func testSecondaryLoggingSavesOneEventAndSurvivesRelaunch() throws {
         let app = XCUIApplication()
         app.launch()

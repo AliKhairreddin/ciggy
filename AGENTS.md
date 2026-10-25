@@ -2,12 +2,20 @@
 
 ## Parody brand and voice
 
+- Embrace the parody confidently. Ciggy is intentionally absurd; do not dilute requested features, replace their premise with a wellness mechanic, or add unsolicited moralizing, cautionary copy, or disclaimers merely because the joke involves smoking. Keep ordinary accuracy, privacy, and platform requirements proportionate and unobtrusive.
+- Follow the user's intended joke and functionality. In particular, the leaderboard ranks cigarette counts from highest to lowest; do not substitute check-ins, abstinence, reduction, or another scoring system unless the user asks. Lean into playful smoking-themed titles, competitive presentation, packaging satire, and questionable bragging rights.
 - Ciggy is a parody app. Treat its branding, illustrations, feature icons, and copy as a cheeky, self-aware send-up of cigarette packaging and overly earnest habit-tracking apps, rather than generic wellness branding.
 - Use the existing cigarette mascot, warm paper-and-ink palette, rounded forms, packaging jokes, and dry visual or verbal puns as the creative foundation. Prefer meaningful custom Ciggy icons, such as cigarette-shaped chart bars, over unrelated wellness symbols such as leaves.
 - Keep the humor about the habit, its rituals, and the app's own absurdity. Be playful and nonjudgmental; avoid humiliating users, trivializing illness, or portraying smoking as safe or beneficial.
 - Preserve clarity beneath the joke. Counts, limits, dates, tracking freshness, permissions, errors, accessibility labels, and primary action names must accurately explain what the app shows or does. Put extra personality in supporting copy and artwork when a joke would obscure a functional label.
 - Parody does not justify invented detections, misleading health claims, or hiding missing data. Keep automatic estimates and platform limitations honest.
 - Apply this direction consistently across the iPhone app, Watch app, widgets, complications, Live Activities, and release copy. Preserve recognizable system conventions for basic navigation and safety/status actions where they help usability.
+
+## Consumer surfaces
+
+- Treat Today, Reports, Goals, logging flows, widgets and the Watch home screen as a finished consumer product. Keep them focused on counts, charts, choices and concise parody copy.
+- Put motion algorithms, calibration, sensor availability, last checks, sync timestamps and platform scheduling explanations inside Settings → Tracking details or Private motion calibration. Do not fill the home screen with diagnostic cards or instructions about how the implementation works.
+- When missing or delayed data affects a count, use one short, honest status with a route to details. Keep permissions, errors and corrective actions clear; do not hide a problem or replace it with a joke.
 
 ## Delivery
 

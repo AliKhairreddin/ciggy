@@ -35,6 +35,28 @@ final class ciggyUITests: XCTestCase {
     }
 
     @MainActor
+    func testTrackingDetailsAreReachableFromSettings() {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertFalse(app.buttons["check-watch-history"].exists)
+        openSettings(app)
+        let details = app.buttons["tracking-details-link"]
+        for _ in 0..<8 where !details.isHittable { app.swipeUp() }
+        XCTAssertTrue(details.isHittable)
+        details.tap()
+        XCTAssertTrue(app.navigationBars["Tracking details"].waitForExistence(timeout: 5))
+        let check = app.buttons["check-watch-history"]
+        XCTAssertTrue(check.waitForExistence(timeout: 5))
+        capture(app, name: "Tracking details in Settings")
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        closeSettings(app)
+        openManualLog(app)
+        XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+    }
+
+    @MainActor
     func testHistoricalDetectionPreview() throws {
         let app = XCUIApplication()
         app.launch()
@@ -88,7 +110,14 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(total.waitForExistence(timeout: 5))
         let countBefore = try XCTUnwrap(Int(total.label.split(separator: " ").first ?? ""))
         let adjust = app.buttons["Adjust count"].firstMatch
-        for _ in 0..<10 where !adjust.isHittable { app.swipeUp() }
+        var reviewingEarlierDay = false
+        let earlier = app.buttons["Earlier days"]
+        for _ in 0..<10 where !adjust.isHittable {
+            if !adjust.exists && earlier.isHittable {
+                earlier.tap()
+                reviewingEarlierDay = true
+            } else { app.swipeUp() }
+        }
         XCTAssertTrue(adjust.isHittable)
         adjust.tap()
 
@@ -104,13 +133,21 @@ final class ciggyUITests: XCTestCase {
 
         XCTAssertTrue(stepper.waitForNonExistence(timeout: 5), "A successful durable correction dismisses its sheet.")
         for _ in 0..<10 where !total.isHittable { app.swipeDown() }
-        let expected = "\(countBefore - 1) cigarettes today"
+        let expected = "\(countBefore - (reviewingEarlierDay ? 0 : 1)) cigarettes today"
         expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: total)
         waitForExpectations(timeout: 5)
         app.terminate()
         app.launch()
         XCTAssertTrue(total.waitForExistence(timeout: 5))
         XCTAssertEqual(total.label, expected)
+        if reviewingEarlierDay {
+            for _ in 0..<10 where !earlier.isHittable { app.swipeUp() }
+            XCTAssertTrue(earlier.isHittable)
+            earlier.tap()
+        }
+        let decision = app.staticTexts["Count adjusted to \(originalCount - 1)"].firstMatch
+        for _ in 0..<10 where !decision.isHittable { app.swipeUp() }
+        XCTAssertTrue(decision.isHittable, "The saved review correction must survive relaunch.")
     }
 
     @MainActor
@@ -157,7 +194,7 @@ final class ciggyUITests: XCTestCase {
         app.launch()
         capture(app, name: "Today")
         app.tabBars.buttons["Reports"].tap()
-        XCTAssertTrue(app.staticTexts["You've got a rhythm."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["The receipts are in."].waitForExistence(timeout: 3))
         capture(app, name: "Reports")
         app.tabBars.buttons["Goals"].tap()
         let value = app.staticTexts["daily-limit-value"]
@@ -181,7 +218,7 @@ final class ciggyUITests: XCTestCase {
         for _ in 0..<6 where !save.isHittable { app.swipeUp() }
         save.tap()
         openSettings(app)
-        XCTAssertTrue(app.staticTexts["A little fine-tuning."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Management has notes."].waitForExistence(timeout: 3))
         capture(app, name: "Settings")
     }
 
@@ -244,7 +281,7 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["phone-profile-button"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Log a cigarette"].exists)
         openSettings(app)
-        XCTAssertTrue(app.staticTexts["A little fine-tuning."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Management has notes."].waitForExistence(timeout: 3))
         closeSettings(app)
         openManualLog(app)
         XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 3))
