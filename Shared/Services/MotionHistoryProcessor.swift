@@ -69,7 +69,7 @@ public enum MotionHistoryProcessor {
         analyzer initialAnalyzer: RecordedMotionAnalyzer? = nil,
         sourceStartedAt: Date? = nil,
         sensitivity: Double,
-        lookbackSeconds: TimeInterval = 45 * 60,
+        lookbackSeconds: TimeInterval = TrackingRefreshPolicy.recentLookback,
         query: (Date, Date) -> AnySequence<RecordedAccelerationSample>?,
         shouldContinue: () -> Bool = { true }
     ) -> RecentResult {
@@ -78,7 +78,7 @@ public enum MotionHistoryProcessor {
             return .init(candidates: [], requestedFrom: safeCursor, processedThrough: safeCursor,
                          latestSampleAt: nil, pendingRanges: [], isComplete: start == end && isSupportedDate(start))
         }
-        let lookback = lookbackSeconds.isFinite ? min(3 * 60 * 60, max(60, lookbackSeconds)) : 45 * 60
+        let lookback = lookbackSeconds.isFinite ? min(3 * 60 * 60, max(60, lookbackSeconds)) : TrackingRefreshPolicy.recentLookback
         let requestedFrom = max(start, end.addingTimeInterval(-lookback))
         let contextStart = max(requestedFrom.addingTimeInterval(-8 * 60), end.addingTimeInterval(-3 * 24 * 60 * 60))
         let checkpoint = start >= contextStart ? initialAnalyzer : nil

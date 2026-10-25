@@ -235,7 +235,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testOldCheckpointStillPrioritizesRecentPatternBeforeBacklog() {
         let end = start.addingTimeInterval(2 * 86_400)
-        let stream = withMeasuredRest(recordedSession(offset: 2 * 86_400 - 400), from: 2 * 86_400 - 53 * 60, through: 2 * 86_400)
+        let stream = withMeasuredRest(recordedSession(offset: 2 * 86_400 - 400), from: 2 * 86_400 - 23 * 60, through: 2 * 86_400)
         var queried: [MotionHistoryRange] = []
         let recent = MotionHistoryProcessor.processRecent(
             from: start, to: end, analyzer: .init(), sensitivity: 0.5,
@@ -244,7 +244,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
                 return AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
             }
         )
-        XCTAssertEqual(queried.first?.start, end.addingTimeInterval(-53 * 60))
+        XCTAssertEqual(queried.first?.start, end.addingTimeInterval(-23 * 60))
         XCTAssertEqual(recent.candidates.count, 1)
         XCTAssertTrue(recent.isComplete)
     }
@@ -261,10 +261,10 @@ final class MotionHistoryProcessorTests: XCTestCase {
                 })
             }
         )
-        XCTAssertEqual(recent.requestedFrom, end.addingTimeInterval(-45 * 60))
-        XCTAssertEqual(queried.first?.start, end.addingTimeInterval(-53 * 60))
+        XCTAssertEqual(recent.requestedFrom, end.addingTimeInterval(-15 * 60))
+        XCTAssertEqual(queried.first?.start, end.addingTimeInterval(-23 * 60))
         XCTAssertEqual(queried.last?.end, end)
-        XCTAssertEqual(queried.count, 4)
+        XCTAssertEqual(queried.count, 2)
         XCTAssertTrue(queried.allSatisfy { $0.end.timeIntervalSince($0.start) <= 15 * 60 })
         XCTAssertTrue(recent.isComplete)
     }
@@ -273,7 +273,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
         let end = start.addingTimeInterval(3_600)
         // Duration evidence starts before the recent-window boundary; replay
         // must retain that evidence and preserve the original emission time.
-        let stream = withMeasuredRest(recordedSession(offset: 850), through: 3_900)
+        let stream = withMeasuredRest(recordedSession(offset: 2_650), through: 3_900)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
         }
@@ -295,7 +295,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testRecentPassDoesNotDiscardOlderChronologicalEvents() {
         let end = start.addingTimeInterval(3_600)
-        let stream = withMeasuredRest(recordedSession(offset: 100) + recordedSession(offset: 1_100), through: 3_600)
+        let stream = withMeasuredRest(recordedSession(offset: 100) + recordedSession(offset: 2_900), through: 3_600)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
         }
@@ -316,7 +316,7 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testRecentPassFiltersCandidatesFromPrecedingContext() {
         let end = start.addingTimeInterval(3_600)
-        let stream = withMeasuredRest(recordedSession(offset: 580), through: 3_600)
+        let stream = withMeasuredRest(recordedSession(offset: 2_380), through: 3_600)
         let recent = MotionHistoryProcessor.processRecent(
             from: start, to: end, sensitivity: 0.5,
             query: { lower, upper in AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper }) }

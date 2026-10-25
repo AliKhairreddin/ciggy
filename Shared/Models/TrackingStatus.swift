@@ -121,7 +121,7 @@ public struct TrackingStatus: Codable, Equatable, Sendable {
         if captureUntil.map({ $0 <= now }) ?? true {
             parts.append("Background recording needs renewal on the Watch; some activity may be missing.")
         } else if historySampleAt.map({ now.timeIntervalSince($0) > 10 * 60 }) ?? true {
-            parts.append("Recent cigarettes may not be included yet. A Watch check is requested when you open the iPhone app; delivery depends on watchOS.")
+            parts.append("Recent cigarettes may not be included yet. Ciggy requests checks about every 15 minutes; watchOS may delay them. Keep a Ciggy complication on your active Watch face. Opening the iPhone also requests a check.")
         } else {
             parts.append("The newest few minutes can still arrive later. Counts are motion estimates.")
         }

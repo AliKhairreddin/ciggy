@@ -9,11 +9,14 @@ final class MotionHistoryContinuityTests: XCTestCase {
     private var secondEpisode: [Double] { Array(stride(from: 2_000.0, through: 2_300, by: 20)) }
 
     func testColdRecentReplayDefersTruncatedEpisodeAndCountsLaterProvenBoundary() {
-        let samples = trace(cycles: firstEpisode + secondEpisode, duration: 4_000)
-        let complete = process(samples, end: 4_000)
+        // The 15-minute recent window begins at 1,300, truncating the first
+        // episode while retaining a later episode with a proven quiet boundary.
+        let laterEpisode = Array(stride(from: 1_700.0, through: 2_000, by: 20))
+        let samples = trace(cycles: firstEpisode + laterEpisode, duration: 2_200)
+        let complete = process(samples, end: 2_200)
         XCTAssertEqual(complete.candidates.count, 3)
         let recent = MotionHistoryProcessor.processRecent(
-            from: start, to: date(4_000), analyzer: .init(), sourceStartedAt: start,
+            from: start, to: date(2_200), analyzer: .init(), sourceStartedAt: start,
             sensitivity: 0.5, query: provider(samples)
         )
         XCTAssertEqual(recent.candidates.map(\.id), Array(complete.candidates.suffix(1).map(\.id)))

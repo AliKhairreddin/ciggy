@@ -65,17 +65,20 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 				continue
 			}
 			let id = ObjectIdentifier(task)
+			// Consume the old appointment before scheduling its successor. This
+			// happens independently of coalesced/cancelled analysis work below.
+			if task is WKApplicationRefreshBackgroundTask {
+				BackgroundMotionMonitor.shared.backgroundRefreshDidBegin()
+			}
+			BackgroundMotionMonitor.shared.armRecording()
 			runningTasks[id] = Task { @MainActor [weak self] in
-				BackgroundMotionMonitor.shared.armRecording()
-				if task is WKApplicationRefreshBackgroundTask {
-					BackgroundMotionMonitor.shared.backgroundRefreshDidBegin()
-				} else {
+				if task is WKWatchConnectivityRefreshBackgroundTask {
 					await ConnectivityManager.shared.drainPendingBackgroundTransfers(maximumWait: 1)
 				}
 				guard Task.isCancelled == false else { return }
 				// Every legitimate wake is useful: a phone sync can renew capture
 				// and check recent movement without opening the Watch interface.
-				await WatchAppRuntime.shared.coordinator.refreshTracking()
+				await WatchAppRuntime.shared.coordinator.refreshTracking(inBackground: true)
 				self?.complete(task)
 			}
 			task.expirationHandler = { [weak self] in
@@ -104,7 +107,7 @@ final class WatchAppCoordinator: ObservableObject {
 	private var isRequestingNotificationAuthorization = false
 	private var historyRefresh: Task<Void, Never>?
 	private var companionRefresh: Task<Void, Never>?
-	private var trackingRefresh: Task<Void, Never>?
+	private let trackingRefresh = TrackingRefreshRunner()
 	private let lastRefreshRequestKey = "Ciggy.lastHandledHistoryRefreshRequest.v1"
 	private let lastRefreshRequestAtKey = "Ciggy.lastHandledHistoryRefreshAt.v1"
 	private weak var repository: EventRepository?
@@ -144,7 +147,9 @@ final class WatchAppCoordinator: ObservableObject {
 			.sink { @MainActor [weak self] consent in
 				BackgroundCalibrationCollector.shared.configureConsent(consent)
 				LiveCalibrationCollector.shared.configure(consent: consent)
-				guard consent != nil else { return }
+				// Inactive launches are refreshed by the delegate's expiring WK grant,
+				// not by an independent task that could keep its background lease alive.
+				guard consent != nil, WKApplication.shared().applicationState == .active else { return }
 				Task { @MainActor [weak self] in await self?.refreshTracking() }
 			}.store(in: &cancellables)
 		ConnectivityManager.shared.recordingTransfersChanged.removeDuplicates()
@@ -195,7 +200,8 @@ final class WatchAppCoordinator: ObservableObject {
 				   request.requestedAt <= handledAt { return }
 				UserDefaults.standard.set(request.id.uuidString, forKey: self.lastRefreshRequestKey)
 				UserDefaults.standard.set(request.requestedAt, forKey: self.lastRefreshRequestAtKey)
-				guard self.companionRefresh == nil else { return }
+				// The connectivity background-task handler owns inactive processing.
+				guard WKApplication.shared().applicationState == .active, self.companionRefresh == nil else { return }
 				self.companionRefresh = Task { @MainActor [weak self] in
 					await self?.refreshTracking()
 					self?.companionRefresh = nil
@@ -263,37 +269,38 @@ final class WatchAppCoordinator: ObservableObject {
 		}
 	}
 
-	func refreshTracking() async {
-		guard hasStarted else { return }
-		if let trackingRefresh { await trackingRefresh.value; return }
-		let work = Task { @MainActor [weak self] in
-			BackgroundMotionMonitor.shared.armRecording()
-			// Calibration is saved locally and released in hourly file batches.
-			// Keep the live buffer continuous across ordinary history checks.
-			await BackgroundCalibrationCollector.shared.collect(
-				enabledAt: self?.settingsStore?.settings.calibrationEnabledAt,
-				maximumProcessingTime: 6
+	func refreshTracking(inBackground: Bool = false) async {
+		guard hasStarted, Task.isCancelled == false else { return }
+		// Recheck queued UI/consent requests after screen sleep. Only the delegate
+		// explicitly acquires a background lease tied to a WK expiration handler.
+		guard inBackground || WKApplication.shared().applicationState == .active else { return }
+		BackgroundMotionMonitor.shared.armRecording()
+		let isForeground = !inBackground && WKApplication.shared().applicationState == .active
+		await trackingRefresh.run(context: isForeground ? .foreground : .background) { [weak self] in
+			guard let self else { return }
+			await TrackingRefreshPolicy.perform(
+				isForeground: isForeground,
+				analyze: { budget in await self.processHistory(maximumProcessingTime: budget) },
+				synchronize: { ConnectivityManager.shared.resumeSync() },
+				calibrate: { budget in
+					// Optional raw-data preparation uses only the remaining budget,
+					// after cigarette estimates have been saved and queued for sync.
+					await BackgroundCalibrationCollector.shared.collect(
+						enabledAt: self.settingsStore?.settings.calibrationEnabledAt,
+						maximumProcessingTime: budget
+					)
+				}
 			)
-			guard Task.isCancelled == false else { return }
-			await self?.processHistory()
-			ConnectivityManager.shared.resumeSync()
 		}
-		trackingRefresh = work
-		await withTaskCancellationHandler {
-			await work.value
-		} onCancel: {
-			work.cancel()
-		}
-		trackingRefresh = nil
 	}
 
 	/// Used by both foreground catch-up and best-effort watchOS background refresh.
-	func processHistory() async {
+	func processHistory(maximumProcessingTime: TimeInterval) async {
 		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
 		let backgroundMotion = BackgroundMotionMonitor.shared
 		guard let batch = await backgroundMotion.processAvailableHistory(
 			sensitivity: settingsStore.settings.sensitivity,
-			maximumProcessingTime: WKApplication.shared().applicationState == .active ? 20 : 4
+			maximumProcessingTime: maximumProcessingTime
 		), Task.isCancelled == false else { return }
 		guard let reviews = autoRecord(
 			batch.candidates, origin: .watchHistory,
@@ -315,10 +322,10 @@ final class WatchAppCoordinator: ObservableObject {
 		Task { @MainActor in await LiveCalibrationCollector.shared.flush() }
 		historyRefresh?.cancel()
 		historyRefresh = nil
-		trackingRefresh?.cancel()
+		trackingRefresh.cancelForeground()
 		MotionManager.shared.stop()
-		// Preserve completed puffs across a short screen sleep. The fusion engine
-		// expires long gaps itself; an incomplete sensor gesture still resets.
+		// Live duration resets when sampling stops. Saved recorder history remains
+		// available for independent catch-up during the next granted refresh.
 		HealthKitManager.shared.stopHeartRateStreaming()
 		isForegroundMonitoring = false
 	}

@@ -41,7 +41,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let scheduledRefreshKey = "BackgroundMotionMonitor.scheduledRefresh.v1"
 	private let captureDuration: TimeInterval = 12 * 60 * 60
 	// A refresh also analyzes the backlog. watchOS decides when it actually runs.
-	private let renewalInterval: TimeInterval = 30 * 60
+	private let renewalInterval = TrackingRefreshPolicy.preferredBackgroundInterval
 	private let availabilityDelay: TimeInterval = 3 * 60
 	private let retentionDuration: TimeInterval = 3 * 24 * 60 * 60
 	private let queryChunkDuration: TimeInterval = 30 * 60
@@ -63,7 +63,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 		if hasExpiredHistory { return "Some older motion history expired before it could be checked, so past totals may be incomplete. Recent available activity still updates." }
 		if isCaptureAvailable == false { return "Automatic detection needs a physical Apple Watch with motion access." }
 		if isCaptureArmed == false { return "Open Ciggy and allow Motion & Fitness access to start background capture." }
-		return "Motion estimates can appear a few minutes later. Keep a Ciggy complication on your active Watch face to give background checks more opportunities; watchOS controls their timing."
+		return "Ciggy requests background checks about every 15 minutes. Keep a Ciggy complication on your active Watch face; watchOS controls when checks actually run and can delay them longer."
 	}
 
 	var statusText: String {

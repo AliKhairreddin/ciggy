@@ -2,6 +2,15 @@ import XCTest
 @testable import CiggyShared
 
 final class MotionCapturePolicyTests: XCTestCase {
+    func testFifteenMinutePreferenceAdvancesOldHalfHourAppointment() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let preferred = now.addingTimeInterval(TrackingRefreshPolicy.preferredBackgroundInterval)
+        XCTAssertEqual(preferred.timeIntervalSince(now), 900)
+        XCTAssertTrue(MotionCapturePolicy.shouldSchedule(at: now, existing: now.addingTimeInterval(1_800), preferred: preferred))
+        XCTAssertFalse(MotionCapturePolicy.shouldSchedule(at: now.addingTimeInterval(60), existing: preferred,
+                                                         preferred: preferred.addingTimeInterval(60)))
+    }
+
     func testFrequentOpensDoNotPostponeEarlierBackgroundRefresh() {
         let now = Date()
         let scheduled = now.addingTimeInterval(1_800)
