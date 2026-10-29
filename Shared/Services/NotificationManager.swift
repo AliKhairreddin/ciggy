@@ -38,19 +38,16 @@ public enum NotificationManager {
 		)
 	}
 
-	public static func scheduleDetectionSummaryNotification(
-		reviewID: UUID,
-		count: Int,
-		historyHours: Int
-	) {
+	public static func scheduleDetectionSummaryNotification(review: DetectionReview) {
+		let count = review.displayCount
 		guard count > 0 else { return }
 		let content = UNMutableNotificationContent()
 		content.title = "\(count) \(count == 1 ? "cigarette" : "cigarettes") detected"
-		content.body = "Found in the last \(max(1, historyHours)) hours of Watch history. Already added—tap only if you want to review."
+		content.body = "\(review.timingSummary()). Already added—tap to review."
 		content.sound = .default
 		let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
 		let request = UNNotificationRequest(
-			identifier: "detection-summary-\(reviewID.uuidString)",
+			identifier: "detection-summary-\(review.id.uuidString)",
 			content: content,
 			trigger: trigger
 		)

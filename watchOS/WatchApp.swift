@@ -102,6 +102,7 @@ final class WatchAppCoordinator: ObservableObject {
 	private var notificationsEnabled = false
 	private var hasStarted = false
 	private var isForegroundMonitoring = false
+	private var foregroundStartedAt: Date?
 	private var hasRequestedHealthAuthorization = false
 	private var hasStartedDebugRecording = false
 	private var isRequestingNotificationAuthorization = false
@@ -238,6 +239,7 @@ final class WatchAppCoordinator: ObservableObject {
 
 	func appDidBecomeActive() {
 		guard hasStarted else { return }
+		if foregroundStartedAt == nil { foregroundStartedAt = Date() }
 		ConnectivityManager.shared.resumeSync()
 		BackgroundMotionMonitor.shared.armRecording()
 		requestNotificationAuthorizationIfActive()
@@ -308,9 +310,7 @@ final class WatchAppCoordinator: ObservableObject {
 			repository: repository, reviewStore: reviewStore
 		) else { return }
 		if notificationsEnabled, let review = reviews.last(where: { Calendar.current.isDate($0.windowEnd, inSameDayAs: Date()) }) {
-			NotificationManager.scheduleDetectionSummaryNotification(
-				reviewID: review.id, count: review.eventIDs.count, historyHours: review.historyHours
-			)
+			NotificationManager.scheduleDetectionSummaryNotification(review: review)
 		}
 		backgroundMotion.commit(batch)
 		ConnectivityManager.shared.resumeSync()
@@ -318,6 +318,8 @@ final class WatchAppCoordinator: ObservableObject {
 
 	func appDidEnterBackground() {
 		guard hasStarted else { return }
+		BackgroundMotionMonitor.shared.foregroundDidEnd(startedAt: foregroundStartedAt)
+		foregroundStartedAt = nil
 		BackgroundMotionMonitor.shared.armRecording()
 		Task { @MainActor in await LiveCalibrationCollector.shared.flush() }
 		historyRefresh?.cancel()

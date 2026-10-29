@@ -6,6 +6,50 @@ import XCTest
 /// Labels describe the scenario we intended to model; the sensor inputs do not
 /// encode the object in the hand. Overlap and missed scenarios are reported.
 final class SyntheticMotionSimulationTests: XCTestCase {
+    func testRestOrientationAndSmallerExcursionsAcrossAllAxes() {
+        // Invented larger/smaller wrist arcs, not measured standing/seated data.
+        // A different resting orientation must not require the hand to reach a
+        // fixed height. A below-threshold arc documents an actual blind spot.
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        for base in [-1.2, 0, 1.2] {
+            for plane in [0, Double.pi / 3, Double.pi / 2] {
+                for excursion in [0.3, 0.6, 1.4] {
+                    var live = MotionGestureEngine()
+                    var fusion = DetectionFusionEngine()
+                    var recorded = RecordedMotionAnalyzer()
+                    var liveCount = 0
+                    var recordedCount = 0
+                    for index in 0...(365 * 30) {
+                        let seconds = Double(index) / 30
+                        let t = seconds.truncatingRemainder(dividingBy: 60)
+                        let fraction: Double
+                        let rate: Double
+                        if t < 1 { fraction = 0; rate = 0 }
+                        else if t < 2 { fraction = t - 1; rate = excursion }
+                        else if t < 4 { fraction = 1; rate = 0 }
+                        else if t < 5 { fraction = 5 - t; rate = -excursion }
+                        else { fraction = 0; rate = 0 }
+                        let angle = base + excursion * fraction
+                        let gravity = MotionVector(x: sin(angle) * cos(plane),
+                            y: sin(angle) * sin(plane), z: -cos(angle))
+                        let time = start.addingTimeInterval(seconds)
+                        let sample = MotionSample(timestamp: time, gravity: gravity,
+                            userAcceleration: .init(x: 0, y: 0, z: 0),
+                            rotationRate: .init(x: rate * sin(plane), y: -rate * cos(plane), z: 0))
+                        if let gesture = live.record(sample), fusion.recordGesture(at: gesture) != nil { liveCount += 1 }
+                        if recorded.record(.init(timestamp: time, x: gravity.x, y: gravity.y, z: gravity.z)) != nil {
+                            recordedCount += 1
+                        }
+                    }
+                    let expected = excursion < 0.45 ? 0 : 1
+                    let context = "base=\(base), plane=\(plane), excursion=\(excursion)"
+                    XCTAssertEqual(liveCount, expected, "Live: \(context)")
+                    XCTAssertEqual(recordedCount, expected, "Recorded: \(context)")
+                }
+            }
+        }
+    }
+
     func testSyntheticSessionSweep() throws {
         let requested = ProcessInfo.processInfo.environment["CIGGY_SIMULATION_SESSIONS"].flatMap(Int.init) ?? 800
         let total = min(1_000_000, max(8, requested))

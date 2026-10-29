@@ -15,4 +15,16 @@ public enum MotionCapturePolicy {
         // a potentially lost request only after a bounded two-hour grace period.
         return existing < now.addingTimeInterval(-2 * 60 * 60) || existing > preferred
     }
+
+    /// watchOS ignores a refresh whose preferred date occurs while the app is
+    /// foregrounded. Retire that appointment on background entry, while keeping
+    /// overdue requests from before this foreground session eligible for delivery.
+    public static func wasRefreshDueDuringForeground(
+        scheduledAt: Date?, foregroundStartedAt: Date?, endedAt: Date
+    ) -> Bool {
+        guard let scheduledAt, let foregroundStartedAt,
+              [scheduledAt, foregroundStartedAt, endedAt].allSatisfy(MotionHistoryProcessor.isSupportedDate),
+              foregroundStartedAt <= endedAt else { return false }
+        return scheduledAt >= foregroundStartedAt && scheduledAt <= endedAt
+    }
 }

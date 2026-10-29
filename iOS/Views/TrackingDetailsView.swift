@@ -25,6 +25,8 @@ struct TrackingDetailsView: View {
                         Text("Counts are estimates from recorded wrist motion. Heart rate can add context, but it never decides whether you smoked.")
                         Text("Ciggy requests background checks about every 15 minutes. watchOS chooses when to run them, so this is not a guaranteed schedule. A Ciggy complication on your active Watch face gives the app more background opportunities.")
                         Text("Watch logs and corrections sync with your paired iPhone. The time beside a log is the cigarette's timestamp, not the time it arrived on this device.")
+                        Text("A review appears after an automatic estimate is saved. New estimates join the pending review for that day; a check with no new detections does not create a zero-count review. Estimated log times are not proof that every moment between them was checked, or that no cigarettes were missed.")
+                        Text("Sitting and standing can both produce matching gestures. Ciggy compares wrist orientation across all three motion axes with your resting pose; it does not measure hand height. Small movements or a different return pose can be missed. Normal sensitivity needs five completed gestures over at least five minutes; shorter activity can be missed too.")
                         Text(connectivity.isLiveSyncAvailable ? "Watch connection: live" : "Watch connection: waiting for background delivery")
                     }
                     .font(.subheadline)

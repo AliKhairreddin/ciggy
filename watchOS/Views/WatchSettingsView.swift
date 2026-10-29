@@ -296,6 +296,12 @@ struct WatchTrackingDetailsView: View {
 				Text("For more background opportunities, keep a Ciggy complication on your active Watch face. Opening the iPhone also requests a motion check.")
 					.font(.system(size: 9))
 					.foregroundStyle(palette.secondaryText)
+				Text("Reviews appear after detections and collect new estimates for the same day until reviewed. No new detections means no new review. Estimated log times do not show continuous tracking coverage.")
+					.font(.system(size: 9))
+					.foregroundStyle(palette.secondaryText)
+				Text("Ciggy uses all three motion axes relative to your resting wrist, not hand height. Sitting and standing can both match, but small movements or a different return pose can be missed. Normal sensitivity needs five gestures over at least five minutes.")
+					.font(.system(size: 9))
+					.foregroundStyle(palette.secondaryText)
 			}
 		}
 	}

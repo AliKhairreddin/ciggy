@@ -144,7 +144,7 @@ struct WatchDashboardView: View {
 					Text("\(review.displayCount) detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 						.font(.system(size: 14, weight: .black, design: .rounded))
 						.foregroundStyle(palette.primaryText)
-					Text(reviewDateText(review))
+					Text(review.timingSummary())
 						.font(.system(size: 8))
 						.foregroundStyle(palette.secondaryText)
 				}
@@ -239,14 +239,6 @@ struct WatchDashboardView: View {
 
 	private var todayProgress: Double {
 		min(1, Double(viewModel.todayCount) / Double(max(1, settings.settings.dailyLimit)))
-	}
-
-	private func reviewDateText(_ review: DetectionReview) -> String {
-		if Calendar.current.isDate(review.windowStart, inSameDayAs: review.windowEnd) {
-			let day = Calendar.current.isDateInToday(review.windowEnd) ? "Today" : review.windowEnd.formatted(date: .abbreviated, time: .omitted)
-			return "\(day) · \(review.windowStart.formatted(date: .omitted, time: .shortened)) – \(review.windowEnd.formatted(date: .omitted, time: .shortened))"
-		}
-		return "\(review.windowStart.formatted(date: .abbreviated, time: .shortened)) – \(review.windowEnd.formatted(date: .abbreviated, time: .shortened))"
 	}
 
 	private var todayAccessibilityLabel: String {

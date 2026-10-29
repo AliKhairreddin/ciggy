@@ -129,6 +129,15 @@ final class BackgroundMotionMonitor: ObservableObject {
 		userDefaults.removeObject(forKey: scheduledRefreshKey)
 	}
 
+	func foregroundDidEnd(startedAt: Date?, at endedAt: Date = Date()) {
+		if MotionCapturePolicy.wasRefreshDueDuringForeground(
+			scheduledAt: userDefaults.object(forKey: scheduledRefreshKey) as? Date,
+			foregroundStartedAt: startedAt, endedAt: endedAt
+		) {
+			userDefaults.removeObject(forKey: scheduledRefreshKey)
+		}
+	}
+
 	func reportPersistenceError(_ error: String?) {
 		guard runtimePersistenceError != error else { return }
 		runtimePersistenceError = error

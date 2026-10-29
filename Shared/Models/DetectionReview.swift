@@ -92,6 +92,42 @@ public struct DetectionReview: Identifiable, Codable, Equatable, Sendable {
 	public var originalCount: Int { eventIDs.count }
 	public var displayCount: Int { correctedCount ?? originalCount }
 
+    /// Log timestamps describe the detections, not scan coverage or delivery time.
+    /// Require every original: a partially delivered legacy review cannot claim
+    /// that the available subset describes the whole count.
+    public var estimatedLogRange: ClosedRange<Date>? {
+        guard eventIDs.isEmpty == false else { return nil }
+        let snapshots = Dictionary(eventSnapshots.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let dates = eventIDs.compactMap { snapshots[$0]?.timestamp }
+        guard dates.count == eventIDs.count, dates.allSatisfy(MotionHistoryProcessor.isSupportedDate),
+              let first = dates.min(), let last = dates.max() else { return nil }
+        return first...last
+    }
+
+    public func timingSummary(now: Date = Date(), calendar: Calendar = .current,
+                              locale: Locale = .autoupdatingCurrent) -> String {
+        let logs = estimatedLogRange
+        let start = logs?.lowerBound ?? windowStart
+        let end = logs?.upperBound ?? windowEnd
+        let label = logs == nil ? "Review period" : (decision == .adjusted ? "Original estimates" : "Estimated logs")
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.timeStyle = .short
+        let startTime = formatter.string(from: start)
+        let endTime = formatter.string(from: end)
+        if calendar.isDate(start, inSameDayAs: end) {
+            formatter.timeStyle = .none
+            formatter.dateStyle = .medium
+            let day = calendar.isDate(end, inSameDayAs: now) ? "Today" : formatter.string(from: end)
+            let times = startTime == endTime ? endTime : "\(startTime) – \(endTime)"
+            return "\(label): \(day) · \(times)"
+        }
+        formatter.dateStyle = .medium
+        return "\(label): \(formatter.string(from: start)) – \(formatter.string(from: end))"
+    }
+
 	public var historyHours: Int {
 		let hours = ceil(windowEnd.timeIntervalSince(windowStart) / 3_600)
 		guard hours.isFinite, hours > 0 else { return 1 }

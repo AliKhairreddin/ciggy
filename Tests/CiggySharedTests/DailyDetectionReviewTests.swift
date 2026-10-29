@@ -20,6 +20,61 @@ final class DailyDetectionReviewTests: XCTestCase {
         try body(DetectionReviewStore(userDefaults: defaults, storageKey: "reviews"), defaults)
     }
 
+    func testNoDetectionsCreatesNoReviewAndNewDetectionsMergeUntilReviewed() throws {
+        try withStore { store, _ in
+            XCTAssertTrue(store.recordDaily(events: [], origin: .watchHistory,
+                windowStart: date(0), windowEnd: date(10), calendar: calendar).isEmpty)
+            XCTAssertTrue(store.reviews.isEmpty)
+            let first = SmokingEvent(timestamp: date(18), source: .automatic)
+            let second = SmokingEvent(timestamp: date(19), source: .automatic)
+            let initial = try XCTUnwrap(store.recordDaily(events: [first], origin: .watchHistory,
+                windowStart: date(0), windowEnd: date(18), calendar: calendar).first)
+            let merged = try XCTUnwrap(store.recordDaily(events: [second], origin: .watchHistory,
+                windowStart: date(18), windowEnd: date(20), calendar: calendar).first)
+            XCTAssertEqual(merged.id, initial.id)
+            XCTAssertEqual(merged.eventIDs, [first.id, second.id])
+            XCTAssertNotNil(store.markAccurate(reviewID: merged.id))
+            let third = SmokingEvent(timestamp: date(21), source: .automatic)
+            let next = try XCTUnwrap(store.recordDaily(events: [third], origin: .watchHistory,
+                windowStart: date(20), windowEnd: date(22), calendar: calendar).first)
+            XCTAssertNotEqual(next.id, initial.id)
+            XCTAssertEqual(next.eventIDs, [third.id])
+        }
+    }
+
+    func testReviewShowsDetectionTimesInsteadOfMidnightBacklogOrDeliveryTime() throws {
+        try withStore { store, defaults in
+            let event = SmokingEvent(timestamp: date(18), source: .automatic)
+            let review = try XCTUnwrap(store.recordDaily(events: [event], origin: .watchHistory,
+                windowStart: date(0), windowEnd: date(21), at: date(23), calendar: calendar).first)
+            XCTAssertEqual(review.estimatedLogRange, date(18)...date(18))
+            let summary = review.timingSummary(now: date(23), calendar: calendar, locale: Locale(identifier: "en_US_POSIX"))
+            XCTAssertTrue(summary.hasPrefix("Estimated logs: Today"))
+            XCTAssertFalse(summary.contains("12:00"))
+            XCTAssertFalse(summary.contains(" – "))
+            // Presentation must not rewrite the original correction scope or sync state.
+            XCTAssertEqual(review.windowStart, date(0))
+            XCTAssertEqual(review.windowEnd, date(21))
+            let restored = DetectionReviewStore(userDefaults: defaults, storageKey: "reviews")
+            XCTAssertEqual(restored.latestReview, review)
+        }
+    }
+
+    func testIncompleteSnapshotsUseExplicitReviewPeriodAndIgnoreUnrelatedEvents() {
+        let first = SmokingEvent(timestamp: date(18), source: .automatic)
+        let second = SmokingEvent(timestamp: date(20), source: .automatic)
+        let unrelated = SmokingEvent(timestamp: date(0), source: .automatic)
+        var review = DetectionReview(eventIDs: [first.id, second.id], origin: .watchHistory,
+            windowStart: date(0), windowEnd: date(22), eventSnapshots: [first, unrelated])
+        XCTAssertNil(review.estimatedLogRange)
+        XCTAssertTrue(review.timingSummary().hasPrefix("Review period:"))
+        review.eventSnapshots.append(second)
+        XCTAssertEqual(review.estimatedLogRange, date(18)...date(20))
+        review.decision = .adjusted
+        review.correctedCount = 4
+        XCTAssertTrue(review.timingSummary().hasPrefix("Original estimates:"))
+    }
+
     func testBacklogIsPartitionedByEventDayAndWindowsNeverCrossMidnight() throws {
         try withStore { store, _ in
             let yesterday = SmokingEvent(timestamp: date(23, day: 22), source: .automatic)

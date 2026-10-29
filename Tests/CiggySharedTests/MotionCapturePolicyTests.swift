@@ -2,6 +2,45 @@ import XCTest
 @testable import CiggyShared
 
 final class MotionCapturePolicyTests: XCTestCase {
+    func testRefreshIgnoredWhileForegroundedGetsAReplacementOnBackgroundEntry() {
+        let openedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let appointment = openedAt.addingTimeInterval(900)
+        let backgroundedAt = openedAt.addingTimeInterval(960)
+        var pending: Date? = appointment
+        // The ordinary scheduler preserves an overdue request for two hours.
+        XCTAssertFalse(MotionCapturePolicy.shouldSchedule(at: backgroundedAt, existing: pending,
+            preferred: backgroundedAt.addingTimeInterval(900)))
+        if MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: pending,
+            foregroundStartedAt: openedAt, endedAt: backgroundedAt) {
+            pending = nil
+        }
+        XCTAssertTrue(MotionCapturePolicy.shouldSchedule(at: backgroundedAt, existing: pending,
+            preferred: backgroundedAt.addingTimeInterval(900)))
+    }
+
+    func testForegroundExitPreservesEarlierOverdueAndFutureAppointments() {
+        let openedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let closedAt = openedAt.addingTimeInterval(60)
+        for appointment in [openedAt.addingTimeInterval(-60), closedAt.addingTimeInterval(60)] {
+            XCTAssertFalse(MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: appointment,
+                foregroundStartedAt: openedAt, endedAt: closedAt))
+        }
+        XCTAssertTrue(MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: closedAt,
+            foregroundStartedAt: openedAt, endedAt: closedAt))
+    }
+
+    func testUnknownForegroundSessionOrInvalidClockCannotDiscardAppointment() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertFalse(MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: date,
+            foregroundStartedAt: nil, endedAt: date))
+        XCTAssertFalse(MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: nil,
+            foregroundStartedAt: date, endedAt: date))
+        XCTAssertFalse(MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: date,
+            foregroundStartedAt: date, endedAt: date.addingTimeInterval(-1)))
+        XCTAssertFalse(MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: date,
+            foregroundStartedAt: date, endedAt: Date(timeIntervalSince1970: .nan)))
+    }
+
     func testFifteenMinutePreferenceAdvancesOldHalfHourAppointment() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let preferred = now.addingTimeInterval(TrackingRefreshPolicy.preferredBackgroundInterval)

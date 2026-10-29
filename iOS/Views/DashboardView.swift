@@ -422,7 +422,7 @@ struct DashboardView: View {
 						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 							.font(.headline)
 							.foregroundStyle(palette.primaryText)
-						Text(reviewSummaryText(review))
+						Text(review.timingSummary())
 							.font(.subheadline)
 							.foregroundStyle(palette.secondaryText)
 					}
@@ -464,15 +464,6 @@ struct DashboardView: View {
 				}
 			}
 		}
-	}
-
-	private func reviewSummaryText(_ review: DetectionReview) -> String {
-		let calendar = Calendar.current
-		let day = calendar.isDateInToday(review.windowEnd) ? "Today" : review.windowEnd.formatted(date: .abbreviated, time: .omitted)
-		if calendar.isDate(review.windowStart, inSameDayAs: review.windowEnd) {
-			return "\(day) · \(review.windowStart.formatted(date: .omitted, time: .shortened)) – \(review.windowEnd.formatted(date: .omitted, time: .shortened))"
-		}
-		return "Earlier summary: \(review.windowStart.formatted(date: .abbreviated, time: .shortened)) – \(review.windowEnd.formatted(date: .abbreviated, time: .shortened))"
 	}
 
 	private func reviewDecisionText(_ review: DetectionReview) -> String {
