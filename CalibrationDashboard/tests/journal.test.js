@@ -19,6 +19,7 @@ test("period changes preserve saved data on failed or incomplete responses, and 
   };
   globalThis.fetch = async (path) => {
     count++;
+    if (path === "/api/participants") return Response.json({ participants: [] });
     if (path === "/api/session") return Response.json({ retentionDays: 14 });
     if (path === "/api/delivery") return Response.json({ participants: [] });
     if (path.endsWith("/overview")) {

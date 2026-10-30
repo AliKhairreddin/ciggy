@@ -21,7 +21,9 @@ export async function api(path, options = {}) {
     : null;
   if (response.status === 409)
     throw new Error(
-      "Another reviewer changed these labels. Refresh recordings before trying again.",
+      path.endsWith("/labels")
+        ? "Another reviewer changed these labels. Refresh recordings before trying again."
+        : body?.error ?? "This item changed. Refresh before trying again.",
     );
   if (!response.ok || !body)
     throw new Error(
@@ -36,6 +38,7 @@ export async function api(path, options = {}) {
 export function createJournal() {
   let state = {
     sessions: [],
+    participants: [],
     overviews: new Map(),
     failures: new Set(),
     filters: initialFilters(),
@@ -231,6 +234,11 @@ export function createJournal() {
         throw new Error(
           "Sign in to open the private workspace. Refresh this page to try again.",
         );
+      if (connected()) {
+        const result = await api("/api/participants");
+        if (!Array.isArray(result.participants)) throw new Error("The tester list could not be loaded.");
+        emit({ participants: result.participants });
+      }
       await refresh();
     } catch (error) {
       emit({ mode: "error" });

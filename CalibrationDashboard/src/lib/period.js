@@ -1,3 +1,4 @@
+import { reviewQuery } from "../../public/review-link.js";
 import { appleSecondsToMs } from "../../public/data.js";
 
 export const HOUR = 3600000;
@@ -18,14 +19,17 @@ export const recordingSources = (session) =>
   session.sources ?? [
     ...new Set(session.recording.samples.map((sample) => sample.source)),
   ];
-export const initialFilters = () => ({
-  period: "48h",
-  day: timeInput(Date.now()).slice(0, 10),
-  start: "",
-  end: "",
-  participant: "",
-  source: "",
-});
+export const initialFilters = (search = globalThis.location?.search ?? "") => {
+  const query = new URLSearchParams(reviewQuery(search));
+  return {
+    period: query.has("from") ? "custom" : "48h",
+    day: timeInput(Date.now()).slice(0, 10),
+    start: query.has("from") ? timeInput(Date.parse(query.get("from"))) : "",
+    end: query.has("to") ? timeInput(Date.parse(query.get("to"))) : "",
+    participant: query.get("participant") ?? "",
+    source: "",
+  };
+};
 
 // Calendar presets use local midnight, so a DST day can have 23 or 25 hours.
 export function periodBounds(

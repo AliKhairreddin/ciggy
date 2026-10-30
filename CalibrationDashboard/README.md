@@ -58,3 +58,11 @@ After the Access application and its exact issuer/audience are configured, set `
 Verify that `/` redirects to `/login`, `/api/recordings` returns `401` without a session, native routes reject missing tokens/codes, and both authorized reviewers can sign in and see the shared workspace. Inspect the Access-issued cookie for domain scope, HttpOnly, and Secure flags. Confirm the R2 bucket has no public URL enabled. Do not print cookies, pairing codes, bearer tokens, raw samples, or participant aliases in deployment logs.
 
 Tests use local D1/R2 simulation and signed test JWTs. They exercise cookie/header validation, guarded assets, fixed redirects, shared and isolated reviewer scopes, pairing, source-age and enrollment boundaries, idempotent uploads, label conflicts, deletion, bounded compression, rate limits, and cleanup within the Free-plan D1 query budget.
+
+## Review links and missed-cigarette feedback (build 21)
+
+Review links carry validated `from`, `to`, optional `participant` and `review` parameters across the fixed `/login` route. They never accept arbitrary redirect destinations. The iPhone presents the dashboard in its in-app Safari browser.
+
+Migration `0006_review_feedback.sql` adds private interval feedback independent of recordings, so empty-motion intervals can also be reported and exported. `GET/POST /api/review-feedback` list/save reports; `DELETE /api/review-feedback/:id` clears a report and leaves a temporary retry tombstone. These routes require Access and workspace scope; mutations also require same origin. `GET /api/participants` lists authorized nonrevoked testers even when they have no recordings in the selected period. Native `GET /api/participant` returns only the calling device's own participant UUID for older pairings.
+
+Feedback and its optional tester notes expire after 14 days and are removed by participant deletion. Saved reports have an explicit evidence-export flow that also works without raw samples. See [the workflow and evidence semantics](../docs/motion-review.md). Apply the migration before deploying the new Worker; existing recordings and labels are preserved.

@@ -17,6 +17,7 @@ struct DashboardView: View {
 	@StateObject private var viewModel = DashboardViewModel()
 	@ObservedObject private var tracking = TrackingStatusStore.shared
 	@State private var reviewToAdjust: DetectionReview?
+	@State private var motionReview: DetectionReview?
 	@State private var isLogging = false
 	@State private var lastLoggedEvent: SmokingEvent?
 	@State private var undoError: String?
@@ -91,6 +92,9 @@ struct DashboardView: View {
 			.presentationDragIndicator(.visible)
 		}
 		.sensoryFeedback(.success, trigger: lastLoggedEvent?.id)
+		.sheet(item: $motionReview) { review in
+			MotionReviewBrowser(review: review)
+		}
 		.sheet(item: $reviewToAdjust) { review in
 			DetectionCountAdjustmentView(review: review) { correctedCount in
 				DetectionReviewWorkflow.adjust(
@@ -422,12 +426,19 @@ struct DashboardView: View {
 						Text("\(review.displayCount) \(review.displayCount == 1 ? "cigarette" : "cigarettes") detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 							.font(.headline)
 							.foregroundStyle(palette.primaryText)
-						Text(review.timingSummary())
+						Text(review.reviewPeriodSummary())
 							.font(.subheadline)
 							.foregroundStyle(palette.secondaryText)
 					}
 					Spacer(minLength: 0)
 				}
+
+				DetectionMomentsView(review: review)
+				Button { motionReview = review } label: {
+					Label("Inspect motion & report a miss", systemImage: "waveform.path")
+				}
+				.font(.subheadline.weight(.semibold))
+				.accessibilityIdentifier("inspect-review-motion")
 
 				if review.decision == .pending {
 					Text("Included in your total.")

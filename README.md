@@ -48,6 +48,8 @@ A Ciggy complication on the active Watch face gives background checks more oppor
 
 Build 20 replaces background appointments that watchOS ignored while Ciggy was foregrounded. Reviews label estimated log times separately from the history scan's wider window; a check with no new detections does not create a review. See the [tracking timing and wrist-posture investigation](docs/tracking-review-investigation.md) for the confirmed scheduling defect, remaining latency limits, and small-motion blind spots.
 
+Build 21 keeps each review’s broad period and adds every original detection’s motion start and counted time on both devices. On iPhone, **Inspect motion & report a miss** opens the private dashboard inside Ciggy, with the review period and paired tester preselected when available. Testers can save missed-cigarette intervals even without uploaded motion, then export feedback and available evidence for investigation. See [motion review and tester feedback](docs/motion-review.md).
+
 ## Tracking experience
 
 The iPhone bottom bar contains **Today**, **Reports**, **Goals**, and **League**. Open Settings through the profile icon at the top right of Today; the Watch also uses its header profile icon. Manual entry remains available as a small **Add missed cigarette** action, and automatic detections remain reviewable with **Accurate** and **Adjust count**.

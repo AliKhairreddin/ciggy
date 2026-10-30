@@ -37,7 +37,7 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  await env.DB.batch(['delivery_reports', 'recordings', 'pairing_codes', 'request_limits', 'participants'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(['review_feedback', 'delivery_reports', 'recordings', 'pairing_codes', 'request_limits', 'participants'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
 });
 after(async () => {
   await platform?.dispose();
@@ -372,13 +372,13 @@ test('upload limits count reserved and deleted chunks so retries and deletions c
   const boundedDB = { prepare(...args) { prepared++; return env.DB.prepare(...args); },
     batch: statements => env.DB.batch(statements) };
   await worker.purgeExpired({ ...env, DB: boundedDB });
-  assert.ok(prepared <= 7, 'Cleanup including delivery-report expiry stays bounded at seven queries, independent of row count.');
+  assert.ok(prepared <= 8, 'Cleanup including delivery-report expiry stays bounded at eight queries, independent of row count.');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 7192,
     'Cleanup stays bounded at 1000 rows per call even when the upload budget is larger');
   for (let index = 0; index < 8; index++) {
     prepared = 0;
     await worker.purgeExpired({ ...env, DB: boundedDB });
-    assert.ok(prepared <= 7);
+    assert.ok(prepared <= 8);
   }
   assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM recordings').first()).count, 0);
 });
@@ -476,4 +476,73 @@ test('small phone/server clock differences do not prevent delivery diagnostics',
   const payload = delivery(person, { consentAt: Date.now() - 60000 });
   assert.equal((await call('/api/upload', 'POST', payload, reportHeaders(person))).status, 200);
   assert.equal((await call('/api/upload', 'POST', { ...payload, consentAt: Date.now() - 360000 }, reportHeaders(person))).status, 400);
+});
+
+test('review feedback saves missing intervals idempotently, is private, and expires', async () => {
+  const person = await participant();
+  const body = { id: crypto.randomUUID(), participantID: person.participantID,
+    start: Date.now() - 600000, end: Date.now() - 300000, missedCount: 2,
+    reason: 'no-uploaded-motion', notes: 'Synthetic tester observation.', reviewID: crypto.randomUUID() };
+  assert.equal((await call('/api/review-feedback', 'POST', body)).status, 201);
+  assert.equal((await call('/api/review-feedback', 'POST', body)).status, 201);
+  assert.equal((await call('/api/review-feedback', 'POST', { ...body, missedCount: 3 })).status, 409);
+  const query = `?from=${new Date(body.start - 1).toISOString()}&to=${new Date(body.end + 1).toISOString()}`;
+  const saved = await (await call('/api/review-feedback' + query)).json();
+  assert.equal(saved.feedback.length, 1);
+  assert.equal(saved.feedback[0].missedCount, 2);
+  assert.equal((await call('/api/review-feedback' + query, 'GET', undefined, { authorization: `Bearer ${person.token}` }, worker.default)).status, 401);
+  assert.deepEqual((await (await call('/api/review-feedback' + query, 'GET', undefined, { 'x-test-reviewer': 'another@example.test' })).json()).feedback, []);
+  assert.equal((await call('/api/review-feedback', 'POST', { ...body, id: crypto.randomUUID() }, { 'x-test-reviewer': 'another@example.test' })).status, 404);
+  assert.equal((await call('/api/review-feedback', 'POST', body, { origin: 'https://untrusted.example' })).status, 403);
+  await env.DB.prepare('UPDATE review_feedback SET expires_at = ?1').bind(Date.now() - 1).run();
+  assert.deepEqual((await (await call('/api/review-feedback' + query)).json()).feedback, []);
+  await worker.purgeExpired(env);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM review_feedback').first()).count, 0);
+});
+
+test('feedback validates bounds and participant deletion removes feedback, including empty-motion testers', async () => {
+  const person = await participant();
+  const identity = await call('/api/participant', 'GET', undefined, { authorization: `Bearer ${person.token}` });
+  assert.deepEqual(await identity.json(), { participantID: person.participantID });
+  const people = await (await call('/api/participants')).json();
+  assert.equal(people.participants[0].id, person.participantID);
+  const body = { id: crypto.randomUUID(), participantID: person.participantID, start: Date.now() - 600000,
+    end: Date.now() - 300000, missedCount: 1, reason: 'motion-present', notes: '' };
+  for (const changes of [{ start: body.end }, { missedCount: 0 }, { missedCount: 1.5 }, { end: Date.now() + 3600000 },
+    { start: Date.now() - 15 * 86400000 }, { notes: 'x'.repeat(2001) }, { participantID: 'bad' }, { reason: 'invented' }]) {
+    assert.equal((await call('/api/review-feedback', 'POST', { ...body, ...changes })).status, 400);
+  }
+  assert.equal((await call('/api/review-feedback', 'POST', body)).status, 201);
+  await call(`/api/review-feedback/${body.id}`, 'DELETE', undefined, { 'x-test-reviewer': 'another@example.test' });
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM review_feedback').first()).count, 1);
+  await call('/api/participant', 'DELETE', undefined, { authorization: `Bearer ${person.token}` });
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS count FROM review_feedback').first()).count, 0);
+});
+
+test('review scope survives both login redirects without accepting arbitrary return destinations', async () => {
+  const query = '?from=2025-10-09T17:45:00Z&to=2025-10-09T18:00:00Z&participant=00000000-0000-4000-8000-000000000001&returnTo=https://invalid.example';
+  const response = await call('/' + query, 'GET', undefined, {}, worker.default);
+  assert.equal(response.status, 303);
+  const login = response.headers.get('location');
+  assert.ok(login.startsWith('/login?from='));
+  assert.equal(login.includes('returnTo'), false);
+  const signedIn = await call(login);
+  const destination = signedIn.headers.get('location');
+  assert.ok(destination.startsWith('/?from='));
+  assert.equal(new URL(destination, origin).searchParams.get('participant'), '00000000-0000-4000-8000-000000000001');
+});
+
+
+test('deleted feedback keeps a private tombstone against delayed duplicate saves', async () => {
+  const person = await participant();
+  const body = { id: crypto.randomUUID(), participantID: person.participantID, start: Date.now() - 600000,
+    end: Date.now() - 300000, missedCount: 1, reason: 'unknown', notes: 'Synthetic note.' };
+  await call('/api/review-feedback', 'POST', body);
+  assert.equal((await call(`/api/review-feedback/${body.id}`, 'DELETE')).status, 200);
+  const row = await env.DB.prepare('SELECT body_json, deleted_at, started_at, ended_at FROM review_feedback WHERE id = ?1').bind(body.id).first();
+  assert.equal(row.body_json, '{}'); assert.ok(row.deleted_at);
+  assert.equal(row.started_at, 0); assert.equal(row.ended_at, 0);
+  assert.equal((await call('/api/review-feedback', 'POST', body)).status, 409);
+  const query = `?from=${new Date(body.start).toISOString()}&to=${new Date(body.end).toISOString()}`;
+  assert.deepEqual((await (await call('/api/review-feedback' + query)).json()).feedback, []);
 });

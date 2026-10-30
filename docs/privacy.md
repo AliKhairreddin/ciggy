@@ -55,3 +55,7 @@ You can decline or revoke Motion & Fitness, HealthKit, and notification permissi
 For a privacy question, use the feedback contact shown in Ciggy's TestFlight listing. General questions can also be raised at the [Ciggy project](https://github.com/AliKhairreddin/ciggy/issues). Do not post health data, smoking history, or private contact details in public issues.
 
 This policy will be updated if Ciggy's data practices change.
+
+## Optional missed-cigarette reports
+
+Starting with build 21, an authorized tester can explicitly save a missed-cigarette report in the private motion dashboard, including participant, selected interval, missed count, observation, optional notes and review identifier. This feedback shares the dashboard's access restrictions and 14-day retention, and is deleted with the participant's shared data. Deleting an individual report clears its content and retains a temporary identifier against delayed retries. The report does not change the app's cigarette total. A tester can explicitly export the report together with the selected participant's available motion, labels, coverage gaps and last reported delivery status, then choose where to share that file. Exported copies are controlled by the tester and are not removed by server retention. No automatic submission to Codex occurs.

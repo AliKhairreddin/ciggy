@@ -144,12 +144,14 @@ struct WatchDashboardView: View {
 					Text("\(review.displayCount) detected\(Calendar.current.isDateInToday(review.windowStart) && Calendar.current.isDateInToday(review.windowEnd) ? " today" : "")")
 						.font(.system(size: 14, weight: .black, design: .rounded))
 						.foregroundStyle(palette.primaryText)
-					Text(review.timingSummary())
+					Text(review.reviewPeriodSummary())
 						.font(.system(size: 8))
 						.foregroundStyle(palette.secondaryText)
 				}
 				Spacer(minLength: 0)
 			}
+
+			DetectionMomentsView(review: review)
 
 			if review.decision == .pending {
 				Text("Included in total.")

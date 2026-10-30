@@ -138,6 +138,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
               enrollment.token.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_").contains($0) })
         else { throw CalibrationError.invalidResponse }
         try saveCredential(enrollment.token)
+        UserDefaults.standard.set(enrollment.participantID, forKey: "Ciggy.calibration.participantID")
         self.alias = trimmedAlias
         UserDefaults.standard.set(trimmedAlias, forKey: "Ciggy.calibration.alias")
         isEnrolled = true
@@ -150,6 +151,25 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         ConnectivityManager.shared.send(settings: settings?.settings ?? UserSettings())
         ConnectivityManager.shared.requestHistoryRefresh()
         flush()
+    }
+
+    /// Recover IDs for installations paired before build 21; never expose the upload token to a browser.
+    func dashboardParticipantID() async -> UUID? {
+        guard isEnrolled, let token = credential() else { return nil }
+        if let saved = UserDefaults.standard.string(forKey: "Ciggy.calibration.participantID"),
+           let id = UUID(uuidString: saved) { return id }
+        var request = URLRequest(url: Self.origin.appendingPathComponent("api/participant"))
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200, data.count < 4096,
+                  credential() == token else { return nil }
+            struct Identity: Decodable { let participantID: UUID }
+            let identity = try JSONDecoder().decode(Identity.self, from: data)
+            UserDefaults.standard.set(identity.participantID.uuidString, forKey: "Ciggy.calibration.participantID")
+            return identity.participantID
+        } catch { return nil } // The dashboard explicitly asks for a tester when identity is unavailable.
     }
 
     func pause() {
@@ -206,6 +226,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
         isEnrolled = false
         requiresPairing = false
         alias = ""
+        UserDefaults.standard.removeObject(forKey: "Ciggy.calibration.participantID")
         UserDefaults.standard.removeObject(forKey: "Ciggy.calibration.alias")
         UserDefaults.standard.removeObject(forKey: pairingRequiredKey)
     }

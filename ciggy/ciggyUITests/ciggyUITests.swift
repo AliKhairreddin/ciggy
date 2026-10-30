@@ -75,6 +75,15 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(detection.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Accurate"].exists)
         XCTAssertTrue(app.buttons["Adjust count"].exists)
+        XCTAssertTrue(app.staticTexts["Motion start → counted time"].firstMatch.exists)
+        let inspect = app.buttons["inspect-review-motion"].firstMatch
+        for _ in 0..<8 where !inspect.isHittable { app.swipeUp() }
+        XCTAssertTrue(inspect.isHittable)
+        capture(app, name: "Individual detection windows and motion review")
+        inspect.tap()
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 20), "The private dashboard opens in an in-app Safari browser.")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(inspect.waitForExistence(timeout: 5))
     }
 
     @MainActor

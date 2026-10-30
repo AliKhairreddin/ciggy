@@ -1,3 +1,5 @@
+import { handleFeedback } from './feedback.ts';
+import { reviewQuery } from '../public/review-link.js';
 import { assertSameOrigin, cleanCode, enrollmentRateLimit, hash, pairingCode, participantForToken,
   randomToken, reviewerScope, verifyDashboardAccess, type Participant } from './auth.ts';
 import { deleteObjects, deleteRecording, findRecording, loadRawRecording, metadata, purgeExpired,
@@ -72,6 +74,7 @@ async function deleteParticipant(request: Request, env: Env): Promise<Response> 
   if (rows.results.length) await deleteObjects(env, rows.results.map(row => row.object_key));
   await env.DB.prepare('DELETE FROM recordings WHERE participant_id = ?1').bind(participant.id).run();
   await env.DB.prepare('DELETE FROM delivery_reports WHERE participant_id = ?1').bind(participant.id).run();
+  await env.DB.prepare('DELETE FROM review_feedback WHERE participant_id = ?1').bind(participant.id).run();
   return json({ deleted: true, revoked: true });
 }
 
@@ -138,6 +141,9 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
             validateNativeUploadWindow(recording, participant.created_at, now);
             response = json(await saveRecording(env, participant, recording), 201);
           }
+        } else if (pathname === '/api/participant' && method === 'GET') {
+          const participant = await participantForToken(request, env);
+          response = json({ participantID: participant.id });
         } else if (pathname === '/api/participant' && method === 'DELETE') response = await deleteParticipant(request, env);
         else {
           // All browsing, raw downloads and reviewer mutations fail closed.
@@ -148,14 +154,19 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
             if (error instanceof APIError && [401, 403].includes(error.status) &&
                 !isAPI && pathname !== '/login' && (method === 'GET' || method === 'HEAD')) {
               // Fixed same-origin destination; never trust returnTo/redirect query parameters.
-              return secure(new Response(null, { status: 303, headers: { Location: '/login' } }));
+              return secure(new Response(null, { status: 303, headers: { Location: '/login' + reviewQuery(new URL(request.url).search) } }));
             }
             throw error;
           }
           const scope = reviewerScope(email, env);
           if (pathname === '/login' && (method === 'GET' || method === 'HEAD')) {
-            response = new Response(null, { status: 303, headers: { Location: '/' } });
+            response = new Response(null, { status: 303, headers: { Location: '/' + reviewQuery(new URL(request.url).search) } });
           } else if (pathname === '/api/session' && method === 'GET') response = json({ email, retentionDays: RETENTION_DAYS });
+          else if (pathname === '/api/review-feedback' || /^\/api\/review-feedback\/[^/]+$/.test(pathname)) response = await handleFeedback(request, env, scope);
+          else if (pathname === '/api/participants' && method === 'GET') {
+            const rows = await env.DB.prepare('SELECT id, alias FROM participants WHERE owner_email = ?1 AND revoked_at IS NULL ORDER BY alias LIMIT 1000').bind(scope).all();
+            response = json({ participants: rows.results });
+          }
           else if (pathname === '/api/delivery' && method === 'GET') response = await listDeliveryReports(env, scope);
           else if (pathname === '/api/pairing' && method === 'POST') response = await pairing(request, env, scope);
           else if (pathname === '/api/import' && method === 'POST') response = await importRecording(request, env, scope);

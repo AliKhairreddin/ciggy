@@ -60,6 +60,7 @@ import {
   recordingSources,
   timeInput,
 } from "@/lib/period";
+import { ReviewFeedback } from "@/components/review-feedback";
 import { MotionChart } from "@/components/motion-chart";
 import {
   appleSecondsToMs,
@@ -396,6 +397,9 @@ function Delivery({ state }) {
 
 export function App() {
   const state = useSyncExternalStore(journal.subscribe, journal.getSnapshot);
+  const [feedbackSelection, setFeedbackSelection] = useState(null),
+    [feedbackDirty, setFeedbackDirty] = useState(false),
+    [selectionMode, setSelectionMode] = useState(new URLSearchParams(location.search).has("review") ? "feedback" : "label");
   const [view, setView] = useState(null),
     [signal, setSignal] = useState("userAcceleration"),
     [axis, setAxis] = useState("magnitude");
@@ -435,13 +439,13 @@ export function App() {
   const participants = useMemo(
     () => [
       ...new Map(
-        state.sessions.map((session) => [
+        [...state.participants.map(item => [item.id, item.alias]), ...state.sessions.map((session) => [
           session.participantID ?? session.participant,
           session.participant,
-        ]),
+        ])],
       ),
     ],
-    [state.sessions],
+    [state.sessions, state.participants],
   );
   const chartRange = view ?? state.range;
   const labels = useMemo(
@@ -473,7 +477,7 @@ export function App() {
   const latest = visible.length
     ? Math.max(...visible.map((session) => recordingBounds(session)[1]))
     : null;
-  paused.current = dirty || Boolean(modal) || working;
+  paused.current = dirty || feedbackDirty || Boolean(modal) || working;
   useEffect(() => {
     void journal.initialize();
   }, []);
@@ -521,6 +525,10 @@ export function App() {
     journal.notice(error.message, true);
   }
   function guardDraft() {
+    if (feedbackDirty) {
+      journal.notice("Save or cancel your missed-cigarette feedback before changing the view.", true);
+      return false;
+    }
     if (!dirty) return true;
     journal.notice(
       "Save or reset your activity label before changing the view.",
@@ -563,6 +571,7 @@ export function App() {
   }
   function markRange(range) {
     if (!guardDraft()) return;
+    if (selectionMode === "feedback") { setFeedbackSelection(range); return; }
     const options = ready
       .map((session) => ({
         session,
@@ -1005,6 +1014,10 @@ export function App() {
           </CardContent>
         </Card>
 
+        {new URLSearchParams(location.search).has("review") && <p className="rounded-xl border bg-white p-4 text-sm" role="status">
+          Opened from a Ciggy review. The period is preselected. {state.filters.participant ? "Check the selected tester, then zoom or drag across a missed cigarette." : "Choose your tester before inspecting coverage or saving a miss."} Older data may have expired; sharing must have been enabled to upload motion.
+        </p>}
+
         <section
           className="grid grid-cols-2 gap-3 lg:grid-cols-4"
           aria-label="Selected period overview"
@@ -1072,6 +1085,12 @@ export function App() {
                   </NativeSelect>
                 </div>
               </div>
+              <div className="w-full sm:w-56">
+                <NativeSelect aria-label="Timeline selection action" value={selectionMode} disabled={dirty || feedbackDirty} onChange={event => setSelectionMode(event.target.value)}>
+                  <option value="feedback">Drag to report a missed cigarette</option>
+                  <option value="label">Drag to label an activity</option>
+                </NativeSelect>
+              </div>
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="sm" onClick={() => setView(null)}>
                   Reset zoom
@@ -1119,7 +1138,7 @@ export function App() {
               signal={signal}
               axis={axis}
               source={state.filters.source}
-              selection={selection}
+              selection={selectionMode === "feedback" ? feedbackSelection : selection}
               loading={state.hydrating || state.mode === "loading"}
               failed={state.failures.size > 0}
               onSelect={markRange}
@@ -1187,6 +1206,8 @@ export function App() {
               : "Imports stay in this browser"}
           </span>
         </div>
+
+        <ReviewFeedback state={state} journal={journal} selection={feedbackSelection} onDirtyChange={setFeedbackDirty} />
 
         <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
           <section className="min-w-0" aria-label="Workspace details">

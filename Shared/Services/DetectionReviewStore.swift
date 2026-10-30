@@ -454,7 +454,8 @@ public enum DetectionReviewWorkflow {
 			SmokingEvent(
 				timestamp: now.addingTimeInterval($0),
 				source: .automatic,
-				notes: "Historical detection preview"
+				notes: "Historical detection preview",
+                motionSessionStartedAt: now.addingTimeInterval($0 - 300)
 			)
 		}
         let accepted = events.filter { repository.addEvent($0) }

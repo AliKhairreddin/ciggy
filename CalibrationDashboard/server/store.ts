@@ -116,6 +116,7 @@ export async function purgeExpired(env: Env): Promise<void> {
     }
   }
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM review_feedback WHERE expires_at <= ?1 OR participant_id IN (SELECT id FROM participants WHERE revoked_at IS NOT NULL)').bind(now),
     env.DB.prepare('DELETE FROM delivery_reports WHERE expires_at <= ?1 OR participant_id IN (SELECT id FROM participants WHERE revoked_at IS NOT NULL)').bind(now),
     env.DB.prepare('DELETE FROM pairing_codes WHERE expires_at <= ?1').bind(now),
     env.DB.prepare('DELETE FROM request_limits WHERE expires_at <= ?1').bind(now),

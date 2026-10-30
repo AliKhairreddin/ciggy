@@ -222,7 +222,7 @@ export function MotionChart({
         ),
     );
     setTooltip(
-      `${time.format(at)} · ${matches.length ? matches.join(" · ") : "No measured samples"}`,
+      `${time.format(at)} · ${matches.length ? matches.join(" · ") : "No uploaded samples"}`,
     );
   }
   return (
@@ -231,7 +231,7 @@ export function MotionChart({
         ref={canvasRef}
         className="chart-canvas"
         role="img"
-        aria-label="Motion timeline. Drag to select an activity, or enter exact times in the activity form."
+        aria-label="Motion timeline. Drag to select a time interval, or enter exact times in the forms below."
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           drag.current = pointerTime(event);
@@ -270,7 +270,7 @@ export function MotionChart({
         className="min-h-6 px-4 pb-2 text-xs text-muted-foreground"
         aria-hidden="true"
       >
-        {tooltip || "Drag across the timeline to mark an activity."}
+        {tooltip || "Drag across the timeline to select an interval."}
       </div>
     </div>
   );
