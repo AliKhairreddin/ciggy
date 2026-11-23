@@ -56,7 +56,6 @@ final class TrackingRefreshRunnerTests: XCTestCase {
         XCTAssertTrue(foregroundWasCancelled)
         XCTAssertEqual(events, ["foreground started", "foreground retired", "background started"])
 
-        // Finishing the old generation must not discard this active flight.
         let joined = Task { @MainActor in
             await runner.run(context: .background) { events.append("unexpected second background operation") }
         }

@@ -35,7 +35,6 @@ final class LeagueWeekTests: XCTestCase {
     }
 
     func testUTCSeasonsDoNotUseOffsetDatesOrDaylightSavingLength() {
-        // Still Sunday UTC, despite this ISO timestamp's Monday calendar date.
         let localMonday = date("2026-03-09T00:30:00+14:00")
         let week = LeagueWeek(containing: localMonday)
         XCTAssertEqual(week.key, "2026-03-02")

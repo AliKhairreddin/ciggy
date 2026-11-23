@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 
-/// Persists confirmation and dismissal feedback for later detector tuning.
 @MainActor
 public final class DetectionFeedbackStore: ObservableObject {
 	@Published public private(set) var feedback: [DetectionFeedback] = []

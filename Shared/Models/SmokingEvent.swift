@@ -1,12 +1,10 @@
 import Foundation
 
-/// Source of a smoking event: automatically detected vs manually logged
 public enum SmokingEventSource: String, Codable, CaseIterable, Sendable {
 	case automatic
 	case manual
 }
 
-/// Represents one smoking event instance
 public struct SmokingEvent: Identifiable, Codable, Equatable, Sendable {
 	public let id: UUID
 	public let timestamp: Date
@@ -72,7 +70,6 @@ public extension SmokingEvent {
 		return df.string(from: timestamp)
 	}
 
-	/// Mock events for previews/testing
 	static func mock(count: Int = 12, startDaysAgo: Int = 7) -> [SmokingEvent] {
 		guard count > 0 else { return [] }
 		let calendar = Calendar.current

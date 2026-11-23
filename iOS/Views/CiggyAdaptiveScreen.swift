@@ -2,7 +2,6 @@
 import CiggyShared
 import SwiftUI
 
-/// Hinge readings provide context; angle-dependent reserved regions drive layout.
 struct CiggyDisplayContext {
 	struct Hinge: Equatable {
 		enum Status { case closed, partiallyOpen, fullyOpen }

@@ -169,7 +169,6 @@ final class CorrectionPersistenceTests: XCTestCase {
                 XCTAssertEqual(repository.events, Array(events.suffix(2)))
             }
         }
-        // Fully overlapping losing additions must disappear with their superseded scope.
         first.eventIDs = second.eventIDs
         first.eventSnapshots = second.eventSnapshots
         first.correctedCount = 4

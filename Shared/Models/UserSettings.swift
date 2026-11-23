@@ -1,7 +1,6 @@
 import Foundation
 import Combine
 
-/// User-configurable settings for detection and goals
 public struct UserSettings: Codable, Equatable, Sendable {
 	private enum CodingKeys: String, CodingKey {
 		case quitDate, dailyLimit, sensitivity, notificationsEnabled, calibrationEnabledAt
@@ -73,7 +72,6 @@ public struct UserSettings: Codable, Equatable, Sendable {
 	}
 }
 
-/// Observable store that persists settings in UserDefaults
 @MainActor
 public final class UserSettingsStore: ObservableObject {
 	@Published public var settings: UserSettings {

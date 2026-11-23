@@ -46,7 +46,6 @@ final class EventRepositoryTests: XCTestCase {
         XCTAssertEqual(repository.events, [manual])
         XCTAssertTrue(repository.hasRecordedAutomaticSession(near: automatic.timestamp))
         repository.removeEvent(id: manual.id)
-        // The new atomic snapshot must remain authoritative even if legacy keys disappear.
         defaults.removeObject(forKey: "events.deleted.v1")
         defaults.removeObject(forKey: "events.automaticTimes.v1")
         let restored = EventRepository(userDefaults: defaults, storageKey: "events")

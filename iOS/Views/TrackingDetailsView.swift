@@ -3,7 +3,6 @@ import Charts
 import CiggyShared
 import SwiftUI
 
-/// Technical explanations live here, away from the daily count.
 struct TrackingDetailsView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var repository: EventRepository

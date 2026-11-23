@@ -92,7 +92,6 @@ public final class MotionRecordingStore: ObservableObject {
         if let last = recording?.samples.last, sample.timestamp <= last.timestamp { return }
         recording?.samples.append(sample)
         guard let count = recording?.samples.count, let startedAt = recording?.startedAt else { return }
-        // Avoid publishing on every sensor callback.
         if count % 30 == 0 { sampleCount = count }
         if count >= maximumSamples || sample.timestamp.timeIntervalSince(startedAt) >= duration { finishIfRecording() }
     }

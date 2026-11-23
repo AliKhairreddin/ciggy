@@ -99,8 +99,6 @@ final class SyntheticMotionSimulationTests: XCTestCase {
     }
 
     func testIndistinguishableObjectsProduceIdenticalDetection() {
-        // A deliberately identical wrist trace may mean smoking, slowly eating,
-        // or repeated sips. A classifier using only this trace cannot tell which.
         let trace = Trace(scenario: .ambiguousHandToMouth, seed: 42)
         var smoking = MotionGestureEngine()
         var eating = MotionGestureEngine()
@@ -247,8 +245,6 @@ private struct Trace {
             }
             phases += [Phase(duration: random.value(0.6...1.6), from: 0, to: angle),
                        Phase(duration: hold, from: angle, to: angle)]
-            // No returning motion is observed in this family: a sensor blackout
-            // cannot be treated as evidence that a completed gesture occurred.
             if scenario == .interrupted { phases.append(Phase(duration: 2, from: angle, to: angle, missing: true)) }
             phases += [Phase(duration: random.value(0.6...1.6), from: angle, to: 0),
                        Phase(duration: pause, from: 0, to: 0)]

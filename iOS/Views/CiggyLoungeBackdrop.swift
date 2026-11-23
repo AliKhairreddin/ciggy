@@ -129,7 +129,6 @@ enum CiggyLoungeBackdrop {
 				context.stroke(line, with: .color(.white.opacity(0.16)), lineWidth: 0.8)
 			}
 		}
-		// A quiet ledge grounds the ceramic in every landscape.
 		context.fill(Path(CGRect(x: 0, y: 239, width: 480, height: 81)),
 			with: .linearGradient(Gradient(colors: [hex(0xD1B997), hex(0xA78D75)]),
 				startPoint: CGPoint(x: 0, y: 239), endPoint: CGPoint(x: 0, y: 320)))

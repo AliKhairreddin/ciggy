@@ -1,10 +1,3 @@
-//
-//  ciggy_Watch_AppTests.swift
-//  ciggy Watch AppTests
-//
-//  Created by Ali Khairreddin on 2026-07-14.
-//
-
 import Combine
 import Foundation
 import CiggyShared
@@ -24,8 +17,6 @@ struct ciggy_Watch_AppTests {
         defer { subscription.cancel() }
         model.bind(repository: repository)
 
-        // Wait for the initial timer/prepend emission, then log at a later time.
-        // The old implementation incorrectly treated this fresh event as future.
         try await waitFor { updates >= 2 }
         let previousUpdates = updates
         repository.addEvent(SmokingEvent(timestamp: Date(), source: .manual))
@@ -56,7 +47,6 @@ struct ciggy_Watch_AppTests {
     }
 
     private func waitFor(_ condition: () -> Bool) async throws {
-        // Fail within one second, well before the dashboard's 30-second timer.
         for _ in 0..<100 {
             if condition() { return }
             try await Task.sleep(nanoseconds: 10_000_000)

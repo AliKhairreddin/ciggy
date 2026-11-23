@@ -126,7 +126,6 @@ export async function readJSON(request: Request, maximum = MAX_BODY_BYTES): Prom
   const compressedMaximum = encoding === 'deflate' ? Math.min(maximum, 2 * 1024 * 1024) : maximum;
   if (Number(request.headers.get('content-length')) > compressedMaximum) throw new APIError(413, 'The upload is too large. Use chunks under 5 MB.');
   if (!request.body) throw new APIError(400, 'A JSON body is required.');
-  // Count compressed input before decompression and decoded bytes afterwards.
   let compressedBytes = 0;
   const boundedInput = request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {

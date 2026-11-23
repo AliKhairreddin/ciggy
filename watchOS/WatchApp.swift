@@ -76,8 +76,6 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 					await ConnectivityManager.shared.drainPendingBackgroundTransfers(maximumWait: 1)
 				}
 				guard Task.isCancelled == false else { return }
-				// Every legitimate wake is useful: a phone sync can renew capture
-				// and check recent movement without opening the Watch interface.
 				await WatchAppRuntime.shared.coordinator.refreshTracking(inBackground: true)
 				self?.complete(task)
 			}
@@ -244,8 +242,6 @@ final class WatchAppCoordinator: ObservableObject {
 		BackgroundMotionMonitor.shared.armRecording()
 		requestNotificationAuthorizationIfActive()
 		#if DEBUG
-		// Opt-in launch argument enables a physical-watch test without coupling the
-		// sensor APIs to the UI being designed in the other chat.
 		if hasStartedDebugRecording == false, ProcessInfo.processInfo.arguments.contains("-CiggyRecordMotion") {
 			hasStartedDebugRecording = true
 			MotionRecordingStore.shared.completedRecording
@@ -254,7 +250,6 @@ final class WatchAppCoordinator: ObservableObject {
 			MotionRecordingStore.shared.start(label: .unlabelled)
 		}
 		#endif
-		// start() is idempotent while healthy and retries a failed sensor stream.
 		MotionManager.shared.start()
 		if isForegroundMonitoring == false {
 			isForegroundMonitoring = true
@@ -296,7 +291,6 @@ final class WatchAppCoordinator: ObservableObject {
 		}
 	}
 
-	/// Used by both foreground catch-up and best-effort watchOS background refresh.
 	func processHistory(maximumProcessingTime: TimeInterval) async {
 		guard hasStarted, let repository, let settingsStore, let reviewStore else { return }
 		let backgroundMotion = BackgroundMotionMonitor.shared

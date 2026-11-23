@@ -560,7 +560,6 @@ export function App() {
       filters.end === state.filters.end &&
       filters.day === state.filters.day
     ) {
-      // Participant/source changes filter saved metadata without another source pull.
       return journal.refresh(filters, { localFilter: true });
     } else return journal.refresh(filters);
   }

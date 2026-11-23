@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Ciggy's signature colors stay consistent across cream and dark appearances.
 public enum CiggyTheme {
 	public static let ink = Color(red: 0.16, green: 0.13, blue: 0.19)
 	public static let deepInk = ink

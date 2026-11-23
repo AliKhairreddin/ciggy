@@ -425,7 +425,6 @@ struct LeaderboardView: View {
     }
 }
 
-/// Three paper cigarettes form an intentionally ridiculous podium, not a score meter.
 private struct LeaguePackPodium: View {
     var body: some View {
         Canvas { context, size in

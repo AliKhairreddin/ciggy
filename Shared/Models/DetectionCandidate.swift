@@ -1,6 +1,5 @@
 import Foundation
 
-/// A sensor signal that may represent smoking and can be reviewed after it is logged.
 public struct DetectionCandidate: Identifiable, Codable, Equatable, Sendable {
 	public let id: UUID
 	public let gestureAt: Date
@@ -59,7 +58,6 @@ public enum DetectionFeedbackDecision: String, Codable, Equatable, Sendable {
 	case dismissed
 }
 
-/// The user's response to an assisted-detection prompt.
 public struct DetectionFeedback: Identifiable, Codable, Equatable, Sendable {
 	public let id: UUID
 	public let candidate: DetectionCandidate

@@ -1,7 +1,6 @@
 import Foundation
 
 public extension Date {
-	/// Returns the start of day in the current calendar/timezone
 	var startOfDayInCurrentCalendar: Date {
 		Calendar.current.startOfDay(for: self)
 	}
@@ -23,7 +22,6 @@ public extension Date {
 		return days == 1 ? "1 day ago" : "\(days) days ago"
 	}
 
-	/// Inclusive day difference
 	func daysSince(_ other: Date) -> Int {
 		let startSelf = self.startOfDayInCurrentCalendar
 		let startOther = other.startOfDayInCurrentCalendar

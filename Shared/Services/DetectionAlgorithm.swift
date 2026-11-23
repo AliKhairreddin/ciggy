@@ -1,7 +1,6 @@
 import Combine
 import Foundation
 
-/// Connects live motion and optional heart-rate context to the session engine.
 @MainActor
 public final class DetectionAlgorithm: ObservableObject {
 	public typealias Configuration = DetectionFusionEngine.Configuration

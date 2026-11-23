@@ -40,7 +40,6 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
 	private let scheduledRefreshKey = "BackgroundMotionMonitor.scheduledRefresh.v1"
 	private let captureDuration: TimeInterval = 12 * 60 * 60
-	// A refresh also analyzes the backlog. watchOS decides when it actually runs.
 	private let renewalInterval = TrackingRefreshPolicy.preferredBackgroundInterval
 	private let availabilityDelay: TimeInterval = 3 * 60
 	private let retentionDuration: TimeInterval = 3 * 24 * 60 * 60

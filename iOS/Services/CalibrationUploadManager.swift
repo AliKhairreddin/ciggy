@@ -169,7 +169,7 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
             let identity = try JSONDecoder().decode(Identity.self, from: data)
             UserDefaults.standard.set(identity.participantID.uuidString, forKey: "Ciggy.calibration.participantID")
             return identity.participantID
-        } catch { return nil } // The dashboard explicitly asks for a tester when identity is unavailable.
+        } catch { return nil }
     }
 
     func pause() {
@@ -591,8 +591,6 @@ final class CalibrationUploadManager: NSObject, ObservableObject {
                 stopSharing()
                 lastError = "This pairing can no longer upload. Reconnect this iPhone using a new dashboard code."
             } else if deliveryPolicy.failures > 0 {
-                // Recreate the small report with current metadata and give its
-                // persisted retry deadline to the background session now.
                 flush()
             }
             return

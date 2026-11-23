@@ -144,7 +144,6 @@ public struct DetectionFusionEngine: Codable, Sendable {
 		gestureTimestamps.removeAll {
 			timestamp.timeIntervalSince($0) > configuration.sessionWindowSeconds
 		}
-		// Retain a bounded rolling evidence interval even for custom sparse patterns.
 		if let segmentStart = durationSegmentStartedAt,
 		   timestamp.timeIntervalSince(segmentStart) > configuration.sessionWindowSeconds {
 			durationSegmentStartedAt = gestureTimestamps.first

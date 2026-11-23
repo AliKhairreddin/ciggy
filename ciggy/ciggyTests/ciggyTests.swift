@@ -1,10 +1,3 @@
-//
-//  ciggyTests.swift
-//  ciggyTests
-//
-//  Created by Ali Khairreddin on 2026-07-14.
-//
-
 import Foundation
 import CiggyShared
 import Testing

@@ -51,7 +51,6 @@ final class ConnectivityTransportStoreTests: XCTestCase {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
-        // Construct before making its parent unavailable, so this tests write failure.
         let file = directory.appendingPathComponent("state.json")
         try FileManager.default.removeItem(at: directory)
         let store = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)

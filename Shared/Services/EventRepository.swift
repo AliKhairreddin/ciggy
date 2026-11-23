@@ -332,8 +332,6 @@ public final class EventRepository: ObservableObject {
 
 	/// Naive money-saved estimate based on cost per cigarette
 	public func estimatedMoneySaved(costPerCigarette: Double = 0.6) -> Double {
-		// Assumes that each prevented event compared to user's baseline yields savings.
-		// For now, we simply multiply streak days by (dailyLimit * cost).
 		guard costPerCigarette.isFinite, costPerCigarette > 0 else { return 0 }
 		let baselinePerDay = max(0, userDefaults.integer(forKey: "baselineCigsPerDay"))
 		let days = streakSmokeFreeDays()

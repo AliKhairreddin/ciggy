@@ -28,7 +28,6 @@ public enum CiggyPackBrand: String, CaseIterable, Identifiable {
 	}
 }
 
-/// Resolution-independent packaging; all lettering and emblems are drawn locally.
 public struct CiggyPackArtwork: View {
 	private let brand: CiggyPackBrand
 	public init(_ brand: CiggyPackBrand) { self.brand = brand }
@@ -53,7 +52,6 @@ public struct CiggyPackArtwork: View {
 					  weight: Font.Weight = .regular, design: Font.Design = .serif) {
 				context.draw(Text(value).font(.system(size: size, weight: weight, design: design)).foregroundColor(color), at: CGPoint(x: x, y: y))
 			}
-			// Slight three-quarter view: folded lid, narrow spine, offset printed face.
 			context.fill(Path(roundedRect: CGRect(x: 10, y: 12, width: 106, height: 162), cornerRadius: 3), with: .color(CiggyTheme.ink.opacity(0.12)))
 			polygon([CGPoint(x: 4, y: 14), CGPoint(x: 18, y: 5), CGPoint(x: 116, y: 5), CGPoint(x: 104, y: 14)], Color(red: 0.91, green: 0.85, blue: 0.72))
 			rule(CGPoint(x: 20, y: 8), CGPoint(x: 108, y: 8), ink.opacity(0.25), width: 0.6)
@@ -68,7 +66,6 @@ public struct CiggyPackArtwork: View {
 			case .ashford:
 				context.fill(Path(CGRect(x: 5, y: 43, width: 98, height: 90)), with: .color(ink))
 				context.stroke(Path(CGRect(x: 10, y: 48, width: 88, height: 80)), with: .color(gold), lineWidth: 0.7)
-				// An aristocratic monogram whose entire estate is an ashtray.
 				context.stroke(Path(ellipseIn: CGRect(x: 43, y: 54, width: 22, height: 24)), with: .color(gold), lineWidth: 1)
 				text("A", y: 66, size: 18, color: gold, weight: .bold)
 				text("ASHFORD", y: 91, size: 17, color: paper, weight: .bold)
@@ -77,7 +74,6 @@ public struct CiggyPackArtwork: View {
 				text("OLD MONEY.", y: 144, size: 7, color: ink, weight: .bold)
 				text("NEW ASH.", y: 155, size: 7, color: ink, weight: .bold)
 			case .ego:
-				// Art-deco geometry and an absurdly self-important luxury seal.
 				context.stroke(Path(CGRect(x: 11, y: 44, width: 86, height: 114)), with: .color(gold), lineWidth: 1)
 				polygon([CGPoint(x: 54, y: 49), CGPoint(x: 65, y: 61), CGPoint(x: 54, y: 73), CGPoint(x: 43, y: 61)], gold)
 				text("É", y: 61, size: 16, color: ink, weight: .bold)
@@ -86,7 +82,6 @@ public struct CiggyPackArtwork: View {
 				rule(CGPoint(x: 27, y: 132), CGPoint(x: 81, y: 132), gold)
 				text("A VERY EXPENSIVE AIR", y: 145, size: 5.5, color: paper, design: .monospaced)
 			case .later:
-				// A sunset doubles as a clock permanently stuck on "not now".
 				context.fill(Path(ellipseIn: CGRect(x: 28, y: 47, width: 52, height: 52)), with: .color(CiggyTheme.sunlight))
 				rule(CGPoint(x: 54, y: 57), CGPoint(x: 54, y: 74), ink, width: 2)
 				rule(CGPoint(x: 54, y: 74), CGPoint(x: 66, y: 80), ink, width: 2)
@@ -98,7 +93,6 @@ public struct CiggyPackArtwork: View {
 				text("TOMORROW’S FINEST", y: 147, size: 6.5, color: ink, weight: .bold, design: .monospaced)
 				text("SINCE EVENTUALLY", y: 158, size: 5.3, color: ink, design: .monospaced)
 			}
-			// Quiet print grain, fixed positions: no animation or randomized rendering.
 			for index in 0..<65 {
 				let x = CGFloat((index * 37) % 94) + 7
 				let y = CGFloat((index * 53) % 143) + 18
