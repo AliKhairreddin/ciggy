@@ -129,6 +129,7 @@
 		};
 		C16A11000000000000000003 /* CiggyWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; path = ../iOSWidgets; sourceTree = "<group>"; };
 		C16A11000000000000000021 /* CiggyWatchWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; path = ../watchOSWidgets; sourceTree = "<group>"; };
+		C16670000000000000000001 /* UITestSupport */ = {isa = PBXFileSystemSynchronizedRootGroup; path = UITestSupport; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -195,6 +196,7 @@
 				A1C000010000000000000002 /* watchOS */,
 				02B80AC5300719890066F68A /* ciggy Watch AppTests */,
 				02B80ACF300719890066F68A /* ciggy Watch AppUITests */,
+				C16670000000000000000001 /* UITestSupport */,
 				02B80A91300719870066F68A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -283,6 +285,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				02B80AAA300719880066F68A /* ciggyUITests */,
+				C16670000000000000000001 /* UITestSupport */,
 			);
 			name = ciggyUITests;
 			packageProductDependencies = (
@@ -355,6 +358,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				02B80ACF300719890066F68A /* ciggy Watch AppUITests */,
+				C16670000000000000000001 /* UITestSupport */,
 			);
 			name = "ciggy Watch AppUITests";
 			packageProductDependencies = (

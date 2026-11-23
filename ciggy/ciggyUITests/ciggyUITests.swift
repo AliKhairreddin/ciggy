@@ -23,7 +23,7 @@ final class ciggyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["check-watch-history"].exists)
         openSettings(app)
         let details = app.buttons["tracking-details-link"]
-        for _ in 0..<8 where !details.isHittable { app.swipeUp() }
+        details.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(details.isHittable)
         details.tap()
         XCTAssertTrue(app.navigationBars["Tracking details"].waitForExistence(timeout: 5))
@@ -45,7 +45,7 @@ final class ciggyUITests: XCTestCase {
 
         openSettings(app)
         let previewButton = app.buttons["Preview 6 detected in 8 hours"]
-        for _ in 0..<5 where previewButton.isHittable == false {
+        previewButton.reveal(maxAttempts: 5) {
             app.swipeUp()
         }
         XCTAssertTrue(previewButton.isHittable)
@@ -53,13 +53,13 @@ final class ciggyUITests: XCTestCase {
 
         closeSettings(app)
         let detection = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "cigarettes detected today")).firstMatch
-        for _ in 0..<8 where !detection.isHittable { app.swipeUp() }
+        detection.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(detection.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Accurate"].exists)
         XCTAssertTrue(app.buttons["Adjust count"].exists)
         XCTAssertTrue(app.staticTexts["Motion start → counted time"].firstMatch.exists)
         let inspect = app.buttons["inspect-review-motion"].firstMatch
-        for _ in 0..<8 where !inspect.isHittable { app.swipeUp() }
+        inspect.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(inspect.isHittable)
         capture(app, name: "Individual detection windows and motion review")
         inspect.tap()
@@ -74,11 +74,11 @@ final class ciggyUITests: XCTestCase {
         app.launch()
         openSettings(app)
         let calibration = app.buttons["calibration-settings-link"]
-        for _ in 0..<8 where !calibration.isHittable { app.swipeUp() }
+        calibration.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(calibration.isHittable)
         calibration.tap()
         let consent = app.switches["I agree to share my motion for calibration"]
-        for _ in 0..<8 where !consent.isHittable { app.swipeUp() }
+        consent.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(consent.waitForExistence(timeout: 3))
         XCTAssertEqual(consent.value as? String, "0")
         let pair = app.buttons["Pair and start sharing"]
@@ -92,7 +92,7 @@ final class ciggyUITests: XCTestCase {
         app.launch()
         openSettings(app)
         let preview = app.buttons["Preview 6 detected in 8 hours"]
-        for _ in 0..<8 where !preview.isHittable { app.swipeUp() }
+        preview.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(preview.isHittable)
         preview.tap()
         closeSettings(app)
@@ -103,7 +103,7 @@ final class ciggyUITests: XCTestCase {
         let adjust = app.buttons["Adjust count"].firstMatch
         var reviewingEarlierDay = false
         let earlier = app.buttons["Earlier days"]
-        for _ in 0..<10 where !adjust.isHittable {
+        adjust.reveal(maxAttempts: 10) {
             if !adjust.exists && earlier.isHittable {
                 earlier.tap()
                 reviewingEarlierDay = true
@@ -119,11 +119,11 @@ final class ciggyUITests: XCTestCase {
         stepper.buttons["review-count-stepper-Decrement"].tap()
         XCTAssertEqual(stepper.value as? String, "\(originalCount - 1)")
         let save = app.buttons["save-review-correction"]
-        for _ in 0..<5 where !save.isHittable { app.swipeUp() }
+        save.reveal(maxAttempts: 5) { app.swipeUp() }
         save.tap()
 
         XCTAssertTrue(stepper.waitForNonExistence(timeout: 5), "A successful durable correction dismisses its sheet.")
-        for _ in 0..<10 where !total.isHittable { app.swipeDown() }
+        total.reveal(maxAttempts: 10) { app.swipeDown() }
         let expected = "\(countBefore - (reviewingEarlierDay ? 0 : 1)) cigarettes today"
         expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: total)
         waitForExpectations(timeout: 5)
@@ -132,12 +132,12 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(total.waitForExistence(timeout: 5))
         XCTAssertEqual(total.label, expected)
         if reviewingEarlierDay {
-            for _ in 0..<10 where !earlier.isHittable { app.swipeUp() }
+            earlier.reveal(maxAttempts: 10) { app.swipeUp() }
             XCTAssertTrue(earlier.isHittable)
             earlier.tap()
         }
         let decision = app.staticTexts["Count adjusted to \(originalCount - 1)"].firstMatch
-        for _ in 0..<10 where !decision.isHittable { app.swipeUp() }
+        decision.reveal(maxAttempts: 10) { app.swipeUp() }
         XCTAssertTrue(decision.isHittable, "The saved review correction must survive relaunch.")
     }
 
@@ -154,7 +154,7 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["save-phone-log"].waitForExistence(timeout: 3))
         app.buttons["save-phone-log"].tap()
         let undo = app.buttons["undo-phone-log"]
-        for _ in 0..<8 where !undo.isHittable { app.swipeDown() }
+        undo.reveal(maxAttempts: 8) { app.swipeDown() }
         XCTAssertTrue(undo.waitForExistence(timeout: 3))
         XCTAssertEqual(count.label, "\(initialCount + 1) cigarettes today")
 
@@ -197,7 +197,7 @@ final class ciggyUITests: XCTestCase {
         XCTAssertEqual(value.label, "\(changedLimit)")
         capture(app, name: "Goals")
         let save = app.buttons["Save my goals"]
-        for _ in 0..<6 where !save.isHittable { app.swipeUp() }
+        save.reveal(maxAttempts: 6) { app.swipeUp() }
         XCTAssertTrue(save.isHittable)
         save.tap()
         app.terminate()
@@ -206,7 +206,7 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(value.waitForExistence(timeout: 3))
         XCTAssertEqual(value.label, "\(changedLimit)")
         app.buttons[increasing ? "Decrease daily limit" : "Increase daily limit"].tap()
-        for _ in 0..<6 where !save.isHittable { app.swipeUp() }
+        save.reveal(maxAttempts: 6) { app.swipeUp() }
         save.tap()
         openSettings(app)
         XCTAssertTrue(app.staticTexts["Management has notes."].waitForExistence(timeout: 3))
@@ -299,7 +299,7 @@ final class ciggyUITests: XCTestCase {
     private func openSettings(_ app: XCUIApplication) {
         app.tabBars.buttons["Today"].tap()
         let profile = app.buttons["phone-profile-button"]
-        for _ in 0..<8 where !profile.isHittable { app.swipeDown() }
+        profile.reveal(maxAttempts: 8) { app.swipeDown() }
         XCTAssertTrue(profile.waitForExistence(timeout: 5))
         profile.tap()
     }
@@ -328,7 +328,7 @@ final class ciggyUITests: XCTestCase {
     @MainActor
     private func openManualLog(_ app: XCUIApplication) {
         let log = app.buttons["phone-log-button"]
-        for _ in 0..<10 where !log.isHittable { app.swipeUp() }
+        log.reveal(maxAttempts: 10) { app.swipeUp() }
         XCTAssertTrue(log.isHittable)
         log.tap()
     }
@@ -346,7 +346,7 @@ final class ciggyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let button = app.buttons["live-activity-button"]
-        for _ in 0..<8 where !button.isHittable { app.swipeUp() }
+        button.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(button.isHittable)
         if button.label == "Stop Live Activity" { button.tap() }
         XCTAssertTrue(app.buttons["Start Live Activity"].waitForExistence(timeout: 5))
@@ -355,7 +355,7 @@ final class ciggyUITests: XCTestCase {
         XCTAssertTrue(stop.waitForExistence(timeout: 5))
         app.terminate()
         app.launch()
-        for _ in 0..<8 where !stop.isHittable { app.swipeUp() }
+        stop.reveal(maxAttempts: 8) { app.swipeUp() }
         XCTAssertTrue(stop.waitForExistence(timeout: 5))
         capture(app, name: "Live Activity controls")
         XCUIDevice.shared.press(.home)

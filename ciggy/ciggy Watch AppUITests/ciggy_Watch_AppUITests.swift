@@ -27,7 +27,7 @@ final class ciggy_Watch_AppUITests: XCTestCase {
         add(homeShot)
         settings.tap()
         let details = app.buttons["watch-tracking-details-link"]
-        for _ in 0..<16 where !details.isHittable { app.swipeUp() }
+        details.reveal(maxAttempts: 16) { app.swipeUp() }
         XCTAssertTrue(details.isHittable)
         details.tap()
         let check = app.buttons["watch-check-history"]
@@ -44,22 +44,35 @@ final class ciggy_Watch_AppUITests: XCTestCase {
         app.launch()
         let count = app.descendants(matching: .any)["watch-today-count"].firstMatch
         XCTAssertTrue(count.waitForExistence(timeout: 15))
+        let system = XCUIApplication(bundleIdentifier: "com.apple.Carousel")
+        let review = system.buttons["Review"]
+        if review.waitForExistence(timeout: 5) {
+            review.tap()
+            let access = system.cells["All Requested Data Below"]
+            XCTAssertTrue(access.waitForExistence(timeout: 5))
+            XCTAssertEqual(access.value as? String, "0")
+            let done = system.cells["Done"]
+            done.reveal(maxAttempts: 5) { system.swipeUp() }
+            XCTAssertTrue(done.isHittable)
+            done.tap()
+        }
         let initial = try XCTUnwrap(Int(count.label.split(separator: " ").first.map(String.init) ?? ""))
         let log = app.buttons["watch-log-button"]
-        for _ in 0..<10 where !log.isHittable { app.swipeUp() }
+        log.reveal(maxAttempts: 10) { app.swipeUp() }
         XCTAssertTrue(log.isHittable)
         XCTAssertTrue(log.label.contains("Add missed cigarette"))
         log.tap()
         let save = app.buttons["save-watch-log"]
         XCTAssertTrue(save.waitForExistence(timeout: 5))
-        for _ in 0..<5 where !save.isHittable { app.swipeUp() }
+        save.reveal(maxAttempts: 5) { app.swipeUp() }
         save.tap()
-        for _ in 0..<10 where !count.isHittable { app.swipeDown() }
-        XCTAssertEqual(Int(count.label.split(separator: " ").first.map(String.init) ?? ""), initial + 1)
+        count.reveal(maxAttempts: 10) { app.swipeDown() }
+        let savedCount = app.descendants(matching: .any).matching(identifier: "watch-today-count")
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "\(initial + 1) ")).firstMatch
+        XCTAssertTrue(savedCount.waitForExistence(timeout: 10), "Saving one cigarette must increase today's count by one.")
         app.terminate()
         app.launch()
-        XCTAssertTrue(count.waitForExistence(timeout: 10))
-        XCTAssertEqual(Int(count.label.split(separator: " ").first.map(String.init) ?? ""), initial + 1)
+        XCTAssertTrue(savedCount.waitForExistence(timeout: 10), "The saved count must survive relaunch.")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Watch profile and saved count"
         screenshot.lifetime = .keepAlways
