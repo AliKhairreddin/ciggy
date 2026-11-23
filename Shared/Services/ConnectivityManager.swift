@@ -312,11 +312,12 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			let payload: [String: Any] = ["type": envelope.type, "data": envelope.data, "transportID": envelope.id.uuidString]
 			if session.isReachable, liveTransfers.insert(envelope.id).inserted {
 				session.sendMessage(payload, replyHandler: { [weak self] reply in
-					let acknowledged = reply["acknowledged"] as? String == envelope.id.uuidString &&
-						(envelope.requiresDurableReceipt == false || reply["durableProtocol"] as? Int == 2)
+					let confirmation = ConnectivityTransportStore.Confirmation.liveReply(
+						acknowledgedID: reply["acknowledged"] as? String, durableProtocol: reply["durableProtocol"] as? Int
+					)
 					Task { @MainActor [weak self] in
 						self?.liveTransfers.remove(envelope.id)
-						if acknowledged { self?.transportStore.acknowledge(id: envelope.id) }
+						self?.transportStore.confirm(id: envelope.id, via: confirmation)
 					}
 				}, errorHandler: { [weak self] error in
 					Task { @MainActor [weak self] in
@@ -360,7 +361,7 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			incomingReview.send(value)
 		case "transportReceipt.v2":
 			guard let id = try? decoder.decode(UUID.self, from: data) else { return false }
-			return transportStore.acknowledge(id: id)
+			return transportStore.confirm(id: id, via: .persistedInbox)
 		case "historyRefreshRequest":
 			if let request = try? decoder.decode(HistoryRefreshRequest.self, from: data),
 			   MotionHistoryProcessor.isSupportedDate(request.requestedAt) {
@@ -455,11 +456,9 @@ extension ConnectivityManager: WCSessionDelegate {
 		guard let value = userInfoTransfer.userInfo["transportID"] as? String,
 		      let id = UUID(uuidString: value) else { return }
 		let message = error?.localizedDescription
-		let type = userInfoTransfer.userInfo["type"] as? String ?? ""
-		let requiresReceipt = ConnectivityEnvelope(type: type, data: Data()).requiresDurableReceipt
 		Task { @MainActor [weak self] in
 			if let message { self?.lastSyncError = message }
-			else if requiresReceipt == false { self?.transportStore.acknowledge(id: id) }
+			else { self?.transportStore.confirm(id: id, via: .systemTransfer) }
 		}
 	}
 
