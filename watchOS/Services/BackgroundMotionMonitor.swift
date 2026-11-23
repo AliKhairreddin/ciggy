@@ -38,15 +38,15 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let userDefaults: UserDefaults
 	private let checkpointStore: MotionHistoryCheckpointStore
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
-	private let scheduledRefreshKey = "BackgroundMotionMonitor.scheduledRefresh.v1"
+	private let refreshSchedule: WatchRefreshSchedule
 	private let captureDuration: TimeInterval = 12 * 60 * 60
-	private let renewalInterval = TrackingRefreshPolicy.preferredBackgroundInterval
 	private let availabilityDelay: TimeInterval = 3 * 60
 	private let retentionDuration: TimeInterval = 3 * 24 * 60 * 60
 	private let queryChunkDuration: TimeInterval = 30 * 60
 
 	private init(userDefaults: UserDefaults = .standard) {
 		self.userDefaults = userDefaults
+		refreshSchedule = WatchRefreshSchedule(defaults: userDefaults)
 		checkpointStore = MotionHistoryCheckpointStore(userDefaults: userDefaults)
 		lastHistorySampleAt = checkpoint?.latestSampleAt
 		lastHistoryCheckedAt = checkpoint?.checkedAt
@@ -88,12 +88,20 @@ final class BackgroundMotionMonitor: ObservableObject {
 	/// Starts or extends the system recording window and asks watchOS to wake Ciggy before
 	/// the 12-hour maximum expires. Background refresh timing is best-effort, so every
 	/// foreground launch also calls this method.
-	func armRecording() {
+	func armRecording(for wake: WatchRefreshSchedule.Wake) {
+		let now = Date()
+		let canSchedule = armRecorder(at: now)
+		if let preferred = refreshSchedule.appointment(for: wake, at: now, canSchedule: canSchedule) {
+			scheduleRenewal(at: preferred)
+		}
+		publishStatus()
+	}
+
+	private func armRecorder(at now: Date) -> Bool {
 		refreshStatus()
 		guard isCaptureAvailable else {
 			userDefaults.removeObject(forKey: armedUntilKey)
-			publishStatus()
-			return
+			return false
 		}
 
 		let authorization = CMSensorRecorder.authorizationStatus()
@@ -101,15 +109,12 @@ final class BackgroundMotionMonitor: ObservableObject {
 			userDefaults.removeObject(forKey: armedUntilKey)
 			isCaptureArmed = false
 			lastError = "Motion access is disabled in Settings."
-			publishStatus()
-			return
+			return false
 		}
 
-		let now = Date()
 		guard checkpointStore.beginCapture(at: now) else {
 			lastError = checkpointStore.lastError
-			publishStatus()
-			return
+			return false
 		}
 		let armedUntil = userDefaults.object(forKey: armedUntilKey) as? Date
 		if MotionCapturePolicy.shouldRenew(at: now, armedUntil: armedUntil) {
@@ -120,21 +125,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 		}
 		refreshStatus()
 		lastError = nil
-		scheduleRenewal(after: renewalInterval)
-		publishStatus()
-	}
-
-	func backgroundRefreshDidBegin() {
-		userDefaults.removeObject(forKey: scheduledRefreshKey)
-	}
-
-	func foregroundDidEnd(startedAt: Date?, at endedAt: Date = Date()) {
-		if MotionCapturePolicy.wasRefreshDueDuringForeground(
-			scheduledAt: userDefaults.object(forKey: scheduledRefreshKey) as? Date,
-			foregroundStartedAt: startedAt, endedAt: endedAt
-		) {
-			userDefaults.removeObject(forKey: scheduledRefreshKey)
-		}
+		return true
 	}
 
 	func reportPersistenceError(_ error: String?) {
@@ -262,21 +253,14 @@ final class BackgroundMotionMonitor: ObservableObject {
 		isCaptureArmed = isCaptureAvailable && hasPermission && (armedUntil.map { $0 > Date() } ?? false)
 	}
 
-	private func scheduleRenewal(after interval: TimeInterval) {
-		let now = Date()
-		let preferred = now.addingTimeInterval(interval)
-		let existing = userDefaults.object(forKey: scheduledRefreshKey) as? Date
-		guard MotionCapturePolicy.shouldSchedule(at: now, existing: existing, preferred: preferred) else { return }
-		userDefaults.set(preferred, forKey: scheduledRefreshKey)
+	private func scheduleRenewal(at preferred: Date) {
 		WKApplication.shared().scheduleBackgroundRefresh(
 			withPreferredDate: preferred, userInfo: nil
 		) { [weak self] error in
 			guard let error else { return }
 			Task { @MainActor [weak self] in
 				guard let self else { return }
-				if self.userDefaults.object(forKey: self.scheduledRefreshKey) as? Date == preferred {
-					self.userDefaults.removeObject(forKey: self.scheduledRefreshKey)
-				}
+				self.refreshSchedule.rejected(preferred)
 				self.lastError = error.localizedDescription
 				self.publishStatus()
 			}

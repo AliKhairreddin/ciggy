@@ -65,12 +65,8 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 				continue
 			}
 			let id = ObjectIdentifier(task)
-			// Consume the old appointment before scheduling its successor. This
-			// happens independently of coalesced/cancelled analysis work below.
-			if task is WKApplicationRefreshBackgroundTask {
-				BackgroundMotionMonitor.shared.backgroundRefreshDidBegin()
-			}
-			BackgroundMotionMonitor.shared.armRecording()
+			let wake: WatchRefreshSchedule.Wake = task is WKApplicationRefreshBackgroundTask ? .backgroundGrant : .check
+			BackgroundMotionMonitor.shared.armRecording(for: wake)
 			runningTasks[id] = Task { @MainActor [weak self] in
 				if task is WKWatchConnectivityRefreshBackgroundTask {
 					await ConnectivityManager.shared.drainPendingBackgroundTransfers(maximumWait: 1)
@@ -100,7 +96,6 @@ final class WatchAppCoordinator: ObservableObject {
 	private var notificationsEnabled = false
 	private var hasStarted = false
 	private var isForegroundMonitoring = false
-	private var foregroundStartedAt: Date?
 	private var hasRequestedHealthAuthorization = false
 	private var hasStartedDebugRecording = false
 	private var isRequestingNotificationAuthorization = false
@@ -237,9 +232,8 @@ final class WatchAppCoordinator: ObservableObject {
 
 	func appDidBecomeActive() {
 		guard hasStarted else { return }
-		if foregroundStartedAt == nil { foregroundStartedAt = Date() }
 		ConnectivityManager.shared.resumeSync()
-		BackgroundMotionMonitor.shared.armRecording()
+		BackgroundMotionMonitor.shared.armRecording(for: .foregroundEntered)
 		requestNotificationAuthorizationIfActive()
 		#if DEBUG
 		if hasStartedDebugRecording == false, ProcessInfo.processInfo.arguments.contains("-CiggyRecordMotion") {
@@ -271,7 +265,7 @@ final class WatchAppCoordinator: ObservableObject {
 		// Recheck queued UI/consent requests after screen sleep. Only the delegate
 		// explicitly acquires a background lease tied to a WK expiration handler.
 		guard inBackground || WKApplication.shared().applicationState == .active else { return }
-		BackgroundMotionMonitor.shared.armRecording()
+		BackgroundMotionMonitor.shared.armRecording(for: .check)
 		let isForeground = !inBackground && WKApplication.shared().applicationState == .active
 		await trackingRefresh.run(context: isForeground ? .foreground : .background) { [weak self] in
 			guard let self else { return }
@@ -312,9 +306,7 @@ final class WatchAppCoordinator: ObservableObject {
 
 	func appDidEnterBackground() {
 		guard hasStarted else { return }
-		BackgroundMotionMonitor.shared.foregroundDidEnd(startedAt: foregroundStartedAt)
-		foregroundStartedAt = nil
-		BackgroundMotionMonitor.shared.armRecording()
+		BackgroundMotionMonitor.shared.armRecording(for: .foregroundEnded)
 		Task { @MainActor in await LiveCalibrationCollector.shared.flush() }
 		historyRefresh?.cancel()
 		historyRefresh = nil
