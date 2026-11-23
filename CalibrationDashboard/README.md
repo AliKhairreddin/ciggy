@@ -48,6 +48,8 @@ Raw data and labels expire 14 days after the first upload reservation, are exclu
 ```sh
 npm ci
 npm test
+npx playwright install --only-shell chromium
+npm run test:e2e
 npm run build
 npm run typecheck
 npx wrangler deploy --dry-run

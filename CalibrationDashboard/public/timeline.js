@@ -38,13 +38,3 @@ export function mergeCoverage(ranges, from = -Infinity, to = Infinity) {
   }
   return merged;
 }
-
-export function timelineExtent(sessions, fallback) {
-  const bins = sessions.flatMap(session => session.overview?.bins ?? []);
-  if (!bins.length) return fallback;
-  const start = Math.min(...sessions.map(session => session.overview?.bins[0]?.start ?? Infinity));
-  const end = Math.max(...sessions.map(session => session.overview?.bins.at(-1)?.end ?? -Infinity));
-  const padding = Math.max(150000, (end - start) * 1000 * .025);
-  const epoch = 978307200000;
-  return [start * 1000 + epoch - padding, end * 1000 + epoch + padding];
-}
