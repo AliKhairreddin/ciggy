@@ -65,11 +65,17 @@ jobs:
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/phone.xcresult"
       - name: Log, undo and relaunch while the notification service is stalled
         if: matrix.surface == 'iPhone'
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
+          xcrun simctl bootstatus "$PHONE_ID" -b
           service=user/foreground/com.apple.usernotificationsd
-          trap 'xcrun simctl spawn "$PHONE_ID" launchctl kill SIGCONT "$service"' EXIT
+          resume_notifications() {
+            if xcrun simctl list devices booted | grep -Fq "$PHONE_ID"; then
+              xcrun simctl spawn "$PHONE_ID" launchctl kill SIGCONT "$service"
+            fi
+          }
           xcrun simctl spawn "$PHONE_ID" launchctl kill SIGSTOP "$service"
+          trap resume_notifications EXIT
           xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
             -destination "platform=iOS Simulator,id=$PHONE_ID" -parallel-testing-enabled NO \
             -resultBundlePath "$RUNNER_TEMP/stalled-notifications.xcresult" \
