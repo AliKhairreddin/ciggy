@@ -1,0 +1,17 @@
+name: Public documentation
+on:
+  pull_request:
+    paths: ['**/*.md', 'Tools/Validation/check_public_diagnostics.py', '.github/workflows/public-diagnostics.yml']
+  push:
+    branches: [main]
+    paths: ['**/*.md', 'Tools/Validation/check_public_diagnostics.py', '.github/workflows/public-diagnostics.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 Tools/Validation/check_public_diagnostics.py
