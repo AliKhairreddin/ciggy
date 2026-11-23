@@ -4,8 +4,6 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>dev.thatcanadian.ciggy.calibration.recovery</string></array>
 	<key>UIBackgroundModes</key><array><string>processing</string></array>
 	<key>ITSAppUsesNonExemptEncryption</key><false/>
-	<key>NSHealthShareUsageDescription</key><string>Ciggy uses optional heart-rate readings to add context to smoking events detected on your paired Apple Watch.</string>
-	<key>NSHealthUpdateUsageDescription</key><string>Ciggy does not write to Health. With your permission, it only reads heart-rate samples to provide optional context for detected smoking events.</string>
 	<key>NSSupportsLiveActivities</key><true/>
 	<key>CFBundleURLTypes</key><array><dict>
 		<key>CFBundleURLName</key><string>That-Canadian-Software-Services.ciggy</string>
