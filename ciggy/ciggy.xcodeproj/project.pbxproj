@@ -74,6 +74,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C16A22000000000000000001 /* HealthKit.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ../Configuration/HealthKit.xcconfig; sourceTree = SOURCE_ROOT; };
 		C16A11000000000000000031 /* OpenCiggyScreenIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../iOS/Services/OpenCiggyScreenIntent.swift; sourceTree = SOURCE_ROOT; };
 		02B80A90300719870066F68A /* ciggy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ciggy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		02B80A9D300719880066F68A /* ciggyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ciggyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -183,6 +184,7 @@
 		02B80A87300719870066F68A = {
 			isa = PBXGroup;
 			children = (
+				C16A22000000000000000001 /* HealthKit.xcconfig */,
 				C16A11000000000000000021 /* CiggyWatchWidgets */,
 				C16A11000000000000000003 /* CiggyWidgets */,
 				02B80A92300719870066F68A /* ciggy */,
@@ -687,6 +689,7 @@
 		};
 		02B80AD7300719890066F68A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C16A22000000000000000001 /* HealthKit.xcconfig */;
 			buildSettings = {
 				INFOPLIST_FILE = ../Configuration/Watch-Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -698,7 +701,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ciggy;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Ciggy reads heart-rate samples as optional context for motion-detected smoking events.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Ciggy uses wrist motion to identify possible smoking gestures.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "That-Canadian-Software-Services.ciggy";
@@ -724,6 +726,7 @@
 		};
 		02B80AD8300719890066F68A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C16A22000000000000000001 /* HealthKit.xcconfig */;
 			buildSettings = {
 				INFOPLIST_FILE = ../Configuration/Watch-Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -735,7 +738,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ciggy;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Ciggy reads heart-rate samples as optional context for motion-detected smoking events.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Ciggy uses wrist motion to identify possible smoking gestures.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "That-Canadian-Software-Services.ciggy";
@@ -762,6 +764,7 @@
 		};
 		02B80ADB300719890066F68A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C16A22000000000000000001 /* HealthKit.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
 				INFOPLIST_FILE = ../Configuration/iOS-Info.plist;
@@ -800,6 +803,7 @@
 		};
 		02B80ADC300719890066F68A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C16A22000000000000000001 /* HealthKit.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ../Configuration/Ciggy.entitlements;
 				INFOPLIST_FILE = ../Configuration/iOS-Info.plist;

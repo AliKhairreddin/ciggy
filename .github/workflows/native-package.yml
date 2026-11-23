@@ -1,0 +1,29 @@
+name: Native package
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Build the phone, embedded Watch and extensions from a renamed checkout
+        working-directory: source
+        run: |
+          xcodebuild -quiet -project ciggy/ciggy.xcodeproj -scheme ciggy \
+            -destination 'generic/platform=iOS' -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/native" CODE_SIGNING_ALLOWED=NO build
+      - name: Check HealthKit purposes in both built apps
+        working-directory: source
+        run: python3 Tools/Validation/check_health_purposes.py "$RUNNER_TEMP/native/Build/Products/Release-iphoneos/ciggy.app"
