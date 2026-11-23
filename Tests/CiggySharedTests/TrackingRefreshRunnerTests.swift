@@ -182,6 +182,7 @@ final class TrackingRefreshRunnerTests: XCTestCase {
         XCTAssertEqual(runner.activeContext, context, file: file, line: line)
     }
 
+    @MainActor
     private final class Gate {
         private var isOpen = false
         private var waiters: [CheckedContinuation<Void, Never>] = []
