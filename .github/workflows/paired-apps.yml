@@ -26,17 +26,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        surface: [iPhone, Watch]
-    runs-on: xcode-27
+        include:
+          - surface: iPhone
+            runner: macos-26
+            xcode: '26.5'
+            runtime: '26-5'
+            phone: iPhone-17-Pro
+            watch: Apple-Watch-Series-11-46mm
+          - surface: Watch
+            runner: xcode-27
+            xcode: '27.2'
+            runtime: '27-2'
+            phone: iPhone-18-Pro
+            watch: Apple-Watch-Series-12-46mm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
-      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - name: Pair a standard iPhone and its companion Watch
         run: |
-          phone=$(xcrun simctl create "Ciggy iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-2)
-          watch=$(xcrun simctl create "Ciggy Watch" com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-12-46mm com.apple.CoreSimulator.SimRuntime.watchOS-27-2)
+          phone=$(xcrun simctl create "Ciggy iPhone" com.apple.CoreSimulator.SimDeviceType.${{ matrix.phone }} com.apple.CoreSimulator.SimRuntime.iOS-${{ matrix.runtime }})
+          watch=$(xcrun simctl create "Ciggy Watch" com.apple.CoreSimulator.SimDeviceType.${{ matrix.watch }} com.apple.CoreSimulator.SimRuntime.watchOS-${{ matrix.runtime }})
           xcrun simctl pair "$watch" "$phone"
           echo "PHONE_ID=$phone" >> "$GITHUB_ENV"
           echo "WATCH_ID=$watch" >> "$GITHUB_ENV"
