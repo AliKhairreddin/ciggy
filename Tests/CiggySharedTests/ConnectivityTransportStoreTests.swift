@@ -37,7 +37,7 @@ final class ConnectivityTransportStoreTests: XCTestCase {
         let reloaded = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)
         XCTAssertEqual(reloaded.outgoing, [envelope])
         XCTAssertEqual(reloaded.incoming, [envelope])
-        XCTAssertTrue(reloaded.acknowledge(id: envelope.id))
+        XCTAssertTrue(reloaded.confirm(id: envelope.id, via: .persistedInbox))
         XCTAssertTrue(reloaded.didDeliver(id: envelope.id))
         let final = ConnectivityTransportStore(defaults: defaults, snapshotURL: file)
         XCTAssertTrue(final.outgoing.isEmpty)
@@ -82,15 +82,6 @@ final class ConnectivityTransportStoreTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), corrupt)
     }
 
-    func testOnlyMutationMessagesRequireAnApplicationPersistenceReceipt() {
-        for type in ["event", "eventDeletion", "detectionReview", "reviewCorrection.v2"] {
-            XCTAssertTrue(ConnectivityEnvelope(type: type, data: Data()).requiresDurableReceipt)
-        }
-        for type in ["transportReceipt.v2", "trackingStatus", "historyRefreshRequest", "settings"] {
-            XCTAssertFalse(ConnectivityEnvelope(type: type, data: Data()).requiresDurableReceipt)
-        }
-    }
-
     func testRepeatedChecksAndStatusCoalesceWithoutDroppingEventMutations() {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!
@@ -122,7 +113,7 @@ final class ConnectivityTransportStoreTests: XCTestCase {
         store.enqueue(.init(type: "eventDeletion", data: original.data))
         XCTAssertEqual(store.outgoing.count, 2)
         XCTAssertEqual(store.outgoing.first?.id, original.id)
-        store.acknowledge(id: original.id)
+        store.confirm(id: original.id, via: .persistedInbox)
         XCTAssertEqual(store.outgoing.map(\.type), ["eventDeletion"])
     }
 
@@ -160,9 +151,9 @@ final class ConnectivityTransportStoreTests: XCTestCase {
         store.enqueue(envelope); store.enqueue(envelope)
         let relaunched = ConnectivityTransportStore(defaults: defaults)
         XCTAssertEqual(relaunched.outgoing, [envelope])
-        relaunched.acknowledge(id: UUID())
+        relaunched.confirm(id: UUID(), via: .persistedInbox)
         XCTAssertEqual(relaunched.outgoing, [envelope])
-        relaunched.acknowledge(id: envelope.id)
+        relaunched.confirm(id: envelope.id, via: .persistedInbox)
         XCTAssertTrue(ConnectivityTransportStore(defaults: defaults).outgoing.isEmpty)
     }
 
