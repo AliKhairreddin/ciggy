@@ -432,6 +432,7 @@ public enum DetectionReviewWorkflow {
         return store.retryPendingCorrections()
     }
 
+	#if DEBUG
 	@MainActor
 	@discardableResult
 	public static func createHistoricalPreview(
@@ -466,4 +467,5 @@ public enum DetectionReviewWorkflow {
 		for review in reviews { ConnectivityManager.shared.send(review: review) }
 		return reviews.last
 	}
+	#endif
 }
