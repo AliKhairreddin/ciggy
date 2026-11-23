@@ -158,7 +158,6 @@ public final class DailyRoastPlanner {
 
 	private func select(_ scenario: DailyRoastScenario, count: Int, limit: Int, previousCount: Int = 0) -> DailyRoast {
 		let variants = DailyRoastCopy.variants(for: scenario, count: count, limit: limit, previousCount: previousCount)
-		// Random starting point, then a complete cycle before a scenario repeats any line.
 		let index = state?.lastVariants[scenario].map { ($0 + 1) % variants.count }
 			?? Int.random(in: variants.indices)
 		state?.lastVariants[scenario] = index

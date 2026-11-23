@@ -22,7 +22,6 @@ struct CiggyiOSApp: App {
 					liveActivity.bind(repository: runtime.repository, settings: runtime.settingsStore)
 					runtime.start()
 					runtime.coordinator.refreshNotifications()
-					// Seed a baseline for money-saved estimate if not set
 					if UserDefaults.standard.integer(forKey: "baselineCigsPerDay") == 0 {
 						UserDefaults.standard.set(runtime.settingsStore.settings.dailyLimit, forKey: "baselineCigsPerDay")
 					}
@@ -76,7 +75,6 @@ final class IOSAppDelegate: NSObject, UIApplicationDelegate {
 	}
 }
 
-/// Coordinates incoming connectivity events on iOS
 @MainActor
 final class IOSAppCoordinator: ObservableObject {
 	private var cancellables = Set<AnyCancellable>()
@@ -200,7 +198,6 @@ final class IOSAppCoordinator: ObservableObject {
 	}
 }
 
-/// Primary destinations. Settings is available from the dashboard profile.
 struct RootTabView: View {
 	@Environment(\.scenePhase) private var scenePhase
 	@State private var selectedTab = 0

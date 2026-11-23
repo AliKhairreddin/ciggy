@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The same Siggy artwork used by both app icons and every in-app mascot placement.
 public struct CiggyMascot: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,7 +17,6 @@ public struct CiggyMascot: View {
 					.resizable()
 					.interpolation(.high)
 					.scaledToFit()
-					// A quiet rim keeps the dark limbs readable on dark cards.
 					.shadow(color: colorScheme == .dark ? CiggyTheme.paper.opacity(0.45) : .clear, radius: 1)
 					.rotationEffect(.degrees(sin(time * 1.2) * 2), anchor: .bottom)
 					.offset(y: sin(time * 1.8) * geometry.size.height * 0.012)
@@ -111,7 +109,6 @@ public struct CiggyPackMeter: View {
 	}
 }
 
-/// A little illustrated note for secondary screens, with the same character and ink treatment.
 public struct CiggyStoryCard: View {
 	@Environment(\.colorScheme) private var colorScheme
 	private var palette: CiggyPalette { CiggyPalette(colorScheme: colorScheme) }

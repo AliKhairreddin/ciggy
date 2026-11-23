@@ -54,7 +54,6 @@ struct PhoneLogSmokeView: View {
 		dismiss()
 	}
 }
-/// Manual fallback opened deliberately from the dashboard or a widget.
 struct PhoneLogSmokeForm: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@Binding var notes: String

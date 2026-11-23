@@ -2,7 +2,6 @@ import Combine
 import CryptoKit
 import Foundation
 
-/// Persists and merges the passive detection summaries shown on iPhone and Apple Watch.
 @MainActor
 public final class DetectionReviewStore: ObservableObject {
 	@Published public private(set) var reviews: [DetectionReview] = []
@@ -415,7 +414,6 @@ public final class DetectionReviewStore: ObservableObject {
 
 }
 
-/// Journals review feedback, derives its event effects, and queues the complete decision.
 public enum DetectionReviewWorkflow {
     @MainActor
     @discardableResult
@@ -434,7 +432,6 @@ public enum DetectionReviewWorkflow {
         return store.retryPendingCorrections()
     }
 
-	/// Creates an intentional debug-only experience without waiting eight hours for sensors.
 	@MainActor
 	@discardableResult
 	public static func createHistoricalPreview(

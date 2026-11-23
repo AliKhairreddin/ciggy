@@ -45,7 +45,6 @@ final class RecordingTransferTests: XCTestCase {
         let data = try recording(), frames = try RecordingTransfer.frames(for: data)
         let inbox = RecordingTransferInbox(directory: root) { _ in throw Failure.disk }
         XCTAssertNil(try inbox.receive(frames[0]))
-        // The file-transfer delegate saves these bytes before recording its receipt.
         try data.write(to: root.appendingPathComponent("file-lane.json"), options: .atomic)
         try inbox.recordWholeDelivery(data)
         XCTAssertEqual(try inbox.receive(frames.last!), frames[0].recordingID)

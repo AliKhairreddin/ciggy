@@ -2,8 +2,6 @@ import Foundation
 import XCTest
 @testable import CiggyShared
 
-/// Separate replica stores and real snapshot files exercise replay between durable stages.
-/// No WatchConnectivity singleton or simulator delivery is needed for these permutations.
 @MainActor
 final class CorrectionIntegrationTests: XCTestCase {
     private let instant = Date(timeIntervalSince1970: 1_800_000_000.1234567)
@@ -42,7 +40,6 @@ final class CorrectionIntegrationTests: XCTestCase {
             let saved = try XCTUnwrap(replica.store.markAdjusted(reviewID: base.id, correctedCount: 1, at: instant))
             XCTAssertEqual(replica.repository.events.count, 3, "No effect handler has run yet.")
 
-            // Remove every legacy preference: recovery must come from the atomic files.
             try replica.reloadFromDisk()
             XCTAssertEqual(replica.repository.events.count, 1)
             XCTAssertTrue(replica.outbound.contains { $0.correction == saved.correction })

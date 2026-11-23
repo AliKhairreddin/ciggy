@@ -1,7 +1,6 @@
 import Foundation
 import CryptoKit
 
-/// Where an automatic smoking detection was observed.
 public enum DetectionReviewOrigin: String, Codable, Equatable, Sendable {
 	case liveWatch
 	case watchHistory

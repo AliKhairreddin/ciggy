@@ -52,7 +52,6 @@ final class DailyDetectionReviewTests: XCTestCase {
             XCTAssertTrue(summary.hasPrefix("Estimated logs: Today"))
             XCTAssertFalse(summary.contains("12:00"))
             XCTAssertFalse(summary.contains(" – "))
-            // Presentation must not rewrite the original correction scope or sync state.
             XCTAssertEqual(review.windowStart, date(0))
             XCTAssertEqual(review.windowEnd, date(21))
             let restored = DetectionReviewStore(userDefaults: defaults, storageKey: "reviews")

@@ -10,7 +10,6 @@ type Entry = { id: string; alias: string; score: number; rank: number | null; up
 type Ranked = Entry & { position: number; total: number };
 type Score = { count: number; revision: number; updated_at: number };
 
-/** Weekly totals use identical UTC boundaries on every device. */
 export function leagueSeason(now: number, previous = false) {
   const midnight = Math.floor(now / DAY) * DAY;
   const start = midnight - ((new Date(midnight).getUTCDay() + 6) % 7) * DAY - (previous ? 7 * DAY : 0);
@@ -65,7 +64,6 @@ async function join(request: Request, env: Env, now: number): Promise<Response> 
     return Response.json(publicMember(member));
   }
   await rateLimit(request, env, now, 'join', 10, DAY);
-  // Generated names contain no user-supplied text, avoiding a public moderation surface.
   const alias = `${ALIASES[crypto.getRandomValues(new Uint8Array(1))[0] % ALIASES.length]} #${id.replaceAll('-', '').slice(-8).toUpperCase()}`;
   await env.DB.prepare(`INSERT OR IGNORE INTO league_members(id, token_hash, alias, joined_at, expires_at)
     VALUES (?1, ?2, ?3, ?4, ?5)`).bind(id, digest, alias, now, now + MEMBERSHIP_DAYS * DAY).run();

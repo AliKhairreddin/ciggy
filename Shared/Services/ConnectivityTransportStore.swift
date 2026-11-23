@@ -1,6 +1,5 @@
 import Foundation
 
-/// A persisted transport envelope, independent of WatchConnectivity for tests.
 public struct ConnectivityEnvelope: Codable, Equatable, Identifiable, Sendable {
 	public let id: UUID
 	public let type: String

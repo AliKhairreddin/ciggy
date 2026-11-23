@@ -127,7 +127,6 @@ final class CiggyAdaptiveUITests: XCTestCase {
 		field.typeText("Rotation draft")
 
 		for orientation in [UIDeviceOrientation.landscapeLeft, .landscapeRight, .portrait] {
-			// Rotate with the keyboard still open, then dismiss and reopen it.
 			XCUIDevice.shared.orientation = orientation
 			XCTAssertEqual(field.value as? String, "Rotation draft")
 			XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))

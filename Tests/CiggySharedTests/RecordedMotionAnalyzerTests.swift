@@ -110,7 +110,6 @@ final class RecordedMotionAnalyzerTests: XCTestCase {
     func testUnknownSourceGapCannotSupplyDurationForNextSegment() throws {
         var analyzer = RecordedMotionAnalyzer()
         XCTAssertEqual(samples(cycles: 16).compactMap { analyzer.record($0) }.count, 1)
-        // The unobserved interval must not be treated as smoking or quiet rest.
         XCTAssertTrue(samples(cycles: 16, offset: 400).compactMap { analyzer.record($0) }.isEmpty)
         XCTAssertFalse(analyzer.hasConfirmedContinuity)
         for sample in rest(from: 720, to: 900) { XCTAssertNil(analyzer.record(sample)) }

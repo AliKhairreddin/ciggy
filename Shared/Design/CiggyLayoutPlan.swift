@@ -1,6 +1,5 @@
 import Foundation
 
-/// Window geometry, rather than a device name, drives every Ciggy layout.
 public struct CiggyLayoutPlan: Equatable {
 	public enum Mode: String, Equatable {
 		case single, columns, book, tabletop

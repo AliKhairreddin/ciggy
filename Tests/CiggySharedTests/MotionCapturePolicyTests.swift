@@ -7,7 +7,6 @@ final class MotionCapturePolicyTests: XCTestCase {
         let appointment = openedAt.addingTimeInterval(900)
         let backgroundedAt = openedAt.addingTimeInterval(960)
         var pending: Date? = appointment
-        // The ordinary scheduler preserves an overdue request for two hours.
         XCTAssertFalse(MotionCapturePolicy.shouldSchedule(at: backgroundedAt, existing: pending,
             preferred: backgroundedAt.addingTimeInterval(900)))
         if MotionCapturePolicy.wasRefreshDueDuringForeground(scheduledAt: pending,

@@ -270,7 +270,6 @@ final class DetectionFusionEngineTests: XCTestCase {
 			configuration: .init(
 				minimumGestureCount: minimumGestures,
 				sessionWindowSeconds: 480,
-				// These small fixtures isolate gesture/context rules; default-duration cases are above.
 				minimumSmokingDurationSeconds: 0,
 				minimumGestureSeparationSeconds: minimumSeparation,
 				maximumGestureSeparationSeconds: maximumSeparation,

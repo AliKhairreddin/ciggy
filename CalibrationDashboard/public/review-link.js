@@ -1,4 +1,3 @@
-// Carry only validated review scope across Access login. Never accept a redirect URL.
 export function reviewQuery(search) {
   const input = new URLSearchParams(search), output = new URLSearchParams();
   const from = Date.parse(input.get('from') ?? ''), to = Date.parse(input.get('to') ?? '');

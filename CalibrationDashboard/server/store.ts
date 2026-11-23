@@ -50,7 +50,6 @@ export async function saveRecording(env: Env, participant: Participant, recordin
     (SELECT 1 FROM participants WHERE id = ?2 AND revoked_at IS NULL AND expires_at > ?3)`)
     .bind(row.id, participant.id, now, JSON.stringify(summarizeRecording(recording))).run();
   if (!result.meta.changes) {
-    // A deletion/revocation won a race with the object write. Do not publish it.
     const latest = await env.DB.prepare('SELECT state FROM recordings WHERE id = ?1').bind(row.id).first<{ state: string }>();
     if (latest?.state !== 'ready') {
       await env.DB.prepare('UPDATE recordings SET raw_deleted_at = NULL WHERE id = ?1').bind(row.id).run();

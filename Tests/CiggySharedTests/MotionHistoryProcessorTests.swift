@@ -69,7 +69,6 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertEqual(result.processedThrough, end)
         XCTAssertEqual(result.latestSampleAt, end)
         XCTAssertEqual(result.pendingRanges, [.init(start: start, end: start.addingTimeInterval(1_800))])
-        // Saving/relaunching retains the exact missing interval for reconciliation.
         let data = try JSONEncoder().encode(result.pendingRanges)
         XCTAssertEqual(try JSONDecoder().decode([MotionHistoryRange].self, from: data), result.pendingRanges)
     }
@@ -271,8 +270,6 @@ final class MotionHistoryProcessorTests: XCTestCase {
 
     func testRecentPassReconstructsSessionAcrossWindowBoundaryAndReplaysStableID() throws {
         let end = start.addingTimeInterval(3_600)
-        // Duration evidence starts before the recent-window boundary; replay
-        // must retain that evidence and preserve the original emission time.
         let stream = withMeasuredRest(recordedSession(offset: 2_650), through: 3_900)
         let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { lower, upper in
             AnySequence(stream.filter { $0.timestamp >= lower && $0.timestamp <= upper })
@@ -287,8 +284,6 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(candidate.motionSessionStartedAt), first.requestedFrom)
         XCTAssertGreaterThan(candidate.gestureAt, first.requestedFrom)
         XCTAssertEqual(first.candidates, replay.candidates)
-        // Once the full session is outside a sliding window it is excluded, not
-        // moved to a new time or synthesized as a new cigarette.
         XCTAssertTrue(movedWindow.candidates.isEmpty)
         XCTAssertTrue(first.isComplete)
     }
@@ -389,7 +384,6 @@ final class MotionHistoryProcessorTests: XCTestCase {
         XCTAssertEqual(next.candidates, uninterrupted.candidates)
     }
 
-    /// Explicitly observed rest, not an absence of samples, separates episodes.
     private func withMeasuredRest(_ samples: [RecordedAccelerationSample], from offset: Double = 0, through end: Double) -> [RecordedAccelerationSample] {
         var result: [RecordedAccelerationSample] = []
         var cursor = start.addingTimeInterval(offset)
@@ -409,7 +403,6 @@ final class MotionHistoryProcessorTests: XCTestCase {
     }
 
     private func recordedSession(offset: Double) -> [RecordedAccelerationSample] {
-        // Sixteen 20-second cycles include five full minutes of observed motion.
         (0..<16_000).map { index in
             let seconds = Double(index) * 0.02
             let local = seconds.truncatingRemainder(dividingBy: 20)

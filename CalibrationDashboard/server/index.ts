@@ -146,14 +146,12 @@ export function createApp(authenticateDashboard: Authenticator = verifyDashboard
           response = json({ participantID: participant.id });
         } else if (pathname === '/api/participant' && method === 'DELETE') response = await deleteParticipant(request, env);
         else {
-          // All browsing, raw downloads and reviewer mutations fail closed.
           let email: string;
           try { email = await authenticateDashboard(request, env); }
           catch (error) {
             const isAPI = pathname === '/api' || pathname.startsWith('/api/');
             if (error instanceof APIError && [401, 403].includes(error.status) &&
                 !isAPI && pathname !== '/login' && (method === 'GET' || method === 'HEAD')) {
-              // Fixed same-origin destination; never trust returnTo/redirect query parameters.
               return secure(new Response(null, { status: 303, headers: { Location: '/login' + reviewQuery(new URL(request.url).search) } }));
             }
             throw error;

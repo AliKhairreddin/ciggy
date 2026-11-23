@@ -180,7 +180,6 @@ export function createJournal() {
       const overviews = new Map(
         [...state.overviews].filter(([id]) => ids.has(id)),
       );
-      // Do not display an outdated label revision while its summary is loading.
       for (const session of sessions) {
         const saved = overviews.get(session.id);
         if (

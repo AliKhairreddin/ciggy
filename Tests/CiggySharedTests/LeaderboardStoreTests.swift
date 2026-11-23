@@ -98,7 +98,6 @@ final class LeaderboardStoreTests: XCTestCase {
         let fixture = LeagueFixture()
         defer { fixture.cleanUp() }
         fixture.seedMembership(score: 9)
-        // A failing snapshot read leaves persistence in recovery rather than an empty valid history.
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -204,7 +203,6 @@ final class LeaderboardStoreTests: XCTestCase {
     }
 }
 
-/// A deterministic synthetic service. No account, real history, or network access.
 @MainActor
 private final class LeagueFixture {
     let suite = "LeaderboardStoreTests.\(UUID().uuidString)"

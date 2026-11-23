@@ -36,7 +36,6 @@ final class UserSettingsStoreTests: XCTestCase {
 		store.settings = updated
 
 		XCTAssertEqual(UserSettingsStore(defaults: defaults).settings, updated)
-		// Member writes are also used by notification and detection settings.
 		store.settings.notificationsEnabled = true
 		XCTAssertTrue(UserSettingsStore(defaults: defaults).settings.notificationsEnabled)
 	}

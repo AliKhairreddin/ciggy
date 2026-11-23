@@ -148,7 +148,6 @@ public final class HealthKitManager: ObservableObject {
 		guard mockHeartRateTimer == nil else { return }
 		isUsingSimulatedData = true
 		let generation = streamGeneration
-		// Emit gentle random walk around 75 BPM
 		mockHeartRateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
 			Task { @MainActor [weak self] in
 				guard let self, self.streamGeneration == generation else { return }

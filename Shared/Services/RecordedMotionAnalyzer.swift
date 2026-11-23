@@ -63,7 +63,6 @@ public struct RecordedMotionAnalyzer: Codable, Sendable {
             sourceBecameUnavailable()
             return nil
         }
-        // Ignore old deliveries before they can interrupt the current stream.
         if let lastSampleAt, sample.timestamp <= lastSampleAt { return nil }
         guard acceleration.isFinite, acceleration.magnitude.isFinite, acceleration.magnitude > 0.01 else {
             sourceBecameUnavailable()

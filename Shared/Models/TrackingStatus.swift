@@ -94,7 +94,6 @@ public struct TrackingStatus: Codable, Equatable, Sendable {
         return try decoder.decode(Self.self, from: data)
     }
 
-    /// Short, actionable copy for consumer screens. Full diagnostics remain in Settings.
     public func consumerNotice(at now: Date = Date()) -> String? {
         if !captureAvailable || !permissionGranted { return "Watch setup needed" }
         if lastError != nil { return "Tracking needs attention" }

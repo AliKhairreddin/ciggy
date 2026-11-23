@@ -45,7 +45,6 @@ final class MotionHistoryCheckpointStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory); defaults.removePersistentDomain(forName: name) }
         let store = MotionHistoryCheckpointStore(userDefaults: defaults, snapshotURL: url)
         XCTAssertTrue(store.beginCapture(at: start))
-        // Occupy the destination with a directory: atomic rename must fail.
         let backup = directory.appendingPathComponent("saved.json")
         try FileManager.default.moveItem(at: url, to: backup)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)

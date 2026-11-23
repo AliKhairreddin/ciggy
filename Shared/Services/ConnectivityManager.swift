@@ -3,7 +3,6 @@ import Foundation
 #if canImport(WatchConnectivity)
 import WatchConnectivity
 
-/// Main-actor wrapper around WatchConnectivity for events and shared settings.
 @MainActor
 public final class ConnectivityManager: NSObject, ObservableObject {
 	public static let shared = ConnectivityManager()
@@ -241,7 +240,6 @@ public final class ConnectivityManager: NSObject, ObservableObject {
 			bytes += size
 		}
 		#endif
-		// No raw sendMessage stream: let the system deliver the hourly batch.
 	}
 
 	private func encodedPayload<Value: Encodable>(type: String, value: Value) -> [String: Any]? {
@@ -553,7 +551,6 @@ extension ConnectivityManager: WCSessionDelegate {
 	}
 }
 #else
-/// Host-platform fallback used by unit tests; phone/watch builds use WatchConnectivity above.
 @MainActor
 public final class ConnectivityManager: ObservableObject {
 	public static let shared = ConnectivityManager()

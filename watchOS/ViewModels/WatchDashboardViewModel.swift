@@ -38,7 +38,6 @@ final class WatchDashboardViewModel: ObservableObject {
 				// The timer is only a refresh trigger. Its cached timestamp can precede
 				// a newly logged event, so evaluate every emission at the current time.
 				let now = Date()
-				// Match iPhone/widget totals when a companion's clock is ahead.
 				let snapshot = LiveActivitySnapshot(events: events, dailyLimit: 1, now: now)
 				self.todayCount = snapshot.dailyCount
 				if let last = snapshot.lastLoggedAt {

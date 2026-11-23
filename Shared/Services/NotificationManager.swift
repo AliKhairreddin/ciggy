@@ -1,7 +1,6 @@
 import Foundation
 import UserNotifications
 
-/// Local notifications for daily roasts, detections, and encouragement reminders.
 public enum NotificationManager {
 	private static let presentationDelegate = NotificationPresentationDelegate()
 	private static let dailyRoastIdentifier = "daily-roast"
