@@ -12,6 +12,7 @@ on:
       - Configuration/**
       - Package.swift
       - Tools/Validation/check_ui_test_result.py
+      - Tools/Validation/check_paired_crashes.py
       - .github/workflows/paired-apps.yml
   push:
     branches: [main]
@@ -49,7 +50,7 @@ jobs:
           xcrun simctl pair "$watch" "$phone"
           echo "PHONE_ID=$phone" >> "$GITHUB_ENV"
           echo "WATCH_ID=$watch" >> "$GITHUB_ENV"
-      - name: Verify consent, correction persistence and logging on iPhone
+      - name: Verify consent and correction persistence on iPhone
         if: matrix.surface == 'iPhone'
         run: |
           xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
@@ -60,10 +61,22 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/phone.xcresult" \
             -only-testing:ciggyTests \
             -only-testing:ciggyUITests/ciggyUITests/testCalibrationRequiresExplicitConsentAndPairing \
-            -only-testing:ciggyUITests/ciggyUITests/testHistoricalCorrectionPersistsAcrossRelaunch \
-            -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test-without-building
+            -only-testing:ciggyUITests/ciggyUITests/testHistoricalCorrectionPersistsAcrossRelaunch test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/phone.xcresult"
+      - name: Log, undo and relaunch while the notification service is stalled
+        if: matrix.surface == 'iPhone'
+        timeout-minutes: 5
+        run: |
+          service=user/foreground/com.apple.usernotificationsd
+          trap 'xcrun simctl spawn "$PHONE_ID" launchctl kill SIGCONT "$service"' EXIT
+          xcrun simctl spawn "$PHONE_ID" launchctl kill SIGSTOP "$service"
+          xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
+            -destination "platform=iOS Simulator,id=$PHONE_ID" -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/stalled-notifications.xcresult" \
+            -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test-without-building
+          python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/stalled-notifications.xcresult"
       - name: Verify logging and relaunch on Watch
+        id: watch_tests
         if: matrix.surface == 'Watch'
         run: |
           xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
@@ -78,3 +91,18 @@ jobs:
             '-only-testing:ciggy Watch AppTests' \
             '-only-testing:ciggy Watch AppUITests/ciggy_Watch_AppUITests/testSecondaryLoggingSavesOneEventAndSurvivesRelaunch' test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/watch.xcresult"
+      - name: Check both devices for crash reports after Watch teardown
+        id: crashes
+        if: ${{ !cancelled() && matrix.surface == 'Watch' && env.WATCH_ID != '' }}
+        run: python3 Tools/Validation/check_paired_crashes.py "$RUNNER_TEMP/paired-crashes" "$PHONE_ID" "$WATCH_ID"
+      - name: Retain the Watch result, crash reports and matching debug binaries
+        if: ${{ !cancelled() && (steps.watch_tests.outcome == 'failure' || steps.crashes.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: paired-simulator-crashes
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/watch.xcresult
+            ${{ runner.temp }}/paired-crashes/*.ips
+            ${{ runner.temp }}/watch-build/Build/Products/Debug-iphonesimulator/ciggy.app/ciggy*
+            ${{ runner.temp }}/watch-build/Build/Products/Debug-watchsimulator/ciggy Watch App.app/ciggy Watch App*
