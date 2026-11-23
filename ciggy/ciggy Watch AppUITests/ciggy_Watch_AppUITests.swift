@@ -44,6 +44,18 @@ final class ciggy_Watch_AppUITests: XCTestCase {
         app.launch()
         let count = app.descendants(matching: .any)["watch-today-count"].firstMatch
         XCTAssertTrue(count.waitForExistence(timeout: 15))
+        let system = XCUIApplication(bundleIdentifier: "com.apple.Carousel")
+        let review = system.buttons["Review"]
+        if review.waitForExistence(timeout: 5) {
+            review.tap()
+            let access = system.cells["All Requested Data Below"]
+            XCTAssertTrue(access.waitForExistence(timeout: 5))
+            XCTAssertEqual(access.value as? String, "0")
+            let done = system.cells["Done"]
+            for _ in 0..<5 where !done.isHittable { system.swipeUp() }
+            XCTAssertTrue(done.isHittable)
+            done.tap()
+        }
         let initial = try XCTUnwrap(Int(count.label.split(separator: " ").first.map(String.init) ?? ""))
         let log = app.buttons["watch-log-button"]
         for _ in 0..<10 where !log.isHittable { app.swipeUp() }
