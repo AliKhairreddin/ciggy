@@ -67,11 +67,12 @@ final class ciggy_Watch_AppUITests: XCTestCase {
         for _ in 0..<5 where !save.isHittable { app.swipeUp() }
         save.tap()
         for _ in 0..<10 where !count.isHittable { app.swipeDown() }
-        XCTAssertEqual(Int(count.label.split(separator: " ").first.map(String.init) ?? ""), initial + 1)
+        let savedCount = app.descendants(matching: .any).matching(identifier: "watch-today-count")
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "\(initial + 1) ")).firstMatch
+        XCTAssertTrue(savedCount.waitForExistence(timeout: 10), "Saving one cigarette must increase today's count by one.")
         app.terminate()
         app.launch()
-        XCTAssertTrue(count.waitForExistence(timeout: 10))
-        XCTAssertEqual(Int(count.label.split(separator: " ").first.map(String.init) ?? ""), initial + 1)
+        XCTAssertTrue(savedCount.waitForExistence(timeout: 10), "The saved count must survive relaunch.")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Watch profile and saved count"
         screenshot.lifetime = .keepAlways

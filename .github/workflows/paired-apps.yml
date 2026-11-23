@@ -22,6 +22,11 @@ permissions:
 
 jobs:
   paired-apps:
+    name: ${{ matrix.surface }} smoke tests
+    strategy:
+      fail-fast: false
+      matrix:
+        surface: [iPhone, Watch]
     runs-on: xcode-27
     timeout-minutes: 45
     env:
@@ -35,15 +40,11 @@ jobs:
           xcrun simctl pair "$watch" "$phone"
           echo "PHONE_ID=$phone" >> "$GITHUB_ENV"
           echo "WATCH_ID=$watch" >> "$GITHUB_ENV"
-      - name: Build both test suites before booting simulators
-        id: build
+      - name: Verify consent, correction persistence and logging on iPhone
+        if: matrix.surface == 'iPhone'
         run: |
           xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
             -destination "platform=iOS Simulator,id=$PHONE_ID" build-for-testing
-          xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
-            -destination "platform=watchOS Simulator,id=$WATCH_ID" build-for-testing
-      - name: Verify consent, correction persistence and logging on iPhone
-        run: |
           xcrun simctl bootstatus "$PHONE_ID" -b
           xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
             -destination "platform=iOS Simulator,id=$PHONE_ID" -parallel-testing-enabled NO \
@@ -55,13 +56,18 @@ jobs:
             -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/phone.xcresult"
       - name: Verify logging and relaunch on Watch
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: matrix.surface == 'Watch'
         run: |
+          xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
+            -destination "platform=watchOS Simulator,id=$WATCH_ID" -derivedDataPath "$RUNNER_TEMP/watch-build" build-for-testing
+          xcrun simctl bootstatus "$PHONE_ID" -b
           xcrun simctl bootstatus "$WATCH_ID" -b
+          xcrun simctl install "$PHONE_ID" "$RUNNER_TEMP/watch-build/Build/Products/Debug-iphonesimulator/ciggy.app"
+          xcrun simctl launch "$PHONE_ID" That-Canadian-Software-Services.ciggy
           xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
             -destination "platform=watchOS Simulator,id=$WATCH_ID" -parallel-testing-enabled NO \
             -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
-            -resultBundlePath "$RUNNER_TEMP/watch.xcresult" \
+            -derivedDataPath "$RUNNER_TEMP/watch-build" -resultBundlePath "$RUNNER_TEMP/watch.xcresult" \
             '-only-testing:ciggy Watch AppTests' \
             '-only-testing:ciggy Watch AppUITests/ciggy_Watch_AppUITests/testSecondaryLoggingSavesOneEventAndSurvivesRelaunch' test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/watch.xcresult"
