@@ -8,6 +8,7 @@ CalibrationDashboard/node_modules/
 CalibrationDashboard/.wrangler/
 CalibrationDashboard/.dev.vars*
 CalibrationDashboard/worker-configuration.d.ts
+CalibrationDashboard/test-results/
 CalibrationDashboard/coverage/
 CalibrationDashboard/dist/
 Tools/MotionBenchmark/__pycache__/

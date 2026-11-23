@@ -403,15 +403,9 @@ export function App() {
   const [view, setView] = useState(null),
     [signal, setSignal] = useState("userAcceleration"),
     [axis, setAxis] = useState("magnitude");
-  const [active, setActive] = useState(""),
-    [form, setForm] = useState({
-      start: "",
-      end: "",
-      activity: "smoking",
-      notes: "",
-      editing: null,
-    }),
-    [dirty, setDirty] = useState(false);
+  const [selectedRecording, setSelectedRecording] = useState(null),
+    [draft, setDraft] = useState(null);
+  const dirty = draft !== null;
   const [tab, setTab] = useState("labels"),
     [modal, setModal] = useState(null),
     [alias, setAlias] = useState(""),
@@ -465,7 +459,30 @@ export function App() {
   );
   const missing = visible.length - ready.length;
   const coverage = coverageFor(ready, state.range, state.filters.source);
-  const activeSession = visible.find((session) => session.id === active);
+  const activeSession =
+    visible.find((session) => session.id === selectedRecording?.id) ??
+    (dirty ? null : visible[0]);
+  const active = activeSession?.id ?? "";
+  const bounds = activeSession && recordingBounds(activeSession);
+  const lastSubmission = selectedRecording?.lastSubmission;
+  const savedFields =
+    lastSubmission &&
+    selectedRecording.id === active &&
+    lastSubmission.filters === state.filters &&
+    lastSubmission.range[0] === state.range[0] &&
+    lastSubmission.range[1] === state.range[1]
+      ? lastSubmission.fields
+      : null;
+  const form = draft ?? {
+    start: savedFields?.start ??
+      (bounds ? timeInput(Math.max(bounds[0], state.range[0])) : ""),
+    end: savedFields?.end ??
+      (bounds ? timeInput(Math.min(bounds[1], state.range[1])) : ""),
+    activity: savedFields?.activity ?? "smoking",
+    notes: "",
+    editing: null,
+    revision: activeSession?.labelRevision,
+  };
   const selection =
     dirty &&
     form.start &&
@@ -494,32 +511,11 @@ export function App() {
   }, []);
   useEffect(() => {
     setView(null);
-    // A file can overlap both periods. Keep an untouched activity range inside
-    // the newly applied period even when the selected file itself stays the same.
-    if (!dirty && activeSession) selectRecording(activeSession);
   }, [state.filters]);
   useEffect(() => {
-    if (!dirty && (!activeSession || !active)) {
-      if (visible.length) selectRecording(visible[0]);
-      else {
-        setActive("");
-        setForm({
-          start: "",
-          end: "",
-          activity: "smoking",
-          notes: "",
-          editing: null,
-        });
-      }
-    }
-  }, [visible, active, activeSession, dirty]);
-  useEffect(() => {
-    if (!dirty && activeSession)
-      setForm((previous) => ({
-        ...previous,
-        revision: activeSession.labelRevision,
-      }));
-  }, [activeSession?.labelRevision, active, dirty]);
+    if (!dirty && (selectedRecording?.id ?? "") !== active)
+      setSelectedRecording(active ? { id: active } : null);
+  }, [active, dirty, selectedRecording]);
 
   function report(error) {
     journal.notice(error.message, true);
@@ -537,19 +533,12 @@ export function App() {
     return false;
   }
   function selectRecording(session, fit = false) {
-    const range = recordingBounds(session);
-    setActive(session.id);
-    setDirty(false);
-    setForm({
-      start: timeInput(Math.max(range[0], state.range[0])),
-      end: timeInput(Math.min(range[1], state.range[1])),
-      activity: "smoking",
-      notes: "",
-      editing: null,
-      revision: session.labelRevision,
-    });
-    if (fit)
+    setSelectedRecording({ id: session.id });
+    setDraft(null);
+    if (fit) {
+      const range = recordingBounds(session);
       setView(constrainView([range[0] - 1000, range[1] + 1000], state.range));
+    }
   }
   async function applyFilters(filters) {
     if (!guardDraft()) return false;
@@ -595,9 +584,8 @@ export function App() {
     }
     const session = options[0].session,
       bounds = recordingBounds(session);
-    setActive(session.id);
-    setDirty(true);
-    setForm({
+    setSelectedRecording({ id: session.id });
+    setDraft({
       start: timeInput(Math.max(bounds[0], range[0])),
       end: timeInput(Math.min(bounds[1], range[1])),
       activity: "smoking",
@@ -642,15 +630,15 @@ export function App() {
         ...session.annotations.filter((item) => item.id !== annotation.id),
         annotation,
       ]);
-      setDirty(false);
-      setForm({
-        ...form,
-        notes: "",
-        editing: null,
-        revision: journal
-          .getSnapshot()
-          .sessions.find((item) => item.id === active)?.labelRevision,
+      setSelectedRecording({
+        id: active,
+        lastSubmission: {
+          filters: state.filters,
+          range: state.range,
+          fields: { start: form.start, end: form.end, activity: form.activity },
+        },
       });
+      setDraft(null);
       journal.notice("Activity label saved.");
     } catch (error) {
       report(error);
@@ -660,9 +648,8 @@ export function App() {
   }
   async function editLabel(session, annotation) {
     if (!guardDraft()) return;
-    setActive(session.id);
-    setDirty(true);
-    setForm({
+    setSelectedRecording({ id: session.id });
+    setDraft({
       start: timeInput(appleSecondsToMs(annotation.start)),
       end: timeInput(appleSecondsToMs(annotation.end)),
       activity: annotation.label,
@@ -778,8 +765,8 @@ export function App() {
     }
   }
   const updateForm = (field, value) => {
-    setForm({ ...form, [field]: value });
-    setDirty(true);
+    setSelectedRecording({ id: active });
+    setDraft({ ...form, [field]: value });
   };
   const stats = [
     {
@@ -1553,9 +1540,7 @@ export function App() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() =>
-                          activeSession && selectRecording(activeSession)
-                        }
+                        onClick={() => setDraft(null)}
                       >
                         Reset
                       </Button>
