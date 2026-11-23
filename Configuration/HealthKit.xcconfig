@@ -1,0 +1,3 @@
+INFOPLIST_KEY_NSHealthShareUsageDescription = Ciggy uses optional heart-rate readings to add context to smoking events detected on your paired Apple Watch.
+INFOPLIST_KEY_NSHealthShareUsageDescription[sdk=watch*] = Ciggy reads heart-rate samples as optional context for motion-detected smoking events.
+INFOPLIST_KEY_NSHealthUpdateUsageDescription = Ciggy does not write to Health. With your permission, it only reads heart-rate samples to provide optional context for detected smoking events.

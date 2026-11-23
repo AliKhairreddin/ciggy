@@ -10,7 +10,10 @@ public struct ConnectivityEnvelope: Codable, Equatable, Identifiable, Sendable {
 
 	/// System transfer completion is not proof that the recipient saved a mutation.
 	public var requiresDurableReceipt: Bool {
-		["event", "eventDeletion", "detectionReview", "reviewCorrection.v2"].contains(type)
+		switch type {
+		case "historyRefreshRequest", "trackingStatus", "settings", "transportReceipt.v2": return false
+		default: return true
+		}
 	}
 }
 
@@ -64,8 +67,29 @@ public final class ConnectivityTransportStore {
 			state.outgoing.append(envelope)
 		}
 	}
-	@discardableResult public func acknowledge(id: UUID) -> Bool {
-		mutate { $0.outgoing.removeAll { $0.id == id } }
+	public enum Confirmation: Sendable {
+		case systemTransfer
+		case liveReply(acknowledgedID: String?, durableProtocol: Int?)
+		case persistedInbox
+
+		fileprivate func confirms(_ envelope: ConnectivityEnvelope) -> Bool {
+			switch self {
+			case .systemTransfer:
+				return !envelope.requiresDurableReceipt
+			case let .liveReply(acknowledgedID, durableProtocol):
+				return acknowledgedID == envelope.id.uuidString &&
+					(durableProtocol == 2 || !envelope.requiresDurableReceipt)
+			case .persistedInbox:
+				return true
+			}
+		}
+	}
+
+	@discardableResult public func confirm(id: UUID, via confirmation: Confirmation) -> Bool {
+		guard !loadFailed else { return false }
+		guard let envelope = state.outgoing.first(where: { $0.id == id }) else { return true }
+		guard confirmation.confirms(envelope) else { return false }
+		return mutate { $0.outgoing.removeAll { $0.id == id } }
 	}
 	@discardableResult public func receive(_ envelope: ConnectivityEnvelope) -> Bool {
 		guard hasConsistentIdentity(envelope, in: state.incoming) else { return false }

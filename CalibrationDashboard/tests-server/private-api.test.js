@@ -1,11 +1,12 @@
 import { after, before, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import { build } from 'esbuild';
+import { applyMigrations } from './migrations.js';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 
@@ -28,11 +29,7 @@ before(async () => {
     ACCESS_TEAM_DOMAIN: 'https://ciggy-test.cloudflareaccess.com', ACCESS_AUD: 'test-audience',
     ALLOWED_EMAILS: 'reviewer@example.test', SHARED_WORKSPACE_ID: '',
     ASSETS: { fetch: async () => new Response('private asset') } };
-  const migrations = (await readdir(join(root, 'migrations'))).filter(name => name.endsWith('.sql')).sort();
-  for (const name of migrations) {
-    const schema = await readFile(join(root, 'migrations', name), 'utf8');
-    await env.DB.batch(schema.split(';').map(sql => sql.trim()).filter(Boolean).map(sql => env.DB.prepare(sql)));
-  }
+  await applyMigrations(env.DB);
   app = worker.createApp(async request => request.headers.get('x-test-reviewer') ?? 'reviewer@example.test');
 });
 

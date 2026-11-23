@@ -60,7 +60,7 @@ public final class MotionManager: ObservableObject {
             lastError = "Device motion is unavailable on this device. Use a physical Apple Watch for detection."
             return
         }
-        let authorization = CMSensorRecorder.authorizationStatus()
+        let authorization = RecordedAccelerometer.authorizationStatus
         guard authorization != .denied, authorization != .restricted else {
             status = .permissionDenied
             lastError = "Enable Motion & Fitness access for Ciggy in Settings."
@@ -142,7 +142,7 @@ public final class MotionManager: ObservableObject {
     private func fail(_ message: String) {
         stop()
         #if os(iOS) || os(watchOS)
-        let authorization = CMSensorRecorder.authorizationStatus()
+        let authorization = RecordedAccelerometer.authorizationStatus
         status = authorization == .denied || authorization == .restricted ? .permissionDenied : .failed
         #else
         status = .failed
