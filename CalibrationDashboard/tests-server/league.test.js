@@ -1,10 +1,11 @@
 import { after, before, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { applyMigrations } from './migrations.js';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -26,10 +27,7 @@ before(async () => {
   env = { ...await platform.getBindings(), APP_ORIGIN: origin,
     ACCESS_TEAM_DOMAIN: 'https://ciggy-test.cloudflareaccess.com', ACCESS_AUD: 'test-audience',
     ALLOWED_EMAILS: 'reviewer@example.test', ASSETS: { fetch: async () => new Response('private') } };
-  for (const name of (await readdir(join(root, 'migrations'))).filter(name => name.endsWith('.sql')).sort()) {
-    const schema = await readFile(join(root, 'migrations', name), 'utf8');
-    await env.DB.batch(schema.split(';').map(sql => sql.trim()).filter(Boolean).map(sql => env.DB.prepare(sql)));
-  }
+  await applyMigrations(env.DB);
 });
 beforeEach(async () => {
   await env.DB.batch(['league_scores', 'league_members', 'request_limits'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));

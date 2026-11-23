@@ -1,20 +1,5 @@
 import { expect, test } from "@playwright/test";
-
-function recording(id, firstSample) {
-  const start = (Date.parse(firstSample) - Date.UTC(2001, 0, 1)) / 1000;
-  return {
-    id,
-    formatVersion: 1,
-    label: "unlabelled",
-    startedAt: start,
-    samples: Array.from({ length: 15 }, (_, index) => ({
-      timestamp: start + index,
-      source: "recordedAccelerometer",
-      gravity: { x: 0, y: 0, z: -1 },
-      userAcceleration: { x: 0, y: 0, z: 0 },
-    })),
-  };
-}
+import { recording } from "./recording.js";
 
 test("the timeline covers both files and a saved label uses the current period", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-02-03T12:00:00Z"));

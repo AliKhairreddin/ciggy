@@ -50,7 +50,6 @@ npm ci
 npm test
 npx playwright install --only-shell chromium
 npm run test:e2e
-npm run build
 npm run typecheck
 npx wrangler deploy --dry-run
 ```
