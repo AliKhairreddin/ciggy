@@ -48,6 +48,7 @@ jobs:
           phone=$(xcrun simctl create "Ciggy companion" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-2)
           watch=$(xcrun simctl create "Ciggy Watch" com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-12-46mm com.apple.CoreSimulator.SimRuntime.watchOS-27-2)
           xcrun simctl pair "$watch" "$phone"
+          touch "$RUNNER_TEMP/watch-run-start"
           echo "PHONE_ID=$phone" >> "$GITHUB_ENV"
           echo "WATCH_ID=$watch" >> "$GITHUB_ENV"
       - name: Verify consent and correction persistence on iPhone
@@ -97,10 +98,12 @@ jobs:
             '-only-testing:ciggy Watch AppTests' \
             '-only-testing:ciggy Watch AppUITests/ciggy_Watch_AppUITests/testSecondaryLoggingSavesOneEventAndSurvivesRelaunch' test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/watch.xcresult"
-      - name: Check both devices for crash reports after Watch teardown
+      - name: Collect both devices' crash reports one minute after Watch teardown
         id: crashes
         if: ${{ !cancelled() && matrix.surface == 'Watch' && env.WATCH_ID != '' }}
-        run: python3 Tools/Validation/check_paired_crashes.py "$RUNNER_TEMP/paired-crashes" "$PHONE_ID" "$WATCH_ID"
+        run: |
+          sleep 60
+          python3 Tools/Validation/check_paired_crashes.py --since "$RUNNER_TEMP/watch-run-start" "$RUNNER_TEMP/paired-crashes" "$PHONE_ID" "$WATCH_ID"
       - name: Retain the Watch result, crash reports and matching debug binaries
         if: ${{ !cancelled() && (steps.watch_tests.outcome == 'failure' || steps.crashes.outcome == 'failure') }}
         uses: actions/upload-artifact@v4
