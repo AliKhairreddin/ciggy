@@ -125,12 +125,12 @@ final class BackgroundCalibrationCollector: ObservableObject {
         #if targetEnvironment(simulator)
         return
         #else
-        guard CMSensorRecorder.isAccelerometerRecordingAvailable() else {
+        guard RecordedAccelerometer.isAvailable else {
             lastError = "Background motion history is unavailable on this Watch. Consented live motion can still be shared while Ciggy runs."
             BackgroundMotionMonitor.shared.publishStatus()
             return
         }
-        guard CMSensorRecorder.authorizationStatus() == .authorized else {
+        guard RecordedAccelerometer.authorizationStatus == .authorized else {
             lastError = "Allow Motion & Fitness on your Watch to share recorded motion."
             BackgroundMotionMonitor.shared.publishStatus()
             return
@@ -298,14 +298,7 @@ final class BackgroundCalibrationCollector: ObservableObject {
     ) -> Extraction {
         let shouldContinue = { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline }
         guard shouldContinue() else { return .interrupted }
-        let recorder = CMSensorRecorder()
-        guard let range = SensorHistoryQuery.range(from: window.start, to: window.end),
-              let source = recorder.accelerometerData(from: range.start, to: range.end) else { return .missing }
-        var iterator = NSFastEnumerationIterator(source)
-        let samples = AnySequence { AnyIterator<RecordedAccelerationSample> {
-            guard let raw = iterator.next() as? CMRecordedAccelerometerData else { return nil }
-            return .init(timestamp: raw.startDate, x: raw.acceleration.x, y: raw.acceleration.y, z: raw.acceleration.z)
-        } }
+        guard let samples = RecordedAccelerometer().history.samples(from: window.start, to: window.end) else { return .missing }
         switch HistoricalCalibrationSampler.sample(samples, window: window, enabledAt: consent, shouldContinue: shouldContinue) {
         case .complete(let recording):
             do {
