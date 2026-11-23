@@ -48,7 +48,7 @@ final class CiggyLeaderboardUITests: XCTestCase {
     @MainActor
     private func scrollTo(_ element: XCUIElement, app: XCUIApplication) {
         let pane = app.scrollViews.firstMatch
-        for _ in 0..<12 where !element.isHittable { pane.swipeUp() }
+        element.reveal(maxAttempts: 12) { pane.swipeUp() }
         XCTAssertTrue(element.waitForExistence(timeout: 5))
     }
 

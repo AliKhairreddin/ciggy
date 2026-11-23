@@ -27,13 +27,13 @@ final class CiggyAdaptiveUITests: XCTestCase {
 		capture(app, "Open landscape")
 		log.tap()
 		let save = app.buttons["save-phone-log"]
-		for _ in 0..<4 where !save.isHittable { app.swipeUp() }
+		save.reveal(maxAttempts: 4) { app.swipeUp() }
 		XCTAssertTrue(save.isHittable)
 		save.tap()
 		XCUIDevice.shared.orientation = .portrait
 		let undo = app.buttons["undo-phone-log"]
 		let pane = app.scrollViews.firstMatch
-		for _ in 0..<8 where !undo.isHittable { pane.swipeDown() }
+		undo.reveal(maxAttempts: 8) { pane.swipeDown() }
 		XCTAssertTrue(undo.isHittable)
 		undo.tap()
 		XCTAssertEqual(count.label, original)
@@ -66,7 +66,7 @@ final class CiggyAdaptiveUITests: XCTestCase {
 		XCUIDevice.shared.orientation = .landscapeLeft
 		XCTAssertEqual(field.value as? String, "A small pause")
 		let save = app.buttons["save-phone-log"]
-		for _ in 0..<6 where !save.isHittable { app.swipeUp() }
+		save.reveal(maxAttempts: 6) { app.swipeUp() }
 		XCTAssertTrue(save.isHittable)
 		save.tap()
 		XCTAssertTrue(controls.waitForExistence(timeout: 5))
@@ -170,7 +170,7 @@ final class CiggyAdaptiveUITests: XCTestCase {
 		let increasing = original < 100
 		let change = app.buttons[increasing ? "Increase daily limit" : "Decrease daily limit"]
 		let controls = app.scrollViews["controls-pane"]
-		for _ in 0..<6 where !change.isHittable { controls.swipeUp(velocity: .slow) }
+		change.reveal(maxAttempts: 6) { controls.swipeUp(velocity: .slow) }
 		change.tap()
 		XCUIDevice.shared.orientation = .landscapeLeft
 		XCTAssertEqual(value.label, "\(original + (increasing ? 1 : -1))")
@@ -200,7 +200,7 @@ final class CiggyAdaptiveUITests: XCTestCase {
 		capture(app, "Tabletop with large text")
 		log.tap()
 		let save = app.buttons["save-phone-log"]
-		for _ in 0..<10 where !save.isHittable { app.swipeUp() }
+		save.reveal(maxAttempts: 10) { app.swipeUp() }
 		XCTAssertTrue(save.isHittable)
 	}
 
