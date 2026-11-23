@@ -10,7 +10,7 @@
     "deploy": "wrangler deploy",
     "build": "vite build",
     "dev:ui": "vite --host 127.0.0.1",
-    "test:e2e": "playwright test"
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
