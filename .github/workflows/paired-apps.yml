@@ -12,6 +12,7 @@ on:
       - Configuration/**
       - Package.swift
       - Tools/Validation/check_ui_test_result.py
+      - Tools/Validation/check_paired_crashes.py
       - .github/workflows/paired-apps.yml
   push:
     branches: [main]
@@ -47,9 +48,10 @@ jobs:
           phone=$(xcrun simctl create "Ciggy companion" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-2)
           watch=$(xcrun simctl create "Ciggy Watch" com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-12-46mm com.apple.CoreSimulator.SimRuntime.watchOS-27-2)
           xcrun simctl pair "$watch" "$phone"
+          touch "$RUNNER_TEMP/watch-run-start"
           echo "PHONE_ID=$phone" >> "$GITHUB_ENV"
           echo "WATCH_ID=$watch" >> "$GITHUB_ENV"
-      - name: Verify consent, correction persistence and logging on iPhone
+      - name: Verify consent and correction persistence on iPhone
         if: matrix.surface == 'iPhone'
         run: |
           xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
@@ -60,10 +62,28 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/phone.xcresult" \
             -only-testing:ciggyTests \
             -only-testing:ciggyUITests/ciggyUITests/testCalibrationRequiresExplicitConsentAndPairing \
-            -only-testing:ciggyUITests/ciggyUITests/testHistoricalCorrectionPersistsAcrossRelaunch \
-            -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test-without-building
+            -only-testing:ciggyUITests/ciggyUITests/testHistoricalCorrectionPersistsAcrossRelaunch test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/phone.xcresult"
+      - name: Log, undo and relaunch while the notification service is stalled
+        if: matrix.surface == 'iPhone'
+        timeout-minutes: 10
+        run: |
+          xcrun simctl bootstatus "$PHONE_ID" -b
+          service=user/foreground/com.apple.usernotificationsd
+          resume_notifications() {
+            if xcrun simctl list devices booted | grep -Fq "$PHONE_ID"; then
+              xcrun simctl spawn "$PHONE_ID" launchctl kill SIGCONT "$service"
+            fi
+          }
+          xcrun simctl spawn "$PHONE_ID" launchctl kill SIGSTOP "$service"
+          trap resume_notifications EXIT
+          xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
+            -destination "platform=iOS Simulator,id=$PHONE_ID" -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/stalled-notifications.xcresult" \
+            -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test-without-building
+          python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/stalled-notifications.xcresult"
       - name: Verify logging and relaunch on Watch
+        id: watch_tests
         if: matrix.surface == 'Watch'
         run: |
           xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
@@ -78,3 +98,20 @@ jobs:
             '-only-testing:ciggy Watch AppTests' \
             '-only-testing:ciggy Watch AppUITests/ciggy_Watch_AppUITests/testSecondaryLoggingSavesOneEventAndSurvivesRelaunch' test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/watch.xcresult"
+      - name: Collect both devices' crash reports one minute after Watch teardown
+        id: crashes
+        if: ${{ !cancelled() && matrix.surface == 'Watch' && env.WATCH_ID != '' }}
+        run: |
+          sleep 60
+          python3 Tools/Validation/check_paired_crashes.py --since "$RUNNER_TEMP/watch-run-start" "$RUNNER_TEMP/paired-crashes" "$PHONE_ID" "$WATCH_ID"
+      - name: Retain the Watch result, crash reports and matching debug binaries
+        if: ${{ !cancelled() && (steps.watch_tests.outcome == 'failure' || steps.crashes.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: paired-simulator-crashes
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/watch.xcresult
+            ${{ runner.temp }}/paired-crashes/*.ips
+            ${{ runner.temp }}/watch-build/Build/Products/Debug-iphonesimulator/ciggy.app/ciggy*
+            ${{ runner.temp }}/watch-build/Build/Products/Debug-watchsimulator/ciggy Watch App.app/ciggy Watch App*

@@ -4,6 +4,7 @@ import UserNotifications
 public enum NotificationManager {
 	private static let presentationDelegate = NotificationPresentationDelegate()
 	private static let dailyRoastIdentifier = "daily-roast"
+	private static let dailyRoastQueue = DispatchQueue(label: "ciggy.daily-roast-notifications")
 
 	public static func configurePresentation() {
 		UNUserNotificationCenter.current().delegate = presentationDelegate
@@ -28,13 +29,17 @@ public enum NotificationManager {
 			content: content,
 			trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
 		)
-		UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+		dailyRoastQueue.async {
+			UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+		}
 	}
 
 	public static func cancelPendingDailyRoasts() {
-		UNUserNotificationCenter.current().removePendingNotificationRequests(
-			withIdentifiers: [dailyRoastIdentifier, "daily-roast-preview", "daily-roast-recap"]
-		)
+		dailyRoastQueue.async {
+			UNUserNotificationCenter.current().removePendingNotificationRequests(
+				withIdentifiers: [dailyRoastIdentifier, "daily-roast-preview", "daily-roast-recap"]
+			)
+		}
 	}
 
 	public static func scheduleDetectionSummaryNotification(review: DetectionReview) {
