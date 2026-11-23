@@ -28,30 +28,40 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
-      - name: Boot an iPhone and its companion Watch
+      - name: Pair a standard iPhone and its companion Watch
         run: |
           phone=$(xcrun simctl create "Ciggy iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-2)
           watch=$(xcrun simctl create "Ciggy Watch" com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-12-46mm com.apple.CoreSimulator.SimRuntime.watchOS-27-2)
           xcrun simctl pair "$watch" "$phone"
-          xcrun simctl bootstatus "$phone" -b
-          xcrun simctl bootstatus "$watch" -b
           echo "PHONE_ID=$phone" >> "$GITHUB_ENV"
           echo "WATCH_ID=$watch" >> "$GITHUB_ENV"
+      - name: Build both test suites before booting simulators
+        id: build
+        run: |
+          xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
+            -destination "platform=iOS Simulator,id=$PHONE_ID" build-for-testing
+          xcodebuild -quiet -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
+            -destination "platform=watchOS Simulator,id=$WATCH_ID" build-for-testing
       - name: Verify consent, correction persistence and logging on iPhone
         run: |
-          xcodebuild -quiet -project ciggy/ciggy.xcodeproj -scheme ciggy \
+          xcrun simctl bootstatus "$PHONE_ID" -b
+          xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme ciggy \
             -destination "platform=iOS Simulator,id=$PHONE_ID" -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
             -resultBundlePath "$RUNNER_TEMP/phone.xcresult" \
             -only-testing:ciggyTests \
             -only-testing:ciggyUITests/ciggyUITests/testCalibrationRequiresExplicitConsentAndPairing \
             -only-testing:ciggyUITests/ciggyUITests/testHistoricalCorrectionPersistsAcrossRelaunch \
-            -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test
+            -only-testing:ciggyUITests/ciggyUITests/testPhoneLoggingAndUndo test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/phone.xcresult"
       - name: Verify logging and relaunch on Watch
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          xcodebuild -quiet -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
+          xcrun simctl bootstatus "$WATCH_ID" -b
+          xcodebuild -jobs 3 -project ciggy/ciggy.xcodeproj -scheme 'ciggy Watch App' \
             -destination "platform=watchOS Simulator,id=$WATCH_ID" -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
             -resultBundlePath "$RUNNER_TEMP/watch.xcresult" \
             '-only-testing:ciggy Watch AppTests' \
-            '-only-testing:ciggy Watch AppUITests/ciggy_Watch_AppUITests/testSecondaryLoggingSavesOneEventAndSurvivesRelaunch' test
+            '-only-testing:ciggy Watch AppUITests/ciggy_Watch_AppUITests/testSecondaryLoggingSavesOneEventAndSurvivesRelaunch' test-without-building
           python3 Tools/Validation/check_ui_test_result.py "$RUNNER_TEMP/watch.xcresult"
