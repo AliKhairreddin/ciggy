@@ -3,7 +3,21 @@ import Foundation
 /// Core Motion raises an Objective-C exception for a start older than three
 /// days. Its retention is relative to the wall clock, not the delayed analysis
 /// end or a saved replay cursor. Bound every native query immediately before use.
-public enum SensorHistoryQuery {
+public struct SensorHistoryQuery {
+    private let now: () -> Date
+    private let read: (Date, Date) -> AnySequence<RecordedAccelerationSample>?
+
+    init(now: @escaping () -> Date = Date.init,
+         read: @escaping (Date, Date) -> AnySequence<RecordedAccelerationSample>?) {
+        self.now = now
+        self.read = read
+    }
+
+    public func samples(from start: Date, to end: Date) -> AnySequence<RecordedAccelerationSample>? {
+        guard let range = Self.range(from: start, to: end, now: now()) else { return nil }
+        return read(range.start, range.end)
+    }
+
     public static let retention: TimeInterval = 3 * 24 * 60 * 60
     public static let maximumDuration: TimeInterval = 12 * 60 * 60
     public static let boundaryMargin: TimeInterval = 5

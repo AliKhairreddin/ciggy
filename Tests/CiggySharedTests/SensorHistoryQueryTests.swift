@@ -3,47 +3,62 @@ import XCTest
 
 final class SensorHistoryQueryTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 2_000_000_000)
+    private let threeDays: TimeInterval = 3 * 24 * 60 * 60
 
     func testDelayedAnalysisCutoffCannotProduceOutOfRetentionNativeQuery() throws {
-        let end = now.addingTimeInterval(-180)
-        let oldReplayStart = end.addingTimeInterval(-SensorHistoryQuery.retention)
-        let range = try XCTUnwrap(SensorHistoryQuery.range(from: oldReplayStart,
-            to: oldReplayStart.addingTimeInterval(1800), now: now))
-        XCTAssertEqual(range.start, now.addingTimeInterval(-SensorHistoryQuery.retention + 5))
-        XCTAssertEqual(range.end, oldReplayStart.addingTimeInterval(1800))
+        let analysisEnd = now.addingTimeInterval(-180)
+        var currentTime = analysisEnd
+        var requested: MotionHistoryRange?
+        let sensor = SensorHistoryQuery(now: { currentTime }) { start, end in
+            requested = .init(start: start, end: end)
+            return nil
+        }
+        let oldReplayStart = analysisEnd.addingTimeInterval(-threeDays)
+        let replayEnd = oldReplayStart.addingTimeInterval(1800)
+        currentTime = now
+        XCTAssertNil(sensor.samples(from: oldReplayStart, to: replayEnd))
+        XCTAssertEqual(try XCTUnwrap(requested), .init(start: now.addingTimeInterval(-threeDays + 5), end: replayEnd))
     }
 
     func testExpiredAndInvalidQueriesNeverReachSensor() {
-        let expired = now.addingTimeInterval(-SensorHistoryQuery.retention)
-        XCTAssertNil(SensorHistoryQuery.range(from: expired.addingTimeInterval(-600), to: expired, now: now))
-        XCTAssertNil(SensorHistoryQuery.range(from: now, to: now, now: now))
-        XCTAssertNil(SensorHistoryQuery.range(from: now.addingTimeInterval(10), to: now, now: now))
-        XCTAssertNil(SensorHistoryQuery.range(from: Date(timeIntervalSince1970: .nan), to: now, now: now))
-        XCTAssertNil(SensorHistoryQuery.range(from: now, to: .distantFuture, now: now))
+        let sensor = SensorHistoryQuery(now: { self.now }) { _, _ in
+            XCTFail("An expired or invalid range reached the native sensor")
+            return nil
+        }
+        let expired = now.addingTimeInterval(-threeDays)
+        XCTAssertNil(sensor.samples(from: expired.addingTimeInterval(-600), to: expired))
+        XCTAssertNil(sensor.samples(from: now, to: now))
+        XCTAssertNil(sensor.samples(from: now.addingTimeInterval(10), to: now))
+        XCTAssertNil(sensor.samples(from: Date(timeIntervalSince1970: .nan), to: now))
+        XCTAssertNil(sensor.samples(from: now, to: .distantFuture))
     }
 
-    func testRecentCalibrationWindowIsUnchangedAndOversizedQueriesAreBounded() throws {
+    func testRecentCalibrationWindowIsUnchangedAndOversizedQueriesAreBounded() {
         let start = now.addingTimeInterval(-600), end = now.addingTimeInterval(-300)
-        XCTAssertEqual(SensorHistoryQuery.range(from: start, to: end, now: now), .init(start: start, end: end))
-        let range = try XCTUnwrap(SensorHistoryQuery.range(from: now.addingTimeInterval(-86400),
-            to: now.addingTimeInterval(100), now: now))
-        XCTAssertEqual(range.end, now)
-        XCTAssertEqual(range.end.timeIntervalSince(range.start), 43200)
+        let sample = RecordedAccelerationSample(timestamp: start, x: 0, y: 0, z: 1)
+        var requests: [MotionHistoryRange] = []
+        let sensor = SensorHistoryQuery(now: { self.now }) { start, end in
+            requests.append(.init(start: start, end: end))
+            return AnySequence([sample])
+        }
+        XCTAssertEqual(sensor.samples(from: start, to: end).map(Array.init), [sample])
+        _ = sensor.samples(from: now.addingTimeInterval(-86400), to: now.addingTimeInterval(100))
+        XCTAssertEqual(requests, [.init(start: start, end: end), .init(start: now.addingTimeInterval(-43200), end: now)])
     }
 
     func testSavedRepairReplayQueriesStaySafeWithoutChangingClassifier() {
         let end = now.addingTimeInterval(-180)
-        let expiredStart = end.addingTimeInterval(-SensorHistoryQuery.retention)
+        let expiredStart = end.addingTimeInterval(-threeDays)
         var calls = 0
+        let sensor = SensorHistoryQuery(now: { self.now }) { start, finish in
+            calls += 1
+            XCTAssertGreaterThan(start, self.now.addingTimeInterval(-self.threeDays))
+            XCTAssertLessThanOrEqual(finish, self.now)
+            return nil
+        }
         let result = MotionHistoryProcessor.process(from: end, to: end, analyzer: .init(),
             pendingRanges: [.init(start: expiredStart, end: expiredStart.addingTimeInterval(600))],
-            sensitivity: 0.5, query: { start, finish in
-                guard let safe = SensorHistoryQuery.range(from: start, to: finish, now: self.now) else { return nil }
-                calls += 1
-                XCTAssertGreaterThan(safe.start, self.now.addingTimeInterval(-SensorHistoryQuery.retention))
-                XCTAssertLessThanOrEqual(safe.end, self.now)
-                return nil
-            })
+            sensitivity: 0.5, query: sensor.samples(from:to:))
         XCTAssertGreaterThan(calls, 0)
         XCTAssertTrue(result.candidates.isEmpty)
         XCTAssertFalse(result.pendingRanges.isEmpty, "Missing source must remain visible, not become a smoke-free interval")

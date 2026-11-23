@@ -34,7 +34,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 	@Published private(set) var hasPendingHistory = false
 	@Published private(set) var hasExpiredHistory = false
 
-	private let recorder = CMSensorRecorder()
+	private let recorder = RecordedAccelerometer()
 	private let userDefaults: UserDefaults
 	private let checkpointStore: MotionHistoryCheckpointStore
 	private let armedUntilKey = "BackgroundMotionMonitor.armedUntil.v1"
@@ -42,7 +42,6 @@ final class BackgroundMotionMonitor: ObservableObject {
 	private let captureDuration: TimeInterval = 12 * 60 * 60
 	private let renewalInterval = TrackingRefreshPolicy.preferredBackgroundInterval
 	private let availabilityDelay: TimeInterval = 3 * 60
-	private let retentionDuration: TimeInterval = 3 * 24 * 60 * 60
 	private let queryChunkDuration: TimeInterval = 30 * 60
 
 	private init(userDefaults: UserDefaults = .standard) {
@@ -70,7 +69,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 		return "Device only"
 		#else
 		if isCaptureAvailable == false { return "Unavailable" }
-		switch CMSensorRecorder.authorizationStatus() {
+		switch RecordedAccelerometer.authorizationStatus {
 		case .denied, .restricted:
 			return "Permission needed"
 		case .notDetermined:
@@ -96,7 +95,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 			return
 		}
 
-		let authorization = CMSensorRecorder.authorizationStatus()
+		let authorization = RecordedAccelerometer.authorizationStatus
 		guard authorization != .denied, authorization != .restricted else {
 			userDefaults.removeObject(forKey: armedUntilKey)
 			isCaptureArmed = false
@@ -113,8 +112,8 @@ final class BackgroundMotionMonitor: ObservableObject {
 		}
 		let armedUntil = userDefaults.object(forKey: armedUntilKey) as? Date
 		if MotionCapturePolicy.shouldRenew(at: now, armedUntil: armedUntil) {
-			recorder.recordAccelerometer(forDuration: captureDuration)
-			if CMSensorRecorder.authorizationStatus() == .authorized {
+			recorder.record(for: captureDuration)
+			if RecordedAccelerometer.authorizationStatus == .authorized {
 				userDefaults.set(now.addingTimeInterval(captureDuration), forKey: armedUntilKey)
 			}
 		}
@@ -151,7 +150,7 @@ final class BackgroundMotionMonitor: ObservableObject {
 			pendingHistory: hasPendingHistory,
 			expiredHistory: hasExpiredHistory,
 			captureAvailable: isCaptureAvailable,
-			permissionGranted: CMSensorRecorder.authorizationStatus() == .authorized,
+			permissionGranted: RecordedAccelerometer.authorizationStatus == .authorized,
 			lastError: runtimePersistenceError ?? lastError,
 			isProcessing: isProcessingHistory,
 			calibration: BackgroundCalibrationCollector.shared.status
@@ -169,11 +168,11 @@ final class BackgroundMotionMonitor: ObservableObject {
 			lastError = checkpointStore.lastError
 			return nil
 		}
-		guard CMSensorRecorder.authorizationStatus() == .authorized else { return nil }
+		guard RecordedAccelerometer.authorizationStatus == .authorized else { return nil }
 		guard let storedCursor = processedThrough else { return nil }
 
 		let end = Date().addingTimeInterval(-availabilityDelay)
-		let start = max(storedCursor, end.addingTimeInterval(-retentionDuration))
+		let start = max(storedCursor, end.addingTimeInterval(-SensorHistoryQuery.retention))
 		guard start < end else { return nil }
 
 		isProcessingHistory = true
@@ -255,9 +254,9 @@ final class BackgroundMotionMonitor: ObservableObject {
 	}
 
 	private func refreshStatus() {
-		isCaptureAvailable = CMSensorRecorder.isAccelerometerRecordingAvailable()
+		isCaptureAvailable = RecordedAccelerometer.isAvailable
 		let armedUntil = userDefaults.object(forKey: armedUntilKey) as? Date
-		let authorization = CMSensorRecorder.authorizationStatus()
+		let authorization = RecordedAccelerometer.authorizationStatus
 		let hasPermission = authorization == .authorized
 		isCaptureArmed = isCaptureAvailable && hasPermission && (armedUntil.map { $0 > Date() } ?? false)
 	}
@@ -296,34 +295,21 @@ private enum HistoricalMotionProcessor {
 		queryChunkDuration: TimeInterval,
 		maximumProcessingTime: TimeInterval
 	) -> (recent: MotionHistoryProcessor.RecentResult, history: MotionHistoryProcessor.Result) {
-		let recorder = CMSensorRecorder()
+		let sensor = RecordedAccelerometer().history
 		let started = ProcessInfo.processInfo.systemUptime
 		let budget = max(0.5, maximumProcessingTime)
 		let deadline = started + budget
 		let recentDeadline = started + min(5, budget * 0.75)
-		let query: (Date, Date) -> AnySequence<RecordedAccelerationSample>? = { queryStart, queryEnd in
-			// A persisted repair may begin before the sensor's wall-clock cutoff.
-			// Clip the native read only; the existing analyzer still sees missing
-			// leading coverage and keeps its normal reconciliation/counting rules.
-			guard let range = SensorHistoryQuery.range(from: queryStart, to: queryEnd),
-			      let samples = recorder.accelerometerData(from: range.start, to: range.end) else { return nil }
-			var iterator = NSFastEnumerationIterator(samples)
-			return AnySequence { AnyIterator {
-				guard let sample = iterator.next() as? CMRecordedAccelerometerData else { return nil }
-				let acceleration = sample.acceleration
-				return RecordedAccelerationSample(timestamp: sample.startDate, x: acceleration.x,
-				                                  y: acceleration.y, z: acceleration.z)
-			} }
-		}
 		let recent = MotionHistoryProcessor.processRecent(
-			from: start, to: end, analyzer: initialAnalyzer, sourceStartedAt: sourceStartedAt, sensitivity: sensitivity, query: query,
+			from: start, to: end, analyzer: initialAnalyzer, sourceStartedAt: sourceStartedAt,
+			sensitivity: sensitivity, query: sensor.samples(from:to:),
 			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < recentDeadline }
 		)
 		let history = MotionHistoryProcessor.process(
 			from: start, to: end, analyzer: initialAnalyzer, pendingRanges: pendingRanges,
 			replayCheckpoints: replayCheckpoints, sourceStartedAt: sourceStartedAt,
 			sensitivity: sensitivity, queryChunkDuration: queryChunkDuration,
-			query: query,
+			query: sensor.samples(from:to:),
 			shouldContinue: { Task.isCancelled == false && ProcessInfo.processInfo.systemUptime < deadline }
 		)
 		return (recent, history)
