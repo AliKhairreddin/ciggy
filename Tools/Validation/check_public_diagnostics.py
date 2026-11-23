@@ -7,7 +7,8 @@ from pathlib import Path
 
 
 PRIVATE_SOURCE = re.compile(
-    r"\b(?:production|live diagnostic|authenticated dashboard|real tester|physical tester)\b",
+    r"\b(?:production (?:checks?|diagnostics?|dashboard|graph|recordings?|uploads?)"
+    r"|live diagnostics?|authenticated dashboard|real tester|physical tester)\b",
     re.IGNORECASE,
 )
 MEASURED_DATA = re.compile(
